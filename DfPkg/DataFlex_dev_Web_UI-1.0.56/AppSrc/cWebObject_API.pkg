@@ -1,0 +1,6 @@
+Register_Function ViewStack Returns Handle
+Register_Function SessionManager Returns Handle
+Register_Function ResourceManager Returns Handle
+Register_Function ServiceDispatcher Returns Handle
+Register_Function ServerPropStore Returns Handle
+Register_Function Host Returns Handle

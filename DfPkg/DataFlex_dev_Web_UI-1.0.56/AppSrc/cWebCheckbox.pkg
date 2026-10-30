@@ -1,0 +1,139 @@
+﻿
+Use cWebBaseDEO.pkg
+
+{ OverrideProperty=peAlign WebProperty=False Visibility=Private }
+{ OverrideProperty=piMaxLength WebProperty=False Visibility=Private }
+{ OverrideProperty=piPrecision WebProperty=False Visibility=Private }
+{ OverrideProperty=piHeight WebProperty=False Visibility=Private }
+{ OverrideProperty=psMask WebProperty=False Visibility=Private }
+{ HelpTopic=cWebCheckbox }
+{ DesignerJSClass=df.WebCheckbox }
+Class cWebCheckbox is a cWebBaseDEO    
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties....
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psChecked ""
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psUnchecked ""
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebCheckbox"
+    End_Procedure
+
+    
+    Procedure SetChecked Boolean bChecked
+        // Sets the control's value according to the psCheckedValue and psUncheckedValue settings.
+        //
+        // Note: during WebApp initialization (while all the Web Objects are being created) then this
+        // message will set the design-time psValue, at all other times it will WebSet the client's
+        // synchronized psValue.
+        String sValue
+        Boolean bInitWebApp
+        
+        Get Initializing of (Host(Self)) to bInitWebApp
+        If (bInitWebApp) Begin
+            If (bChecked) Begin
+                Get psChecked to sValue
+            End
+            Else Begin
+                Get psUnchecked to sValue 
+            End
+            
+            Set psValue to sValue
+        End
+        Else Begin
+            If (bChecked) Begin
+                WebGet psChecked to sValue
+            End
+            Else Begin
+                WebGet psUnchecked to sValue 
+            End
+            
+            WebSet psValue to sValue
+        End
+    End_Procedure
+
+    
+    Function GetChecked Returns Boolean
+        // Gets the control's value according to the psCheckedValue and psUncheckedValue settings.
+        //
+        // Note: during WebApp initialization (while all the Web Objects are being created) then this
+        // message will get the design-time psValue, at all other times it will WebGet the client's
+        // synchronized psValue.
+        String sChecked sValue
+        Boolean bInitWebApp
+        
+        Get Initializing of (Host(Self)) to bInitWebApp
+        If (bInitWebApp) Begin
+            Get psChecked to sChecked 
+            Get psValue to sValue
+        End
+        Else Begin
+            WebGet psChecked to sChecked 
+            WebGet psValue to sValue
+        End
+        
+        Function_Return (sValue = sChecked)        
+    End_Function
+    
+    
+    Procedure AfterAttachDDO
+        // Sent after each DEO Object has been attached to its DDO server and had all the DDO field settings
+        // applied to its published properties. We will set default values to any cWebControl properties that
+        // are still unassigned...
+        String sChecked sUnchecked
+        
+        // Set default values for any unassigned properties
+        Forward Send AfterAttachDDO
+        
+        Get psChecked to sChecked
+        Get psUnchecked to sUnchecked
+        
+        // If both values are unassigned (null) then set them to default values.
+        If (Trim(sChecked) = "" and Trim(sUnchecked) = "") Begin
+            Set psChecked to "1"
+            Set psUnchecked to "0"
+        End
+    End_Procedure
+    
+
+    Procedure Attach_Deo_To_Server
+        // Augmented to apply psCheckedValue & psUncheckedValue from the DDO's data binding...
+        Integer iFile iField
+        Handle hoDDO
+        String sValue
+
+        Forward Send Attach_Deo_To_Server
+
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField
+        
+        // If we are attached to a data binding then apply the data dictionary attributes....
+        If ((hoDDO <> 0) and (iFile <> 0)) Begin
+            // Apply data binding's File_Field_Checkbox_Value setings....
+            Get psChecked to sValue
+            
+            If (Trim(sValue) = "") Begin    // Only apply data binding is there is no explicit setting
+                Get File_Field_CheckBox_Value of hoDDO iFile iField True to sValue
+                Set psChecked to sValue
+            End
+            
+            Get psUnchecked to sValue
+            
+            If (Trim(sValue) = "") Begin    // Only apply data binding is there is no explicit setting
+                Get File_Field_CheckBox_Value of hoDDO iFile iField False to sValue
+                Set psUnchecked to sValue
+            End
+        End
+    End_Procedure
+End_Class

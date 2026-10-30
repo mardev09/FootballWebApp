@@ -1,0 +1,68 @@
+﻿Use VdfBase.pkg
+Use WebDragDropStructs.pkg
+Use cWebObject.pkg
+
+// Constants
+Define WebDragAction for Integer
+Enum_List
+    Define C_WebDragListRow          for 111
+    Define C_WebDragTreeviewFolder   for 121
+    Define C_WebDragTreeviewItem     for 122
+    Define C_WebDragTagsFormTag      for 131
+    Define C_WebDragListSelection    for 141
+    Define C_WebDragWidget           for 151
+End_Enum_List
+
+Define WebDropAction for Integer
+Enum_List
+    Define C_WebDropOnControl        for 201
+    Define C_WebDropListRow          for 211
+    Define C_WebDropTreeviewRoot     for 221
+    Define C_WebDropTreeviewFolder   for 222
+    Define C_WebDropTreeviewItem     for 223
+    Define C_WebDropTagsFormInput    for 231
+    Define C_WebDropOnCell           for 241
+End_Enum_List
+
+Define WebDropPosition for Integer
+Enum_List
+    Define C_WebDropPosOn            for 1
+    Define C_WebDropPosBefore        for 2
+    Define C_WebDropPosAfter         for 3
+    Define C_WebDropPosEmpty         for 4
+End_Enum_List
+
+Class cWebDragDropMixin is a Mixin
+
+    { Visibility=Private }
+    Procedure DefineWebDragDropMixin
+        { WebProperty = Client }
+        { Category="Behavior" }
+        Property Boolean pbDragDropEnabled True
+        
+        { Visibility=Private }
+        Property Handle phoJsonDragData C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoJsonDropData C_WebUnresolvedObject
+    End_Procedure
+    
+    Function DragData Returns Variant
+        // Implement in control
+        Error 60001 "Function ToControlDragData not implemented in control"
+    End_Function
+    
+    Function DropData Returns Variant
+        // Implement in control
+        Error 60001 "Function ToControlDropData not implemented in control"
+    End_Function
+    
+    { Visibility = Private }
+    Function SupportsDragAction Integer eAction Returns Boolean
+        Error 60001 "Function SupportsDragAction not implemented in control"
+    End_Function
+    
+    { Visibility = Private }
+    Function SupportsDropAction Integer eAction Returns Boolean
+        Error 60001 "Function SupportsDropAction not implemented in control"
+    End_Function
+End_Class

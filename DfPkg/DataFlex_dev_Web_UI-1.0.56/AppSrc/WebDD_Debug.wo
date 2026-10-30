@@ -1,0 +1,1629 @@
+﻿Use cWebModalDialog.pkg
+Use cWebPanel.pkg
+Use cWebButton.pkg
+Use cWebForm.pkg
+Use cWebCombo.pkg
+Use cWebDateForm.pkg
+Use cWebCheckBox.pkg
+Use cWebTabContainer.pkg
+Use cWebTabPage.pkg
+Use cWebEdit.pkg
+Use cWebGroup.pkg
+Use cWebLabel.pkg
+Use cWebSpacer.pkg
+Use cWebHtmlBox.pkg
+Use cWebColumn.pkg
+Use cWebColumnCheckBox.pkg
+Use cWebTreeView.pkg
+Use cWebApp.pkg
+
+// ToDo: Note that WebDD_Debug is not intended to be included in deployed products and likely imposes a security risk.
+
+// Includes contributions from Raveen Sundram - These are mostly UI improvements (added a treeview for the
+// ddos and shows the field information in a grid. Thanks, Raveen.
+
+// This provides support for DDO Rentancy checking and for testing for
+// non-optimal finding.
+Use DD_OperationChecker.pkg
+
+//Define CR_LF for (Character(13)+Character(10))
+Define CR_LF for  "<br/>"
+
+// user for storing DD customization on the client
+Struct tWebDDDebugData
+    String sId
+    Boolean bInheritConstraints
+    Boolean bUseSQLDD
+    String  sSQLFilter
+    Boolean bFillFromFirst
+    Boolean bAutoFill
+    Integer iConstrainFile
+End_Struct
+
+// read only editor used for tab page ite,s
+{ Visibility=Private }
+Class cDDDebugResults is a cWebHtmlBox //cWebEdit
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Property String psEditValue
+    End_Procedure
+    
+    Procedure Delete_Data
+        Set psEditValue to ''
+    End_Procedure
+    
+    Procedure Insert String sVal
+        String sEditValue
+        Get psEditValue to sEditValue
+        Move (sEditValue + sVal) to sEditValue
+        Set psEditValue to sEditValue
+    End_Procedure
+    
+    // moves the edit data a web property. Do this when the content is complete
+    Procedure UpdateWebValue
+        String sValue
+        Get psEditValue to sValue
+        Move (Replaces(" ",sValue,"&nbsp;")) to sValue
+        Move ('<div style="font-family: courier; font-size: 90%; color: inherit;">'+sValue+'</div>') to sValue
+        
+        Send UpdateHtml sValue
+    End_Procedure
+    
+    
+End_Class
+
+Object oDD_Debug is a cWebModalDialog
+    Set psCaption to "Web DD Debug Inspector"
+    Set piWidth to 1024
+    
+    Set piMinWidth to 800
+    Set piMinHeight to 600
+    
+    { WebProperty=Server }
+    Property String psInvokingView ""
+    { WebProperty=Server }
+    Property String psCurrentDD ""
+    
+    Property tWebDDDebugData[] pDDsState
+    { WebProperty=Server }
+    Property tWebDDDebugData[] psSerializedDDOStates
+    
+    Function phoCurrentDD Returns Handle
+        String sCurrentDD
+        Handle hoView hoDD
+        
+        Get phoInvokingView to hoView
+        Move C_WebUnresolvedObject to hoDD
+        
+        If (hoView <> C_WebUnresolvedObject) Begin
+            WebGet psCurrentDD to sCurrentDD
+            
+            Get FindDDOByIdentifier of hoView sCurrentDD to hoDD
+        End
+        
+        Function_Return hoDD
+    End_Function
+    
+    Procedure Set phoCurrentDD Handle hoDD
+        Handle hoView
+        String sDD
+        
+        Get phoInvokingView to hoView
+        
+        If (hoView <> C_WebUnresolvedObject) Begin
+            Get DDIdentity of hoView hoDD to sDD         
+        End
+        
+        WebSet psCurrentDD to sDD
+    End_Function
+    
+    Function phoInvokingView Returns Handle
+        String sView
+        Handle hoVw
+        
+        WebGet psInvokingView to sView
+        
+        Get WebObjectByName of (Host(Self)) sView to hoVw
+
+        Function_Return hoVw
+    End_Function
+    
+    Procedure Set phoInvokingView Handle hoVw
+        String sView
+        
+        Get WebObjectName of hoVw to sView
+        
+        WebSet psInvokingView to sView
+    End_Function
+    
+    Function IsRecnumTable Integer iFile Returns Boolean
+        Boolean bRecnumTable
+        Get_Attribute DF_FILE_RECNUM_TABLE of iFile to bRecnumTable
+        Function_Return bRecnumTable
+    End_Function
+    
+    Object oTreePanel is a cWebPanel
+        Set peRegion to prLeft
+        Set piWidth  to 200
+        Set piMinWidth to 100
+        Set pbResizable to True
+        
+        Object oDDOTreeView is a cWebTreeView
+            { WebProperty=Server }
+            Property String[] paDDOList
+            
+            Set pbServerOnSelect to True
+            Procedure OnSelect String sId String sValue Integer iLevel
+                WebSet psValue of oDDCombo to sId
+                Send OnChange  of oDDCombo sId ""
+            End_Procedure
+            
+            Procedure Add_DDO tWebTreeItem[] ByRef aItems Handle hDD Handle hChildDD
+                Handle   hParentDD hoVw
+                String[] aDDOList
+                //
+                Integer iMax iFile iItm
+                Integer iCount
+                String  sFileName sId
+                tWebTreeItem searchitem
+                
+                Get phoInvokingView to hoVw
+                Get DDIdentity of hoVw hDD to sId
+                Move sId to searchitem.sId
+                If (SearchArray(searchitem, aItems) < 0) Begin
+                    
+                    Get main_file of hDD to iFile
+                    
+                    Get Data_Set_Server_Count of hDD to iMax
+                    Get_Attribute DF_FILE_DISPLAY_NAME of iFile to sFileName
+                    
+                    WebGet paDDOList to aDDOList
+                    
+                    Move (SizeOfArray(aItems)) to iCount
+                    
+                    Move sId to aItems[iCount].sId
+                    Move sFileName  to aItems[iCount].sName
+                    If (hChildDD <> 0) ;
+                        Get DDIdentity of hoVw hChildDD to aItems[iCount].sParentId
+                    Move (True)     to aItems[iCount].bFolder
+                    
+                    Move sId to aDDOList[iCount]
+                    WebSet paDDOList to aDDOList
+                    
+                    Decrement iMax
+                    For iItm from 0 to iMax
+                        Get Data_Set_Server of hDD iItm to hParentDD
+                        Send Add_DDO (&aItems) hParentDD hDD
+                    Loop
+                End
+            End_Procedure
+            
+            Function OnLoadChildNodes String sId String sValue Integer iLevel Returns tWebTreeItem[]
+                tWebTreeItem[] aItems
+                String[] aDDOList
+                Handle  hDD
+                Integer iFile
+                String sFileName
+                If (iLevel=0) Begin
+                    Get phoCurrentDD to hDD
+                    If (hDD) Begin
+                        WebSet paDDOList to aDDOList
+                        Send Add_DDO (&aItems) hDD 0 0
+                    End
+                End
+                Function_Return aItems
+            End_Function
+            
+            Procedure RefreshAll
+                String[] aDDOList
+                String sCurrentDD
+                
+                WebGet psCurrentDD of oDD_Debug to sCurrentDD
+                If (sCurrentDD <> "") Begin
+                    WebGet paDDOList to aDDOList
+                    If (SearchArray(sCurrentDD,aDDOList)=-1) Begin
+                        Send FullRefresh
+                    End
+                    Send Expand sCurrentDD
+                    Send Select sCurrentDD
+                End
+            End_Procedure
+            
+        End_Object
+        
+    End_Object
+    
+    Object oTopPanel is a cWebPanel
+        Set peRegion to prTop
+        Set piColumnCount to 11
+        
+        Object oDDCombo is a cWebCombo
+            Set psLabel to "DD:"
+            Set piColumnIndex to 0
+            Set piColumnSpan to 3
+            Set peLabelAlign to alignRight
+            Set piLabelOffset to 50
+            
+            Procedure OnFill
+                tNameHandlePair[] aDDOs
+                Handle hVw hoCurrentDD
+                Integer iItem
+                
+                Get phoInvokingView to hVw
+                Get phoCurrentDD to hoCurrentDD
+                Get paDDOIndex of hVw to aDDOs
+                
+                For iItem from 0 to (SizeOfArray(aDDOs) - 1)
+                    Send AddComboItem aDDOs[iItem].sName aDDOs[iItem].sName 
+                    If (aDDOs[iItem].hValue = hoCurrentDD) Begin
+                        WebSet psValue to aDDOs[iItem].sName 
+                    End
+                Loop
+            End_Procedure
+            
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                WebSet psCurrentDD of oDD_Debug to sNewValue
+                Delegate Send RefreshNewDD
+            End_Procedure
+            
+        End_Object
+        
+        Object oCurRec is a cWebForm
+            Set piColumnIndex to 3
+            Set piColumnSpan to 4
+            Set peLabelAlign to alignRight
+            Set psLabel to "RowID:"
+            Set piLabelOffset to 60
+            Set psTooltip to "RowID. You can change this and press the find button on the right"
+        End_Object
+        
+        Object oFindRec is a cWebButton
+            Set piColumnSpan to 0
+            Set psCaption to "Find"
+            Set piColumnIndex to 7
+            Set piColumnSpan to 1
+            
+            Procedure OnClick
+                Boolean bFound
+                RowID riRow
+                Integer iFile hDD
+                String sRowID
+                
+                Get phoCurrentDD to hDD
+                If hDD Begin
+                    Get Main_file of hDD to iFile
+                        
+                    WebGet psValue of oCurRec to sRowID
+                    If (sRowID="" or IsNullRowID(DeserializeRowID(sRowID))) Begin
+                        Move (NullRowID()) to riRow
+                    End
+                    Else Begin
+                        Move (DeserializeRowID(sRowID)) to riRow
+                    End
+                    
+                    Send ApplyCustomizations
+                    
+                    If (not(IsNullRowID(riRow))) Begin
+                        Send FindByRowId of hDD iFile riRow
+                    End
+                    Else Begin
+                        Send Clear of hDD
+                    End
+                    Send RefreshAll
+                        
+                End
+            End_Procedure
+            
+        End_Object
+        
+        Object oDDRelatesTo is a cWebCombo
+            Set piColumnIndex to 8
+            Set piColumnSpan to 3
+            Set peLabelAlign to alignRight
+            Set psLabel to "Relates To:"
+            Set piLabelOffset to 110
+            Set psTooltip to "Can be used the change a parent relates-to DD"
+            
+            Procedure OnFill
+                Handle hDD hCDO
+                Integer iCnt iLmt iFile iCFile
+                String sName
+                Forward Send OnFill
+                Get phoCurrentDD to hDD
+                If (hDD = 0) ;
+                    Procedure_Return
+                
+                Get Constrain_file of hDD to iCFile
+                Move (server_file_count(hDD)-1) to iLmt
+                Send AddComboItem 0 "None"
+                For iCnt from 0 to iLmt
+                    Get Server_File of hDD iCnt to iFile
+                    Get_Attribute DF_FILE_LOGICAL_NAME of iFile to sName
+                    Send AddComboItem iFile sName
+                Loop
+                WebSet psValue to iCFile
+                
+            End_Procedure
+            
+            Set pbServerOnChange to True
+            
+            Procedure OnChange String sNewValue String sOldValue
+                Integer iItem iFile hDD
+                Get phoCurrentDD to hDD
+                If (hDD=0) ;
+                    Procedure_Return
+                
+                Send ApplyCustomizations
+                Move sNewValue to iFile
+                Set constrain_file of hDD to iFile
+                Send ChangeDDOState
+                Delegate Send RefreshAll
+            End_Procedure
+            
+        End_Object
+        
+        Object oShouldSave is a cWebCheckbox
+            Set piColumnSpan to 2
+            Set psCaption to "Should Save"
+            Set pbEnabled to False
+            Set psTooltip to "Displays the DD's Should_Save value"
+        End_Object
+        
+        Object oChangedState is a cWebCheckbox
+            Set piColumnSpan to 2
+            Set piColumnIndex to 2
+            Set psCaption to "Changed State"
+            Set pbEnabled to False
+            Set psTooltip to "Displays the DD's Changed_State value"
+        End_Object
+        
+        Object oAutoFill is a cWebCheckbox
+            Set piColumnSpan to 2
+            Set piColumnIndex to 4
+            Set psCaption to "AutoFill"
+            Set psTooltip to "Displays the DD's Auto_Fill_State. This determines if related child records are found after a parent find. Can be changed."
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                Handle hDD
+                Boolean bChecked
+                Get phoCurrentDD to hDD
+                If hDD Begin
+                    Send ApplyCustomizations
+                    Get GetChecked to bChecked
+                    Set Auto_Fill_State of hDD to bChecked
+                    Send ChangeDDOState
+                    Send RemoveCustomizations
+                End
+            End_Procedure
+        End_Object
+        
+        Object oFillFromTop is a cWebCheckbox
+            Set piColumnSpan to 2
+            Set piColumnIndex to 6
+            Set psCaption to "Fill First"
+            Set psTooltip to "Displays the DD's pbAutoFillFromFirst value. If Auto_Fill_state is true, this determines if the autofill occurs from to first or last child record. This can be changed"
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                Handle hDD
+                Boolean bChecked
+                Get phoCurrentDD to hDD
+                If hDD Begin
+                    Send ApplyCustomizations
+                    Get GetChecked to bChecked
+                    Set pbAutoFillFromFirst of hDD to bChecked
+                    Send ChangeDDOState
+                    Send RemoveCustomizations
+                End
+            End_Procedure
+        End_Object
+        
+        Object oDDOrdering is a cWebCombo
+            Set piColumnSpan to 3
+            Set piColumnIndex to 8
+            Set psLabel to "Ordering:"
+            Set peLabelAlign to alignRight
+            Set piLabelOffset to 110
+            
+            Procedure RefreshNewDD
+                Send Refill
+            End_Procedure
+            
+            Procedure OnFill
+                Handle hDD
+                Integer iFile iSegs iNdxs i
+                Forward Send OnFill
+                Get phoCurrentDD to hDD
+                If hDD Begin
+                    Get Main_file of hDD to iFile
+                    Send AddComboItem -1 "Best.-1"
+                    If (IsRecnumTable(Self,iFile)) Begin
+                        Send AddComboItem 0 "Index.0"
+                    End
+                    Get_Attribute DF_FILE_LAST_INDEX_NUMBER of iFile to iNdxs
+                    For i from 1 to iNdxs
+                        Get_Attribute DF_INDEX_NUMBER_SEGMENTS of iFile i to iSegs
+                        If iSegs Begin
+                            Send AddComboItem i ("Index."-String(i))
+                        End
+                    Loop
+                End
+            End_Procedure
+            
+            Procedure Set Ordering Integer iOrdr
+                WebSet psValue to iOrdr
+            End_Procedure
+            
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                Handle hDD
+                Get phoCurrentDD to hDD
+                If (hDD and sNewValue<>sOldValue) Begin
+                    Send ApplyCustomizations
+                    Set Ordering of hDD to sNewValue
+                    Send ChangeDDOState
+                    Send RemoveCustomizations
+                End
+            End_Procedure
+            
+        End_Object
+        
+    End_Object
+    
+    Object oMainPanel is a cWebPanel
+        Set piColumnCount to 11
+        
+        Object oDDTabDialog is a cWebTabContainer
+            Set pbFillHeight to True
+            Object oConstraintstp is a cWebTabPage
+                Set psCaption to "Constraints"
+                Set piColumnCount to 12
+                Set piMinHeight to 250
+                
+                Object oConstraintsEdit is a cDDDebugResults
+                    Set piColumnSpan to 0
+                    Set pbShowLabel to False
+                    Set pbFillHeight to True
+                    
+                    Function FormatFileFieldName Integer iFile Integer iField Returns String
+                        String sFile sField sRet
+                        Boolean bOpen
+                        Get_Attribute DF_FILE_OPENED of iFile to bOpen
+                        If (bOpen) Begin
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFile to sFile
+                            Get_Attribute DF_FIELD_NAME of iFile iField to sField
+                            Function_Return (sFile+"."+sField)
+                        End
+                        Else Begin
+                            Function_Return "file not open"
+                        End
+                    End_Function
+                    
+                    Procedure ShowDDOConstraints Handle hoDD
+                        Integer i j iMain iCurrentDDFile
+                        tConstraintDef[] Constraints
+                        String sFilter
+                        Handle hoDDOther
+                        Send ApplyCustomizations
+                        Get Main_File of hoDD to iMain
+                        Get DDOConstraints of  hoDD to Constraints
+                        
+                        Send Insert "Current DDO Constraints"
+                        Send Insert CR_LF
+                        Send Insert ("  Number of Constraints = " + String(SizeOfArray(Constraints)))
+                        Send Insert CR_LF
+                        
+                        For i from 0 to (SizeOfArray(Constraints)-1)
+                            If (iCurrentDDFile<>Constraints[i].iFile) Begin
+                                Send Insert CR_LF
+                                Move Constraints[i].iFile to iCurrentDDFile
+                                If (Constraints[i].iFile<>iMain) Begin
+                                    Get Which_Data_Set of hoDD Constraints[i].iFile to hoDDOther
+                                End
+                                Else Begin
+                                    Move hoDD to hoDDOther
+                                End
+                                Send Insert  ("Constraints from ")
+                                
+                                If (hoDDOther) Begin
+                                    Send Insert  (Object_Label(hoDDOther))
+                                End
+                                Else Begin
+                                    // not sure this could ever happen
+                                    Send Insert  ("unknown. No DDO for file "+String(Constraints[i].iFile))
+                                End
+                                
+                                If (hoDD<>hoDDOther) Begin
+                                    Send Insert " (inherited)"
+                                End
+                                
+                                Send Insert CR_LF
+                            End
+                            
+                            
+                            Send Insert ("  " +String(i+1) + " Type=")
+                            Case Begin
+                                Case (Constraints[i].eType=CONST_VALUE) ;
+                                    Send Insert "CONST_VALUE"
+                                Case (Constraints[i].eType=CONST_CHILD) ;
+                                    Send Insert "CONST_CHILD"
+                                Case (Constraints[i].eType=CONST_FIELD) ;
+                                    Send Insert "CONST_FIELD"
+                                Case (Constraints[i].eType=CONST_EXP) ;
+                                    Send Insert "CONST_EXP"
+                                Case (Constraints[i].eType=CONST_RELATES) ;
+                                    Send Insert "CONST_RELATES"
+                            Case End
+                            
+                            If (Constraints[i].eType=CONST_VALUE or Constraints[i].eType=CONST_FIELD) Begin
+                                Send Insert " mode="
+                                Case Begin
+                                    Case (Constraints[i].eMODE=CONST_LT) ;
+                                        Send Insert "LT"
+                                    Case (Constraints[i].eMODE=CONST_LE) ;
+                                        Send Insert "LE"
+                                    Case (Constraints[i].eMODE=CONST_EQ) ;
+                                        Send Insert "EQ"
+                                    Case (Constraints[i].eMODE=CONST_GE) ;
+                                        Send Insert "GE"
+                                    Case (Constraints[i].eMODE=CONST_GT) ;
+                                        Send Insert "GT"
+                                    Case (Constraints[i].eMODE=CONST_NE) ;
+                                        Send Insert "NE"
+                                    Case (Constraints[i].eMODE=CONST_Matches) ;
+                                        Send Insert "matches"
+                                    Case (Constraints[i].eMODE=CONST_Contains) ;
+                                        Send Insert "contains"
+                                    Case (Constraints[i].eMODE=CONST_MatchesJumpIn) ;
+                                        Send Insert "matches_JumpIn"
+                                Case End
+                            End
+                            If (Constraints[i].eType<>CONST_EXP) Begin
+                                Send Insert (" File.Field=" + String(Constraints[i].iFile))
+                                Send Insert ("."  + String(Constraints[i].iField))
+                                Send Insert (" (" + FormatFileFieldName(Self,Constraints[i].iFile,Constraints[i].iField)+")")
+                            End
+                            If (Constraints[i].eType=CONST_CHILD or Constraints[i].eType=CONST_FIELD) Begin
+                                Send Insert (" Other File.Field="  + String(Constraints[i].iOtherFile))
+                                Send Insert ("."  + String(Constraints[i].iOtherField))
+                                Send Insert (" (" + FormatFileFieldName(Self,Constraints[i].iOtherFile,Constraints[i].iOtherField)+")")
+                            End
+                            Else If (Constraints[i].eType=CONST_VALUE) Begin
+                                Send Insert  (" Value=" + String(Constraints[i].sValue))
+                            End
+                            Send Insert CR_LF
+                        Loop
+                        
+                        Send Insert CR_LF
+                        
+                        Send ShowIndices hoDD
+                        
+                        Send UpdateWebValue
+                        
+                        Send RemoveCustomizations
+                    End_Procedure
+                    
+                    Procedure ShowIndices Handle hoDD
+                        
+                        Integer iLastIndex
+                        Integer iIndex i
+                        Integer iNumSegments
+                        Handle hTable
+                        tDDOConstraintFindMeta FindMeta
+                        Get Main_File of hoDD to hTable
+                        
+                        Send Insert CR_LF
+                        Send Insert "Indexes and Constraints"
+                        Send Insert CR_LF
+                        
+                        Get_Attribute DF_FILE_LAST_INDEX_NUMBER of hTable to iLastIndex
+                        For iIndex from 1 to iLastIndex
+                            Get_Attribute DF_INDEX_NUMBER_SEGMENTS of hTable iIndex to iNumSegments
+                            If (iNumSegments > 0) Begin
+                                
+                                Get DDOConstraintFindMeta of hoDD (GE) iIndex to FindMeta
+                                
+                                Send Insert ("    Index " + String(iIndex)+": ")
+                                If (FindMeta.iJumpInSegments>0 or FindMeta.bJumpOut or FindMeta.bPreRelate or FindMeta.bPostRelate) Begin
+                                    Send Insert ( "Jumpin "+String(FindMeta.iJumpInSegments)+" of "+String(iNumSegments)+". " )
+                                    Send Insert ( (If(FindMeta.bJumpOut,"JumpOut. ", "")) + (If(FindMeta.bPreRelate,"Pre-Relate. ", "")) + (If(FindMeta.bPostRelate,"Post-Relate. ", "")) )
+                                End
+                                Else Begin
+                                    Send Insert "No Constraints"
+                                End
+                                Send Insert CR_LF
+                            End
+                        Loop
+                    End_Procedure
+                    
+                    Procedure RefreshAll
+                        Handle hDD
+                        Get phoCurrentDD to hDD
+                        Send Delete_Data
+                        If (hDD) Begin
+                            Send ShowDDOConstraints hDD
+                        End
+                    End_Procedure
+                    
+                End_Object
+                
+                Object oInherit is a cWebCheckbox
+                    Set piColumnSpan to 0
+                    Set psCaption to "Inherit Constraints"
+                    Set pbServerOnChange to True
+                    Set psTooltip to "Displays the DD's pbInheritConstraintts value, which determines if constraints are inherited. This can be changed"
+                    
+                    Procedure OnChange String sNewValue String sOldValue
+                        Integer hDD
+                        Boolean bInherit
+                        Get phoCurrentDD to hDD
+                        If (hDD=0) ;
+                            Procedure_Return
+                        
+                        Send ApplyCustomizations
+                        Get GetChecked to bInherit
+                        Set pbInheritConstraints of hDD to bInherit
+                        Send ChangeDDOState
+                        Delegate Send RefreshAll
+                    End_Procedure
+                    
+                End_Object
+                
+                Object oSQLFilterCkBox is a cWebCheckbox
+                    Set piColumnSpan to 2
+                    Set psCaption to "Use SQL Filter:"
+                    Set psTooltip to "Displays the DD's pbUseDDSQLFilters value. This DD SQL filters are applied. If SQL fitlers is not supported this is disabled. This can be changed."
+                    
+                    Set pbServerOnChange to True
+                    Procedure OnChange String sNewValue String sOldValue
+                        Handle hoDDO
+                        Boolean bFilter
+                        Forward Send OnChange sNewValue sOldValue
+                        Get phoCurrentDD to hoDDO
+                        If not hoDDO ;
+                            Procedure_Return
+                        
+                        Send ApplyCustomizations
+                        Get GetChecked to bFilter
+                        Set pbUseDDSQLFilters of hoDDO to bFilter
+                        Send ChangeDDOState
+                        Send ApplySQLFilterInfo
+                        Send RemoveCustomizations
+                    End_Procedure
+                End_Object
+                
+                Object oSQLFilter is a cWebForm
+                    Set piColumnSpan to 0
+                    Set piColumnIndex to 2
+                    Set peLabelAlign to alignLeft
+                    Set piLabelOffset to 80
+                    Set pbShowLabel to False
+                    Set psTooltip to "Shows a DD SQL filer, if one is set and DD SQL filters are supported. This can be edited."
+                    
+                    Set pbServerOnChange to True
+                    
+                    Procedure OnChange String sNewValue String sOldValue
+                        Handle hoDDO
+                        String sValue
+                        Get phoCurrentDD to hoDDO
+                        If not hoDDO ;
+                            Procedure_Return
+                        
+                        Send ApplyCustomizations
+                        Set psSQLFilter of hoDDO to sNewValue
+                        Send ChangeDDOState
+                        Send RemoveCustomizations
+                    End_Procedure
+                End_Object
+                
+                Procedure ApplySQLFilterInfo
+                    Integer iValue
+                    Boolean bFilter bAllowed
+                    Handle hoDDO
+                    String sFilter
+                    
+                    Get phoCurrentDD to hoDDO
+                    If not hoDDO ;
+                        Procedure_Return
+                    
+                    Get SupportsSQLFilters of hoDDO to bAllowed
+                    WebSet pbEnabled of oSQLFilterCkBox to bAllowed
+                    Get pbUseDDSQLFilters of hoDDO to bFilter
+                    Get psSQLFilter of hoDDO to sFilter
+                    Get GetChecked of oSQLFilterCkBox to bFilter
+                    WebSet pbEnabled of oSQLFilter to bFilter
+                    WebSet psValue of oSQLFilter to sFilter
+                End_Procedure
+                
+                Procedure RefreshAll
+                    Send ApplyCustomizations
+                    Send RefreshAll of oConstraintsEdit
+                    Send ApplySQLFilterInfo
+                    Send RemoveCustomizations
+                End_Procedure
+                
+                
+            End_Object
+            
+            
+            Object oFieldstp is a cWebTabPage
+                Set psCaption to "Fields"
+                Set piColumnCount to 12
+                
+                Object oFieldsEdit is a cWebList
+                    Set pbFillHeight to True
+                    Set pbDataAware  to False
+                    
+                    // "Field                           Chg Vld FrnVld Value"
+                    Object oFieldNumberColumn is a cWebColumn
+                        Set psCaption to "#"
+                        Set piWidth to 46
+                        Set peDataType to typeNumber
+                        Set piPrecision to 0
+                        Set pbFixedWidth to True
+                    End_Object
+                    
+                    Object oFieldNameColumn is a cWebColumn
+                        Set psCaption to "Field"
+                        Set piWidth to 375
+                    End_Object
+                    
+                    Object oChangedColumn is a cWebColumnCheckbox
+                        Set psCaption to "Changed"
+                        Set piWidth to 69
+                        Set peAlign to alignCenter
+                        Set pbFixedWidth to True
+                    End_Object
+                    
+                    Object oVaildateColumn is a cWebColumnCheckbox
+                        Set psCaption to "Validate"
+                        Set piWidth to 69
+                        Set psChecked to "Y"
+                        Set psUnchecked to "N"
+                        Set peAlign to alignCenter
+                        Set pbFixedWidth to True
+                    End_Object
+                    
+                    Object oFVaildateColumn is a cWebColumnCheckbox
+                        Set psCaption to "FrnVld"
+                        Set piWidth to 69
+                        Set psChecked to "Y"
+                        Set psUnchecked to "N"
+                        Set peAlign to alignCenter
+                        Set pbFixedWidth to True
+                    End_Object
+                    
+                    Object oFieldValueColumn is a cWebColumn
+                        Set psCaption to "Value"
+                        Set piWidth to 619
+                    End_Object
+                    
+                    Procedure OnManualLoadData tWebRow[] ByRef aTheRows String ByRef sCurrentRowID
+                        Integer iNum
+                        Handle hDD hRB
+                        Integer iMax iItem iFile
+                        Integer iOldErrorReport hOldErr
+                        String sLine sFieldName sChanged sVld sFrnVld sVal
+                        
+                        Forward Send OnManualLoadData (&aTheRows) (&sCurrentRowID)
+                        
+                        Get phoCurrentDD to hDD
+                        Get Record_Buffer of hDD to hRB
+                        Get main_file of hDD to iFile
+                        
+                        Get Error_Report_Mode of hDD to iOldErrorReport
+                        Set Error_Report_Mode of hDD to DD_ERROR_NO_REPORT
+                        Move Error_Object_id to hOldErr
+                        Move hDD to Error_Object_id
+                        
+                        // Write the bodies for the fields
+                        Get Item_Count of hRB to iMax
+                        Decrement iMax
+
+                        For iItem from 0 to iMax
+                            If (iItem>0) Begin
+                                Get_Attribute DF_FIELD_NAME of iFile iItem to sFieldName
+                                Move (String(Item_Changed_State(hRB, iItem))) to sChanged
+                                
+                                // this will test it as a standard validation
+                                Move hDD to Operation_Origin
+                                Move (If(Validate_Field(hDD,iItem),"N","Y")) to sVld
+                                
+                                // this will test it as a foreign validation
+                                Move 0 to Operation_Origin
+                                Move (If(Validate_Field(hDD,iItem),"N","Y")) to sFrnVld
+                                Move (Field_Current_Value(hDD, iItem)) to sVal
+                            End
+                            Else Begin
+                                Move "RowID" to sFieldName
+                                Move "N" to sChanged
+                                Move "N" to sVld
+                                Move "N" to sFrnVld
+                                Move (SerializeRowID(GetRowID(iFile))) to sVal
+                            End
+                            
+                            Move iItem      to aTheRows[iItem].sRowID
+                            Move iItem      to aTheRows[iItem].aCells[0].sValue
+                            Move sFieldName to aTheRows[iItem].aCells[1].sValue
+                            Move sChanged   to aTheRows[iItem].aCells[2].sValue
+                            Move sVld       to aTheRows[iItem].aCells[3].sValue
+                            Move sFrnVld    to aTheRows[iItem].aCells[4].sValue
+                            Move sVal       to aTheRows[iItem].aCells[5].sValue
+                        Loop
+                        
+                        Set Dynamic_update_state to True
+                        Set Error_Report_Mode of hDD to iOldErrorReport
+                        Move hOldErr to Error_Object_id
+                    End_Procedure
+                    
+                    Procedure RefreshAll
+                        Send GridRefresh to oFieldsEdit
+                    End_Procedure
+                End_Object
+                
+            End_Object
+            
+            Object oMisctp is a cWebTabPage
+                Set psCaption to "Misc"
+                Set piColumnCount to 12
+                
+                Object oMiscEdit is a cDDDebugResults
+                    Set piColumnSpan to 0
+                    Set pbShowLabel to False
+                    Set pbFillHeight to True
+                    Procedure RefreshAll
+                        Integer iMax iItem iFile iFIl iObj iOldSt
+                        Handle hDD hRB
+                        Integer iCnt hVw iBase iType iFAObj iOldErrorReport hOldErr iMaster
+                        Integer iColumns iColumn
+                        String sDummy sView sName sDummy2 sFieldName sType sLine
+                        Handle hoMaster hRelatesToTable hRelatesToColumn
+                        Boolean bSwitched bUseDDRelates
+                        
+                        Get phoInvokingView to hVw
+                        Get Name of hVw to sView
+                        
+                        Get phoCurrentDD to hDD
+                        Get Record_Buffer    of hDD to hRB
+                        Get Field_Attributes of hDD to iFAObj
+                        Get main_file of hDD to iFile
+                        Set Dynamic_update_state to False
+                        Send Delete_Data
+                        
+                        Send Insert "Current DDO = "
+                        Send Insert (String(hDD) * "-" * Object_Label(hDD))
+                        Send Insert CR_LF
+                        
+                        Send Insert "Main File = "
+                        Get_Attribute DF_FILE_LOGICAL_NAME of iFile to sName
+                        Send Insert (String(iFile) * "-" * sName)
+                        Send Insert CR_LF
+                        
+                        
+                        
+                        Send Insert "Driver File = "
+                        Get_Attribute DF_FILE_DRIVER of iFile to sName
+                        Send Insert sName
+                        Send Insert CR_LF
+                        Send Insert CR_LF
+                        
+                        // see if this has a master table (i.e., if this DDO is an alias)
+                        Get MasterForAlias of hDD to iMaster
+                        If (iMaster<>0) Begin
+                            Get Data_Set of hDD iMaster to hoMaster
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iMaster to sName
+                            Send Insert "Alias Table Information"
+                            Send Insert CR_LF
+                            Send Insert ("    Master Table: " + String(iMaster) * "-" * sName)
+                            Send Insert CR_LF
+                            // it is possible the master is not in this DDO structure. If so
+                            // this will be treated as a regular table.
+                            If (hoMaster) Begin
+                                Send Insert "    Master DDO = "
+                                Send Insert (String(hoMaster) * "-" * Object_Label(hoMaster))
+                            End
+                            Else Begin
+                                Send Insert "    ** The master table is not part of the DDO structure"
+                                Send Insert CR_LF
+                                Send Insert "       therefore this DDO will be locked as a regular non-alias table."
+                            End
+                            Send Insert CR_LF
+                            Send Insert CR_LF
+                        End
+                        
+                        
+                        
+                        Send Insert "Current DDO Container = "
+                        Send Insert (String(hVw) * "-" * Object_Label(hVw) * "(" - sView - ")")
+                        Send Insert CR_LF
+                        Send Insert CR_LF
+                        
+                        Send Insert "Protect_Key_State = "
+                        Send Insert (If(Protect_Key_State(hDD),"True","False"))
+                        Send Insert CR_LF
+                        
+                        Send Insert "Cascade_Delete_State = "
+                        Send Insert (If(Cascade_Delete_State(hDD),"True","False"))
+                        Send Insert CR_LF
+                        Send Insert CR_LF
+                        
+                        Send Insert "Required Server Files = "
+                        Send Insert (Server_File_Count(hDD))
+                        Send Insert CR_LF
+                        For iCnt from 0 to (Server_File_Count(hDD)-1)
+                            Get Server_File of hDD iCnt to iFil
+                            Send Insert ("     " +String(iFil)+" - ")
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFil to sDummy
+                            Send Insert sDummy
+                            Send Insert CR_LF
+                        Loop
+                        Send Insert  CR_LF
+                        
+                        Send Insert "Required Client Files = "
+                        Send Insert (Client_File_Count(hDD))
+                        Send Insert CR_LF
+                        For iCnt from 0 to (Client_File_Count(hDD)-1)
+                            Get Client_File of hDD iCnt to iFil
+                            Send Insert ("     " +String(iFil)+" - ")
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFil to sDummy
+                            Send Insert sDummy
+                            Send Insert CR_LF
+                        Loop
+                        Send Insert  CR_LF
+                        
+                        Send Insert "Required Other Files = "
+                        Send Insert (System_File_Count(hDD))
+                        Send Insert CR_LF
+                        For iCnt from 0 to (System_File_Count(hDD)-1)
+                            Get System_File_Number of hDD iCnt to iFil
+                            Send Insert ("     " +String(iFil)+" - ")
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFil to sDummy
+                            Send Insert sDummy
+                            Get System_File_Lock_Mode of hDD iCnt to iFil
+                            Case Begin
+                                Case (iFil=DD_Lock_on_All) ;
+                                    Move " - Lock on all" to sDummy
+                                Case (iFil=DD_Lock_on_Delete) ;
+                                    Move " - Lock on Delete" to sDummy
+                                Case (iFil=DD_Lock_on_new_Save_delete) ;
+                                    Move " - Lock on new save/delete" to sDummy
+                                Case (iFil=DD_Lock_on_Save) ;
+                                    Move " - Lock on save" to sDummy
+                                Case (iFil=DD_Lock_on_new_Save) ;
+                                    Move " - Lock on new save" to sDummy
+                                Case Else ;
+                                    Move " - No Lock" to sDummy
+                            Case End
+                            Send Insert sDummy
+                            Send Insert CR_LF
+                        Loop
+                        Send Insert  CR_LF
+                        
+                        Send Insert "Attached DDO Server DDO = "
+                        Send Insert (Data_set_server_Count(hDD))
+                        Send Insert CR_LF
+                        For iCnt from 0 to (Data_set_server_Count(hDD)-1)
+                            Get Data_Set_Server of hDD iCnt to iObj
+                            Get Main_file of iObj to iFil
+                            Get ParentDDOSwitched of hDD iFIl to bSwitched
+                            Move (replace(sView+".",Name(iObj),"")) to sName
+                            Send Insert ("     " +String(iObj)+" - "+sname)
+                            Send Insert ("     " +String(iFil)+" - ")
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFil to sDummy
+                            Send Insert sDummy
+                            Send Insert ("     (Switched: " + If(bSwitched, "True", "False") + ")")
+                            Send Insert CR_LF
+                        Loop
+                        Send Insert  CR_LF
+                        
+                        Send Insert "Attached DDO CLient DDOs = "
+                        Send Insert  (Data_set_Client_Count(hDD))
+                        Send Insert  CR_LF
+                        For iCnt from 0 to (Data_set_Client_Count(hDD)-1)
+                            Get Data_Set_Client of hDD iCnt to iObj
+                            Get Main_file of iObj to iFil
+                            Move (replace(sView+".",Name(iObj),"")) to sName
+                            Send Insert ("     " +String(iObj)+" - "+sname)
+                            Send Insert ("     " +String(iFil)+" - ")
+                            Get_Attribute DF_FILE_LOGICAL_NAME of iFil to sDummy
+                            Send Insert sDummy
+                            Send Insert CR_LF
+                        Loop
+                        Send Insert CR_LF
+                        
+                        Send Insert  "Valid Save Structure = "
+                        Send Insert  (If(Validate_Save_Structure(hDD,1),"No","Yes"))
+                        Send Insert  CR_LF
+                        
+                        Get Cascade_delete_State of hDD to ioldst
+                        Set Cascade_delete_State of hDD to True
+                        Send Insert  "Valid Cascade Delete Structure = "
+                        Send Insert  (If(Validate_Delete_Structure(hDD,1),"No","Yes"))
+                        Send Insert  CR_LF
+                        
+                        Set Cascade_delete_State of hDD to False
+                        Send Insert  "Valid No Cascade Delete Structure = "
+                        Send Insert  (If(Validate_Delete_Structure(hDD,1),"No","Yes"))
+                        Send Insert  CR_LF
+                        Set Cascade_delete_State of hDD to ioldst
+                        
+                        Send Insert  CR_LF
+                        Send Insert  "Attached DEOs = "
+                        Send Insert  (Data_set_user_Interface_Count(hDD))
+                        Send Insert  CR_LF
+                        For iCnt from 0 to (Data_set_User_Interface_Count(hDD)-1)
+                            Get Data_Set_User_Interface of hDD iCnt to iObj
+                            Move (replace(sView+".",Object_Label(iObj),"")) to sName
+                            Send Insert ("     " +String(iObj)+" - "+sname)
+                            If not (Extended_deo_State(iObj)) ;
+                                Send Insert  ("  (**Not XDEO)")
+                            Else If (Data_File(iObj,0)<>iFile) ;
+                                Send Insert  ("    (foreign)")
+                            
+                            Send Insert  CR_LF
+                        Loop
+                        Send Insert  CR_LF
+                        
+                        // Write the bodies for the fields
+                        // Write the Header
+                        Send Insert "              Extended Field Attributes"
+                        Send Insert CR_LF
+                        Send Insert "Field                            Type             Valid Values"
+                        Send Insert CR_LF
+                        Send Insert "-----------------------------------------------------------------------------------------------------------"
+                        Send Insert CR_LF
+                        
+                        Get Error_Report_Mode of hDD to iOldErrorReport
+                        Set Error_Report_Mode of hDD to DD_ERROR_NO_REPORT
+                        Move Error_Object_id to hOldErr
+                        Move hDD to Error_Object_id
+                        Get Item_Count of hRB to iMax
+                        Decrement iMax
+                        For iItem from 0 to iMax
+                            Move (iItem * FA_COUNT) to iBase
+                            Get_Attribute DF_FIELD_NAME of iFile iItem to sFieldName
+                            Move (pad(sFieldName,32)) to sFieldName
+                            Get Field_Validation_Type of hDD iItem to iType
+                            Case Begin
+                                Case (iType=FA_VALIDATION_TYPE_RANGE)
+                                    Move "Range" to sDummy
+                                    Move ("Min="+Value(iFAObj,iBase+FA_MIN_VALUE) * ;
+                                        "Max="+Value(iFAObj,iBase+FA_MAX_VALUE)) ;
+                                        to sDummy2
+                                    Case Break
+                                Case (iType=FA_VALIDATION_TYPE_CHECK)
+                                    Move "Check" to sDummy
+                                    Move ("Values =" * Value(iFAObj,iBase+FA_CHECK_VALUE)) to sDummy2
+                                    Case Break
+                                Case (iType=FA_VALIDATION_TYPE_CHECKBOX)
+                                    Move "CheckBox" to sDummy
+                                    Move ("True="+ Value(iFAObj,iBase+FA_CHECKBOX_TRUE) * ;
+                                        "False="+ Value(iFAObj,iBase+FA_CHECKBOX_FALSE)) ;
+                                        to sDummy2
+                                    Case Break
+                                Case (iType=FA_VALIDATION_TYPE_TABLE)
+                                    Move "Table" to sDummy
+                                    Move ("Id="+ Value(iFAObj,iBase+FA_TABLE_OBJECT) * ;
+                                        Name( Value(iFAObj,iBase+FA_TABLE_OBJECT) )) ;
+                                        to sDummy2
+                                    Case Break
+                                Case Else
+                                    Move "None" to sDummy
+                                    Move "" to sDummy2
+                            Case End
+                            Move (Pad(sDummy,14)) to sDummy
+                            Move (SFormat("%1 %2 %3 %4", sFieldName, iType, sDummy, sDummy2)) to sLine
+                            Send Insert sLine
+                            Send Insert  CR_LF
+                        Loop
+
+                        Send Insert CR_LF
+    
+                        Get pbUseDDRelates of hDD to bUseDDRelates
+                        If (bUseDDRelates) Begin
+                            Send Insert "              DDO Relationships"
+                            Send Insert CR_LF
+                            Send Insert "Field                            Relates to"
+                            Send Insert CR_LF
+                            Send Insert "-----------------------------------------------------------------------------------------------------------"
+                            Send Insert CR_LF
+                            Get Field_Count of hDD to iColumns
+                            For iColumn from 1 to iColumns
+                                Get Field_Related_File of hDD iColumn to hRelatesToTable
+                                If (hRelatesToTable > 0) Begin
+                                    Get Field_Related_Field of hDD iColumn to hRelatesToColumn
+                                    Get_Attribute DF_FIELD_NAME of iFile iColumn to sFieldName
+                                    Move (Pad (Sformat ('%1 (%2.%3)', sFieldName, iFile, iColumn), 33)) to sLine
+                                    Send Insert sLine
+                                    Get_Attribute DF_FILE_LOGICAL_NAME of hRelatesToTable to sDummy
+                                    Get_Attribute DF_FIELD_NAME of hRelatesToTable hRelatesToColumn to sFieldName
+                                    Move (SFormat ('%1.%2 (%3.%4)', sDummy, sFieldName, hRelatesToTable, hRelatesToColumn)) to sLine
+                                    Send Insert sLine
+                                    Send Insert CR_LF
+                                End
+                            Loop
+                        End
+                        Else Begin
+                            Send Insert "              Global Table Relationships"
+                            Send Insert CR_LF
+                            Send Insert "Field                            Relates to"
+                            Send Insert CR_LF
+                            Send Insert "-----------------------------------------------------------------------------------------------------------"
+                            Send Insert CR_LF
+                            Get Field_Count of hDD to iColumns
+                            For iColumn from 1 to iColumns
+                                Get_Attribute DF_FIELD_RELATED_FILE of iFile iColumn to hRelatesToTable
+                                If (hRelatesToTable > 0) Begin
+                                    Get_Attribute DF_FIELD_RELATED_FIELD of iFile iColumn to hRelatesToColumn
+                                    Get_Attribute DF_FIELD_NAME of iFile iColumn to sFieldName
+                                    Move (Pad (Sformat ('%1 (%2.%3)', sFieldName, iFile, iColumn), 33)) to sLine
+                                    Send Insert sLine
+                                    Get_Attribute DF_FILE_LOGICAL_NAME of hRelatesToTable to sDummy
+                                    Get_Attribute DF_FIELD_NAME of hRelatesToTable hRelatesToColumn to sFieldName
+                                    Move (SFormat ('%1.%2 (%3.%4)', sDummy, sFieldName, hRelatesToTable, hRelatesToColumn)) to sLine
+                                    Send Insert sLine
+                                    Send Insert CR_LF
+                                End
+                            Loop
+                        End
+                        
+                        Send Beginning_Of_Data
+                        Set Dynamic_update_state to True
+                        Set Error_Report_Mode of hDD to iOldErrorReport
+                        Move hOldErr to Error_Object_id
+                        Send UpdateWebValue
+                    End_Procedure
+                End_Object
+                
+            End_Object
+            
+        End_Object
+        
+        
+        
+    End_Object
+    
+    Object oBottomPanel is a cWebPanel
+        Set peRegion to prBottom
+        Set piColumnCount to 11
+        Object oFindCounts is a cWebGroup
+            Set psCaption to "Constrained Find Count"
+            Set piColumnCount to 12
+            
+            Object oTestsCount is a cWebForm
+                Set piColumnSpan to 3
+                Set piLabelOffset to 100
+                Set peLabelAlign to alignRight
+                Set psLabel to "Test_Count:"
+            End_Object
+            
+            Object oFoundCount is a cWebForm
+                Set piColumnSpan to 3
+                Set piLabelOffset to 100
+                Set piColumnIndex to 3
+                Set peLabelAlign to alignRight
+                Set psLabel to "Test_Found:"
+            End_Object
+            
+            Object oDifference is a cWebForm
+                Set piColumnSpan to 3
+                Set piLabelOffset to 100
+                Set piColumnIndex to 6
+                Set peLabelAlign to alignRight
+                Set psLabel to "Difference:"
+            End_Object
+            
+            Object oClearCount is a cWebButton
+                Set piColumnSpan to 0
+                Set piColumnIndex to 9
+                Set piColumnSpan to 2
+                Set psCaption to "Clear Count"
+                
+                Procedure OnClick
+                    Send ClearCounts
+                End_Procedure
+            End_Object
+            
+            Object oNonOptimalWarnings is a cWebCheckbox
+                Set piColumnIndex to 1
+                Set piColumnSpan to 4
+                Set psCaption to "Report an error if more than"
+                Set psTooltip to "Raise an error when (Constrain_Tests_Count - Constrain_Found_Count) exceeds this value for a single DD Find. This can be used to identify non-optimal finding. NOTE: only use this when in debug mode!"
+                Set pbServerOnChange to True
+                Procedure OnChange String sNewValue String sOldValue
+                    Forward Send OnChange sNewValue sOldValue
+                    Send SetNonOptimalWarnings
+                End_Procedure
+                
+            End_Object
+            
+            Object oNonOptFinds is a cWebForm
+                Set piColumnIndex to 5
+                Set pbShowLabel to False
+                Set piColumnSpan to 1
+                Set pbServerOnChange to True
+                Set psTooltip to "Raise an error when test_count - test_found exceeds a value. This can be used to identify non-optimal finding. NOTE: only use this when in debug mode!"
+                Set psValue to 50
+                Procedure OnChange String sNewValue String sOldValue
+                    Forward Send OnChange sNewValue sOldValue
+                    Send SetNonOptimalWarnings
+                End_Procedure
+            End_Object
+            
+            Object oFitlerErrortxt is a cWebLabel
+                Set piColumnIndex to 6
+                Set piColumnSpan to 5
+                Set psCaption to "records are filtered"
+            End_Object
+            
+            Procedure ClearCounts
+                Move 0 to Constrain_tests_count
+                Move 0 to Constrain_found_Count
+                Send RefreshCounts
+            End_Procedure
+            
+            Procedure RefreshCounts
+                WebSet psValue of oTestsCount to constrain_tests_count
+                WebSet psValue of oFoundCount to constrain_Found_count
+                WebSet psValue of oDifference to (constrain_tests_count - Constrain_found_count)
+            End_Procedure
+            
+        End_Object
+        
+        Object oFindGp is a cWebGroup
+            Set piColumnSpan to 6
+            Set psCaption to "Find Record"
+            Set piColumnCount to 6
+            
+            Object oFindFirst is a cWebButton
+                Set piColumnSpan to 1
+                Set psCaption to "First"
+                
+                Procedure OnClick
+                    Delegate Send FindRec FIRST_RECORD
+                End_Procedure
+            End_Object
+            
+            Object oFindPrev is a cWebButton
+                Set piColumnSpan to 1
+                Set piColumnIndex to 1
+                Set psCaption to "Prev."
+                
+                Procedure OnClick
+                    Delegate Send FindRec LT
+                End_Procedure
+            End_Object
+            
+            Object oFindNext is a cWebButton
+                Set piColumnSpan to 1
+                Set piColumnIndex to 2
+                Set psCaption to "Next"
+                
+                Procedure OnClick
+                    Delegate Send FindRec GT
+                End_Procedure
+            End_Object
+            
+            Object oFindLast is a cWebButton
+                Set piColumnSpan to 1
+                Set piColumnIndex to 3
+                Set psCaption to "Last"
+                
+                Procedure OnClick
+                    Delegate Send FindRec LAST_RECORD
+                End_Procedure
+            End_Object
+            
+            Object oFindIndex is a cWebCombo
+                Set piColumnSpan to 2
+                Set piColumnIndex to 4
+                Set pbShowLabel to False
+                
+                Procedure OnFill
+                    Handle hDD
+                    Integer iFile iSegs iNdxs i
+                    Forward Send OnFill
+                    Get phoCurrentDD to hDD
+                    If hDD Begin
+                        Get Main_file of hDD to iFile
+                        WebSet psValue to 0
+                        If (IsRecnumTable(Self,iFile)) Begin
+                            Send AddComboItem 0 "Index.0"
+                        End
+                        Get_Attribute DF_FILE_LAST_INDEX_NUMBER of iFile to iNdxs
+                        For i from 1 to iNdxs
+                            Get_Attribute DF_INDEX_NUMBER_SEGMENTS of iFile i to iSegs
+                            If iSegs Begin
+                                Send AddComboItem i ("Index."-String(i))
+                            End
+                        Loop
+                    End
+                End_Procedure
+                
+                Function Ordering Returns Integer
+                    String sVal
+                    WebGet psValue to sVal
+                    Function_Return sVal
+                End_Function
+            End_Object
+            
+            Procedure FindRec Integer iMode
+                Integer iNdx
+                Handle hDD
+                Get Ordering of oFindIndex to iNdx
+                Get phoCurrentDD to hDD
+                If hDD Begin
+                    Send ApplyCustomizations
+                    Send Find of hDD iMode iNdx
+                    Send RefreshAll
+                End
+            End_Procedure
+            
+            Procedure RefreshNewDD
+                Send Refill of oFindIndex
+            End_Procedure
+            
+        End_Object
+        
+        Object oClearClose is a cWebGroup
+            Set piColumnSpan to 5
+            Set piColumnCount to 6
+            Set piColumnIndex to 6
+            
+            Object oClearAll is a cWebButton
+                Set piColumnSpan to 2
+                Set piColumnIndex to 0
+                Set psCaption to "Clear All"
+                
+                Procedure OnClick
+                    Handle hDD
+                    Get phoCurrentDD to hDD
+                    If hDD Begin
+                        Send ApplyCustomizations
+                        Send Clear_All to hdd
+                        Send RefreshALL
+                    End
+                End_Procedure
+            End_Object
+            
+            Object oClear is a cWebButton
+                Set piColumnSpan to 2
+                Set piColumnIndex to 2
+                Set psCaption to "Clear"
+                
+                Procedure OnClick
+                    Handle hDD
+                    Get phoCurrentDD to hDD
+                    If hDD Begin
+                        Send ApplyCustomizations
+                        Send Clear to hdd
+                        Send RefreshALL
+                    End
+                End_Procedure
+            End_Object
+            
+            Object oClose is a cWebButton
+                Set piColumnSpan to 2
+                Set piColumnIndex to 4
+                Set psCaption to "Close"
+                
+                Procedure OnClick
+                    Send Cancel
+                End_Procedure
+            End_Object
+        End_Object
+        
+        Object oCheckRentrancy is a cWebCheckbox
+            Set piColumnIndex to 0
+            Set piColumnSpan to 4
+            Set psCaption to "Report DD Reentancy Errors"
+            Set psTooltip to "Report an error when DD calls are re-entrant and therefore being ignored.  NOTE: only use this when in debug mode!"
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                Boolean bChecked
+                Forward Send OnChange sNewValue sOldValue
+                Move bChecked to gbTestRentrancy
+            End_Procedure
+            
+        End_Object
+        
+        Object ochkFindCount is a cWebCheckbox
+            Set piColumnIndex to 4
+            Set piColumnSpan to 4
+            Set psCaption to "Show Constrained Find Count"
+            Set psValue to "1"
+            
+            Set pbServerOnChange to True
+            Procedure OnChange String sNewValue String sOldValue
+                Boolean bChecked
+                Forward Send OnChange sNewValue sOldValue
+                Move (sNewValue) to bChecked
+                WebSet pbRender of oFindCounts to bChecked
+            End_Procedure
+        End_Object
+    End_Object
+    
+    
+    
+    Procedure RefreshAll
+        Handle hDD
+        Send ApplyCustomizations
+        Get phoCurrentDD to hDD
+        WebSet psValue of oCurRec to (SerializeRowID(CurrentRowId(hDD)))
+        Send SetChecked  of oChangedState (Changed_State(hDD))
+        Send SetChecked  of oShouldSave   (Should_save(hDD))
+        
+        Send RefreshAll    of oFieldsEdit
+        Send RefreshAll    of oMiscEdit
+        Send RefreshCounts of oFindCounts
+        Send RemoveCustomizations
+    End_Procedure
+    
+    Procedure SetNonOptimalWarnings
+        Integer iValue
+        Boolean bChecked
+        Get GetChecked of oNonOptimalWarnings to bChecked
+        WebGet psValue of oNonOptFinds to iValue
+        Move (If(bChecked,iValue,0)) to giNonOptimalFindCount
+        WebSet pbEnabled of oNonOptFinds to bChecked
+    End_Procedure
+    
+    
+    Procedure RefreshNewDD
+        Handle hDD
+        Get phoCurrentDD to hDD
+        Send ApplyCustomizations
+        Send Refill of oDDRelatesTo
+        Send SetChecked of oAutoFill (Auto_Fill_State(hDD)<>0)
+        Send SetChecked of oInherit  (pbInheritConstraints(hDD))
+        Send SetChecked of oFillFromTop (pbAutoFillFromFirst(hDD))
+        
+        
+        Send RefreshAll of oFieldsEdit
+        Send RefreshAll of oConstraintstp
+        Send RefreshAll
+        
+        Send RefreshNewDD of oDDOrdering
+        Send RefreshNewDD of oFindGP
+        Set  Ordering     of oDDOrdering to (ordering(hDD))
+        
+        Send RefreshAll of oDDOTreeView
+        Send RemoveCustomizations
+    End_Procedure
+    
+    Procedure ChangeDDOState
+        tWebDDDebugData[] DDsState DDsStateTemp
+        String sSerializedDDsState
+        Get pDDsState to DDsStateTemp // current customizations
+        Set pDDsState to DDsState     // clear and rebuild states
+        Send StoreCurrentDDOsState
+        Get pDDsState to DDsState
+        Set pDDsState to DDsStateTemp // restore current customzations
+        WebSet psSerializedDDOStates to DDsState
+    End_Procedure
+    
+    Procedure ApplyCustomizations
+        Integer i
+        Handle hoDD hVw
+        tWebDDDebugData[] DDsState
+        tWebDDDebugData DDState
+        
+        Get phoInvokingView to hVw
+        WebGet psSerializedDDOStates to DDsState
+        For i from 0 to (SizeOfArray(DDsState)-1)
+            Move DDsState[i] to DDState
+            
+            Get FindDDOByIdentifier of hVw DDState.sId to hoDD
+            Set Constrain_File of hoDD to DDState.iConstrainFile
+            Set Auto_Fill_State of hoDD to DDState.bAutoFill
+            Set pbInheritConstraints of hoDD to DDState.bInheritConstraints
+            Set pbAutoFillFromFirst of hoDD to DDState.bFillFromFirst
+            Set pbUseDDSQLFilters of hoDD to DDState.bUseSQLDD
+            Set psSQLFilter of hoDD to DDState.sSQLFilter
+            Send Rebuild_Constraints of hoDD
+        Loop
+    End_Procedure
+    
+    Procedure RemoveCustomizations
+        Integer i
+        Handle hoDD hVw
+        tWebDDDebugData[] DDsState
+        tWebDDDebugData DDState
+        
+        Get phoInvokingView to hVw
+        Get pDDsState to DDsState
+        For i from 0 to (SizeOfArray(DDsState)-1)
+            Move DDsState[i] to DDState
+            Get FindDDOByIdentifier of hVw DDState.sId to hoDD
+            Set Constrain_File of hoDD to DDState.iConstrainFile
+            Set Auto_Fill_State of hoDD to DDState.bAutoFill
+            Set pbInheritConstraints of hoDD to DDState.bInheritConstraints
+            Set pbAutoFillFromFirst of hoDD to DDState.bFillFromFirst
+            Set pbUseDDSQLFilters of hoDD to DDState.bUseSQLDD
+            Set psSQLFilter of hoDD to DDState.sSQLFilter
+            Send Rebuild_Constraints of hoDD
+        Loop
+    End_Procedure
+    
+    Procedure StoreCurrentDDState Handle hoDD String sId
+        tWebDDDebugData[] DDsState
+        tWebDDDebugData DDState
+        Get pDDsState to DDsState
+        Move sId to DDState.sId
+        Get Constrain_File of hoDD to DDState.iConstrainFile
+        Get Auto_Fill_State of hoDD to DDState.bAutoFill
+        Get pbInheritConstraints of hoDD to DDState.bInheritConstraints
+        Get pbAutoFillFromFirst of hoDD to DDState.bFillFromFirst
+        Get pbUseDDSQLFilters of hoDD to DDState.bUseSQLDD
+        Get psSQLFilter of hoDD to DDState.sSQLFilter
+        Move DDState to DDsState[SizeOfArray(DDsState)]
+        Set pDDsState to DDsState
+    End_Procedure
+    
+    // remember each DDOS inherit constraints, DD sql stuff, Fill from first, autofill
+    // ordering and constrain file
+    Procedure StoreCurrentDDOsState
+        Handle hVw
+        tNameHandlePair[] aDDOIndex
+        Integer iItem
+        
+        tWebDDDebugData[] DDsState
+        Set pDDsState to DDsState // clear current data
+        Get phoInvokingView to hVw
+        
+        Get paDDOIndex of hvw to aDDOIndex
+                
+        For iItem from 0 to (SizeOfArray(aDDOIndex) - 1)
+            Send StoreCurrentDDState aDDOIndex[iItem].hValue aDDOIndex[iItem].sName
+        Loop
+    End_Procedure
+    
+    Procedure Cancel
+        Forward Send Cancel
+    End_Procedure
+    
+    Procedure ShowDDs Handle hoDD
+        Handle hoVw
+        tWebDDDebugData[] DDsState
+        Get Parent of hoDD  to hoVw
+        WebSet psSerializedDDOStates to DDsState
+        
+        Set phoInvokingView to hoVw
+        Set phoCurrentDD to hoDD
+        
+        Send Popup Self
+        
+        Send StoreCurrentDDOsState
+        Send Refill of oDDCombo
+        Send FullRefresh of oDDOTreeView
+        Send RefreshNewDD
+        Send SetNonOptimalWarnings
+        Send SetChecked of oCheckRentrancy gbTestRentrancy
+    End_Procedure
+    
+End_Object
+
+Procedure DebugDDs
+    Handle hoObj hoDD
+    
+    Get FocusObject to hoObj
+    
+    If hoObj Begin
+        Get Server of hoObj to hoDD
+        If hoDD Begin
+            Send ShowDDs of oDD_Debug hoDD
+        End
+    End
+End_Procedure
+
+WebPublishProcedure DebugDDs
+
+Procedure OnLoad for cWebApp
+    Forward Send OnLoad
+    // Ctrl-Q
+    Send AddKeyHandler (RefProc(DebugDDs)) 81 False False True
+    
+    // Ctrl-D ( same as bookmark )
+    Send AddKeyHandler (RefProc(DebugDDs)) 68 False False True
+End_Procedure

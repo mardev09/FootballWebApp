@@ -1,0 +1,1352 @@
+﻿Use VdfBase.pkg
+Use GlobalFunctionsProcedures.pkg
+Use cWebBaseControl.pkg
+Use WebUIConstants.pkg
+Use WebConvertClient.pkg
+Use cWebView_mixin.pkg
+Use findedit.pkg
+
+
+// Supports:
+// - User changable value.
+// - Apply DD attributes (Field Options, Mask, Datatyle, length, etc.
+// - DDO request interface (Request_Find, Next, Previous, First, Last, Save, Delete, Clear, etc).
+//
+// Not Supported:
+// - Set Currency_Mask and Set Numeric_Mask interfaces are not supported. This is a confusing interface
+//   as it sets several properties and it is not possible to model in the Studio. It is better and more
+//   clear to just set each individual property as required psMask, peDataType and piMaxLength.
+{ ClassType=Abstract }
+{ DataBindable=True }
+{ HelpTopic=cWebBaseDEO }
+Class cWebBaseDEO is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        // these can be set via entry_item command....
+        { Visibility=Private }
+        Property Integer private_Data_File 0    // The binding table
+        { Visibility=Private }
+        Property Integer private_Data_Field 0   // The binding table column
+        { Visibility=Private }
+        Property Boolean private_pbIgnoreOnValueChanged False   // Used when setting Field_Changed_Value on the DDO. This prevents processing the resulting File_Field_Value_Changed event.
+        { DesignTime=False }
+        Property Handle phoPrompt 0
+        
+        // Set true to stop DEOs from web-setting pbEnabled statically based
+        // on the state of the DDO
+        { Category="Behavior" }
+        Property Boolean pbEnabledStatic False        
+
+        // Published Properties....
+        { WebProperty=Client } 
+        { EnumList="True,False,C_WebDefault"}
+        { Category="Behavior" }
+        Property Integer pbCapslock C_WebDefault     // True if DD_Capslock. Set by data binding.
+        { WebProperty=Client } 
+        { DesignTime=False }
+        { Category="Behavior" }
+        Property Boolean pbChanged False             // True if the value was changed on the client
+        { WebProperty=Client }
+        { DesignTime=False }
+        { Category="Data" }
+        Property Boolean pbFieldDefault False        // True if the value was set as a default value (Field_Default_Value)
+        { WebProperty=Client } 
+        { EnumList="True,False,C_WebDefault"}
+        { Category="Data" }
+        Property Integer pbRequired C_WebDefault     // True if a non-null value is required to be entered. Set by data binding.
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        { EnumList="C_WebDefault, alignLeft, alignRight, alignCenter"}
+        Property Integer peAlign C_WebDefault        // Text alignment - alLeft, alRight, alCenter  ("not" set by DDO data binding. Usually the datatype will automatically determine the alignment but this property can override the automatic alignment)
+        { WebProperty=Client }
+        { Category="Data" } 
+        { EnumList="C_WebDefault, typeASCII, typeNumber, typeDate, typeDateTime, typeTime"}
+        Property Integer peDataType C_WebDefault     // Determines the data type of the control's psValue data. Set by data binding.
+        { WebProperty=Client } 
+        { Category="Data" }
+        Property Boolean pbLimitDateRange True       // If true the client will limit dates to fit the DataFlex Date type (0001-01-01 -- 2500-01-1). Setting this to false can cause conversion errors.
+        
+        { WebProperty=Client } 
+        { Category="Data" }
+        Property Integer piMaxLength C_WebDefault    // Max number of characters that can be entered into this control. Set by data binding.
+        { WebProperty=Client } 
+        { Category="Data" }
+        Property Integer piPrecision C_WebDefault    // Max number of numbers that can be entered after the decimal point for a numeric data type.
+        { WebProperty=Client } 
+        { Category="Data" }
+        Property String psMask ""                    // The mask string for this control. Set by data binding.
+        { WebProperty=Client } 
+        { Category="Data" }
+        Property String psValue ""                   // The value that is displayed in the control. Note: depending on the peDataType, the value may be formatted for data transfer, e.g. for typeDate, value is stored in universal format for transferring dates: yyyy-mm-dd.
+        
+        { WebProperty=Client }
+        { Visibility=Private }
+        Property Boolean pbHasControlError False    // Indicates it the client is showing errors, used as optimization to prevent a ClearControlErrors to be sent for every field cahnge
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        { EnumList="True,False,C_WebDefault"}
+        Property Integer pbServerOnValidate C_WebDefault
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnValidate ""
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnChange False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnChange ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Integer pbServerOnAutoFind C_WebDefault
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnAutoFind ""
+        
+        { Category="Security" }
+        Property Boolean pbNoUpdateIfHidden True
+        { Category="Security" }
+        Property Boolean pbNoFillIfHidden True
+
+        Set pbDataBindable to True
+    End_Procedure
+    
+    Import_Class_Protocol find_edit_mixin
+    
+    // Mark as DEO
+    { Visibility=Private }
+    Function DEO_Object Returns Boolean
+        // all web objects should understand this message. Will be set True in sub-classes
+        Function_Return True
+    End_Function
+    
+    // Mark as DEO
+    { Visibility=Private }
+    Function DEO_Control_Object Returns Boolean
+        Function_Return True
+    End_Function
+    
+    //  Called to check if filling the DEO with data is allowed. Calls AllowFillDEO to determine.
+    { Visibility=Private }
+    Function FillDEOAllowed Returns Boolean
+        Boolean bAllow
+        
+        Move True to bAllow
+        Send AllowFillDEO (&bAllow)
+        
+        Function_Return bAllow
+    End_Function
+    
+    //  Called to check if updating the DD with data is allowed. Calls AllowUpdateDD to determine.
+    { Visibility=Private }
+    Function UpdateDDAllowed Returns Boolean
+        Boolean bAllow
+        
+        Move True to bAllow
+        Send AllowUpdateDD (&bAllow)
+        
+        Function_Return bAllow
+    End_Function
+    
+    
+    // Sent after each DEO Object has been attached to its DDO server and had all the DDO field settings
+    // applied to its published properties. We will set default values to any cWebControl properties that
+    // are still unassigned...
+    { Visibility=Private }
+    Procedure AfterAttachDDO
+        Integer iValue
+        String sValue
+        
+        // Set default values for any unassigned properties
+        Get pbServerOnAutoFind to iValue
+        If (iValue = C_WebDefault) Begin
+            Set pbServerOnAutoFind to False
+        End
+
+        Get pbCapslock to iValue
+        If (iValue = C_WebDefault) Begin
+            Set pbCapslock to False
+        End
+
+        Get pbRequired to iValue
+        If (iValue = C_WebDefault) Begin
+            Set pbRequired to False
+        End
+
+        Get peDataType to iValue
+        If (iValue = C_WebDefault) Begin
+            Set peDataType to typeASCII
+        End
+
+        Get piMaxLength to iValue
+        If (iValue = C_WebDefault) Begin
+            Set piMaxLength to 32768
+        End
+
+        Get piPrecision to iValue
+        If (iValue = C_WebDefault) Begin
+            Set piPrecision to 0
+        End
+        
+        Get psMask to sValue
+        If (sValue = String(C_WebDefault)) Begin
+            Set psMask to ""
+        End
+    End_Procedure
+
+    // Augmented to set all of the various properties controlled by the DDO. This is triggered when a data-bound
+    // control 
+    { Visibility=Private }
+    Procedure Attach_Deo_To_Server
+        Integer iFile iField iMaxLength iPrecision iDDOOptions iValue
+        Integer eFieldType eMaskType eDataType iValidateMSG
+        String sMask sLabel sTooltip sValue
+        Boolean bAutoFind bAutoFindGE bCapslock bRequired bNoEnter bZeroSuppress bFindRequired
+        Boolean bAutoLabelState bStatic
+        Handle hoDDO hoFileDDO
+
+        Forward Send Attach_Deo_To_Server
+
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField
+        
+        // If we are attached to a data binding then apply all the data dictionary attributes....
+        If ((hoDDO <> 0) and (iFile <> 0)) Begin
+            Get Data_Set of hoDDO iFile to hoFileDDO    // Get the file's DDO
+            
+            // Field Options
+            Get File_Field_Options of hoDDO iFile iField to iDDOOptions
+            Move (IsFlagIn(DD_AutoFind, iDDOOptions))      to bAutoFind
+            Move (IsFlagIn(DD_AutoFind_GE, iDDOOptions))   to bAutoFindGE
+            Move (IsFlagIn(DD_CapsLock, iDDOOptions))      to bCapslock
+            Move (IsFlagIn(DD_NoEnter, iDDOOptions))       to bNoEnter
+            Move (IsFlagIn(DD_Required, iDDOOptions))      to bRequired
+            Move (IsFlagIn(DD_Zero_Suppress, iDDOOptions)) to bZeroSuppress
+            Move (IsFlagIn(DD_FindReq, iDDOOptions))       to bFindRequired
+
+            // Set the DEO properties....
+            Get pbServerOnAutoFind to iValue
+            If (iValue = C_WebDefault) Begin
+                Set pbServerOnAutoFind to (bAutoFind or bAutoFindGE)
+            End
+            
+            Get pbCapslock to iValue
+            If (iValue = C_WebDefault) Begin
+                Set pbCapslock to bCapslock
+            End
+            
+            Get pbRequired to iValue
+            If (iValue = C_WebDefault) Begin
+                /*
+                We do not set pbRequired for parent fields because this will prevent clearing of 
+                the parent using autofind. We will set pbServerOnValidate to true so that the DD 
+                will still give the error when tabbing out of the field (the DD also looks at the 
+                changed-state to determine if it is really nessecary).
+                */
+                Set pbRequired to (bRequired and (hoFileDDO = hoDDO))
+            End
+            
+            Get pbEnabledStatic to bStatic
+            If (not(bStatic) and bNoEnter) Begin
+                // Only disable if bNoEnter is True. Otherwise respect the current pbEnabled state...
+                Set pbEnabled to False
+            End
+           
+            // handle tool tip...
+            Get psToolTip to sToolTip
+            If (sToolTip = "") Begin    // only change the tooltip if it is not already set
+                Get File_Field_Status_Help of hoDDO iFile iField to sToolTip
+                Set psToolTip to sToolTip
+            End
+            
+            // Set peDataType, psMask, piMaxLength, piPrecision
+            Get_Attribute DF_FIELD_TYPE   of iFile iField to eFieldType    // the type of the column
+            Get_Attribute DF_FIELD_LENGTH of iFile iField to iMaxLength    // max number of characters of the column
+            Get File_Field_Mask_Type of hoDDO iFile iField to eMaskType    // the type specified in the DDO
+            Get File_Field_Mask      of hoDDO iFile iField to sMask        // the mask string specified in the DDO
+
+            Case Begin
+                Case (eFieldType = DF_BCD)
+                    Get_Attribute DF_FIELD_PRECISION of iFile iField to iPrecision
+                    Move typeNumber to eDataType 
+                    Case Break
+                   
+                Case (eFieldType = DF_DATE)
+                    Move typeDate to eDataType
+                    Move 10 to iMaxLength
+                    Case Break
+                   
+                Case (eFieldType = DF_DATETIME)
+                    Move typeDateTime to eDataType
+                    Move 26 to iMaxLength              // should be enough for "mm/dd/yyyy hh:mm:ss.fff pm"
+                    Case Break
+          
+                Case (eFieldType = DF_ASCII)
+                Case Else
+                    Move typeASCII to eDataType
+                    Case Break
+            Case End           
+
+            // if the mask is blank but the field type is numeric or currency
+            // we will build an automatic mask based on our default mask
+            If (eMaskType = Mask_Numeric_Window or eMaskType = Mask_Currency_Window and sMask = '') Begin
+                If (eMaskType = Mask_Numeric_Window) Begin
+                    Move (Field_Number_Default_Mask( iFile, iField, "*")) to sMask
+                End
+                Else Begin
+                    Move (Field_Number_Default_Mask( iFile, iField, "&curren;,*;(&curren;,*)")) to sMask
+                End
+            End
+
+            // If zero-suppress add a "Z" to first char of mask only if Z is not already there.
+            If (bZeroSuppress) Begin
+                If ((sMask <> "") and (Left(sMask,1) <> "Z") ) Begin
+                    Move ("Z" + sMask) to sMask
+                End
+            End
+            
+            // Enable server side validation if Field_Validate_msg available
+            Move 0 to iValidateMSG
+            If (hoDDO = hoFileDDO) Begin    // If this is not a "foreign-field"
+                Get Field_Validate_msg of hoDDO iField to iValidateMSG
+            End
+            
+            Get pbServerOnValidate to iValue
+            If (iValue = C_WebDefault) Begin
+                //  We enable pbServerOnValidate for required parent fields because they can't use client-side pbRequired validation
+                Set pbServerOnValidate to ((iValidateMSG <> 0) or bFindRequired or (bRequired and (hoFileDDO <> hoDDO)))
+            End
+
+            // Set the DEO properties
+            Get peDataType to iValue
+            If (iValue = C_WebDefault) Begin
+                Set peDataType to eDataType
+            End
+
+            Get piMaxLength to iValue
+            If (iValue = C_WebDefault) Begin
+                Set piMaxLength to iMaxLength
+            End
+    
+            Get piPrecision to iValue
+            If (iValue = C_WebDefault) Begin
+                Set piPrecision to iPrecision
+            End
+            
+            Get psMask to sValue
+            If (sValue = "") Begin
+                Set psMask to sMask
+            End
+        End
+    End_Procedure
+
+    
+    // Private: Returns the autofind mode for the column's data binding.
+    // (See DoAutoFind)
+    { Visibility=Private }
+    Function AutoFindMode Returns Integer
+        Handle hoDD 
+        Integer iFile iField iOpts bOn
+
+        Get Data_File to iFile
+        Get Data_Field to iField
+        Get Server to hoDD
+        
+        If (hoDD <> 0 and iFile <> 0) Begin
+            Get File_Field_Options of hoDD iFile iField to iOpts
+            
+            If ((iOpts iand DD_AUTOFIND_GE) = DD_AUTOFIND_GE) ;
+                Function_Return amAutoFindGE
+            Else If ((iOpts iand DD_AUTOFIND) = DD_AUTOFIND) ;
+                Function_Return amAutoFindEQ
+        End
+        Function_Return amNoAutoFind
+    End_Function
+
+
+    // this will be sent by the Entry_item command
+    { Visibility=Private }
+    Procedure Bind_Data Integer iFile Integer iField
+        Set Data_File to iFile
+        Set Data_Field to iField
+    End_Procedure
+    
+    
+    // required DD/DEO interface
+    { Visibility=Private }
+    Function Checkbox_Item_State Integer iItem Returns Integer
+        // not used in cWebControl
+    End_Function  
+
+    { Visibility=Private }
+    Function ConvertFromTransport Handle hmGetter String sValue Integer eType Returns String
+        // This function converts a Web Property value from the generic format appropriate for
+        // transport. For example a data value should be converted from XML transport format 
+        // for dates. e.g. European "2013-03-24" is converted into "24/03/2013"
+        //                 USA      "2013-03-24" is converted into "03/24/2013"
+        // The parameters sName, sValue are the property name and property value being sent from the client.
+        // Returns the property value that is converted to server format.
+        // For most properties this function does nothing. You can augment this function to do special
+        // conversions for new WebProperties that you create.
+        // See also ConvertToTransport.
+        String sReturn
+        Integer eDataType
+        
+        Forward Get ConvertFromTransport hmGetter sValue eType to sReturn
+
+        // Test for special property "psValue"....
+        If (hmGetter = RefFunc(psValue)) Begin
+            // Test if the value represents a number, date or datetime. If so we must convert
+            // the value into a universal format for transferring it to the client....
+            Get peDataType to eDataType   // If the object supports psValue it should also support peDataType. If not peDataType will get delegated to ghoWebApp and return typeASCII.
+            // Note: For efficienty we do not WebGet peDataType! In other words we do not
+            // get the "synchronized copy of peDataType (if there is one). This is much more
+            // efficient but it also assumes that a control's peDataType does not change 
+            // dynamically. This should be OK....
+            CVTLOCALIZATION ON      //  WebGet turns localization OFF, but for psValue we want it ON as this is a string property
+                                    //  Note: This means that we have to keep CVTLOCALIZATION private, since we now turn it ON twice 
+                                    //  while turning it OFF once. That is no problem as it never goes below 0, until other code will start using it.
+            Move (ConvertFromClient(eDataType, sValue)) to sReturn
+            
+        End
+        
+        Function_Return sReturn
+    End_Function
+
+    { Visibility=Private }
+    Function ConvertToTransport Handle hmGetter Variant vValue Integer iType  Returns String
+        // This function converts a Web Property value into a generic format appropriate for
+        // transport to the client. For example a data value should be converted into XML transport format 
+        // for dates. e.g. European "24/03/2013" is converted into "2013-03-24"
+        //                 USA      "03/24/2013" is converted into "2013-03-24"
+        // The parameters sName, sValue are the property name and property value being sent to the client.
+        // Returns the property value that is converted for transport.
+        // For most properties this function does nothing. You can augment this function to do special
+        // conversions for new WebProperties that you create.
+        // See also ConvertFromTransport.
+        String sReturn
+        Integer eDataType
+        
+        // Test for special property "psValue"....
+        If (hmGetter = RefFunc(psValue)) Begin
+            // Test if the value represents a number, date or datetime. If so we must convert
+            // the value into a universal format for transferring it to the client....
+            Get peDataType to eDataType   // If the object supports psValue it should also support peDataType. If not peDataType will get delegated to ghoWebApp and return typeASCII.
+            // Note: For efficienty we do not WebGet peDataType! In other words we do not
+            // get the "synchronized copy of peDataType (if there is one). This is much more
+            // efficient but it also assumes that a control's peDataType does not change 
+            // dynamically. This should be OK....
+            CVTLOCALIZATION ON      //  SerializeObject turns localization OFF, but for psValue we want it ON as this is a string property
+                        //  Note: This means that we have to keep CVTLOCALIZATION private, since we now turn it ON twice 
+                        //  while turning it OFF once. That is no problem as it never goes below 0, until other code will start using it.
+            Move (ConvertToClient(eDataType, vValue)) to sReturn
+        End
+        Else Begin
+            Forward Get ConvertToTransport hmGetter vValue iType  to sReturn
+        End
+        
+        Function_Return sReturn
+    End_Function
+    
+    
+    // These are needed because Get Data_File and Get Data_Field expects the Item interface to be present
+    // so these cannot be declared as straight properties.        
+    { MethodType=Property }
+    { DesignTime=False }
+    { ItemParameter=1 }
+    Procedure Set Data_File Integer iItem Integer iFile
+        Set private_Data_File to iFile
+    End_Procedure
+    
+    { MethodType=Property }
+    { DesignTime=False }
+    { ItemParameter=1 }
+    Procedure Set Data_Field Integer iItem Integer iField
+        Set private_Data_Field to iField
+    End_Procedure
+    
+    { MethodType=Property }
+    { DesignTime=False }
+    { ItemParameter=1 }
+    Function Data_File Integer iItem Returns Integer
+        Function_Return (private_Data_File(Self))
+    End_Function
+    
+    { MethodType=Property }
+    { DesignTime=False }
+    { ItemParameter=1 }
+    Function Data_Field Integer iItem Returns Integer
+        Function_Return (private_Data_Field(Self))
+    End_Function
+
+    // Performs an autofind if there is an autofind DD setting and the field is changed.
+    // As soon as a succuessful autofind occurs, the field is reset.
+    { Visibility=Private }
+    Procedure DoAutoFind
+        Integer bChanged eAuto iCur
+        Handle hoDD hoServer 
+        Handle[] hoDDs
+        Integer iFile iField
+        Boolean bAllowNull bNull bNoFindOnMain
+        Integer iStat
+        String sValue
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            
+            // We only do an autofind check if the DD field value is changed and it is an autofind field
+                    
+            Get File_Field_Changed_state of hoServer iFile iField to bChanged
+            If (bChanged) Begin
+                Get AutoFindMode to eAuto
+                If (eAuto<>0) Begin
+                   Get Which_Data_Set of hoServer iFile to hoDD
+                   If (hoDD and hoDD<>hoServer) Begin
+                       Get Field_Current_Value of hoDD iField to sValue
+                       Get IsEmptyField of hoDD iField sValue to bNull
+                       // if this is an empty value this may be a null parent. See if the
+                       // child that is below this parent supports null parents for this file
+                       If bNull Begin
+                           Send DDOServerPath of hoServer hoDD (&hoDDs) // if hoDDs returns items, 0 is hoDD and 1 is its child
+                           If (SizeOfArray(hoDDs)) Begin
+                              Get IsNullParentAllowed of hoDDs[1] iFile to bAllowNull                    
+                           End
+                       End
+                   End
+                   Else Begin
+                        If (not(HasRecord(hoServer))) Begin
+                            // if a main file autofind, see if we allow this with new records
+                            Get IsViewNoFindOnMain to bNoFindOnMain
+                        End
+                   End
+                   If (bNull and bAllowNull) Begin
+                        Send Request_ClearBindingTable // if null, do a clear (essentially a find nothing)
+                   End
+                   Else If (bNoFindOnMain) Begin
+                        // if here, this is the anti-autofind. If an autofind would succeed, it's a duplicate record error 
+                        // This is used by drilldowns when a find or autofind is not appropriate because it
+                        // will find a record. This should only occur with new records 
+                        Clear iFile
+                        // this will be a deferred (read) find.
+                        Send File_Field_Find of hoServer EQ iFile iField True False True
+                        Get_Attribute DF_FILE_STATUS of iFile to iStat
+                        If (iStat = DF_FILE_ACTIVE) Begin
+                            Send Data_set_error of hoServer iField DFERR_ENTER_VALID_REC_ID "Duplicate Record Id not allowed"
+                        End
+                        Else Begin
+                            Send HideAllControlErrors DFERR_ENTER_VALID_REC_ID                             
+                        End
+                   End
+                   Else Begin
+                      Send File_Field_AutoFind of hoServer iFile iField (If(eAuto=amAutoFindGE, GE, EQ)) 
+                   End
+                End
+            End
+        End
+    End_Procedure
+
+
+
+    // Notify DEO that DDO label has changed.
+    { Visibility=Private }
+    Procedure File_Field_Label_Changed Integer iFile Integer iField Boolean bLong String sLabel
+        // Do nothing
+    End_Procedure  
+    
+
+    // Notify DEO that DDO mask has changed.
+    { Visibility=Private }
+    Procedure File_Field_Mask_Changed Integer iFile Integer iField String sMask
+        // Do nothing
+    End_Procedure  
+    
+    //  Notify DEO that a field option has changed in the DDO.
+    { Visibility=Private }
+    Procedure File_Field_Option_Changed Integer iFile Integer iField Integer iOptions Integer bClear
+        // Do nothing
+    End_Procedure
+    
+    
+    // Sent by DDOs to all DEOs whenever a DDO file/field value is changed.
+    // If the file/filed value matches then it means this DEO is attached to
+    // the same file/Field that got changed. Set the Object's synchronized 
+    // psValue according to the passed value.
+    { Visibility=Private }
+    Procedure File_Field_Value_Changed Integer iFile Integer iField String sValue Integer iChangeDisabled
+        Integer iDataFile iDataField
+        Boolean bSynchingFieldDefaults
+        
+        // Protect agains re-entrant calls....
+        If (private_pbIgnoreOnValueChanged(Self)) Begin
+            Procedure_Return
+        End
+        
+        // Do not process if this was triggered during synching of DD field defaults...
+        Delegate Get SynchingFieldDefaults to bSynchingFieldDefaults
+        If (bSynchingFieldDefaults) Begin
+            Procedure_Return
+        End
+        
+        Get Data_File to iDataFile
+
+        If (iDataFile = iFile) Begin
+            Get Data_Field to iDataField
+            
+            If (iDataField = iField) Begin
+                WebSet psValue to sValue
+                Send HideAllControlErrors
+                If not iChangeDisabled Begin
+                    WebSet pbChanged to True
+                End
+                Else Begin
+                    WebSet pbFieldDefault to True
+                End
+            End
+        End
+    End_Procedure
+
+
+    { Visibility=Private }
+    Procedure File_Field_Pointer_Value_Changed Integer iFile Integer iField Pointer pValue Integer iChangeDisabled
+        // called by the DD to support text fields?
+        Integer iDataFile iDataField
+        String sValue
+        
+        If (private_pbIgnoreOnValueChanged(Self)) Begin
+            Procedure_Return
+        End
+        
+        Get Data_File to iDataFile
+
+        If (iDataFile = iFile) Begin
+            Get Data_Field to iDataField
+            
+            If (iDataField = iField) Begin
+                Move (PointerToString(pValue)) to sValue    // get the string at this pointer value
+                WebSet psValue to sValue
+                Send HideAllControlErrors
+                
+                If (not(iChangeDisabled)) Begin
+                    WebSet pbChanged to True
+                End
+                Else Begin
+                    WebSet pbFieldDefault to True
+                End
+            End
+        End
+    End_Procedure
+
+    // Returns True if the table column is configured to be "commitable".
+    // i.e. once saved should not be changed.
+    { Visibility=Private }
+    Function IsCommitable Returns Boolean
+        Integer iFile iField iDDOOptions
+        Integer iClients iClient iMain
+        Handle hoServer hoOwner hoChild     
+        Boolean bCommitable
+        
+        Get Data_File to iFile
+        Get Data_Field to iField
+        Get Server to hoServer
+        Move False to bCommitable
+        
+        If (iFile and hoServer) Begin
+            // the purpose is to determine if this is a commitable field....
+            Get Which_Data_Set of hoServer iFile to hoOwner
+            
+            // if this is the main file, we check the DD_Commit flag....
+            If (hoOwner = hoServer) Begin 
+                Get File_Field_Options of hoServer iFile iField to iDDOOptions
+                Move (IsFlagIn(DD_COMMIT, iDDOOptions)) to bCommitable
+            End
+            // if this is a parent, we test for a child NoSwitchIfCommitted flag
+            Else If (hoOwner) Begin
+                Get Data_Set_Client_Count of hoOwner to iClients
+                Get Main_File of hoOwner to iMain
+                Move 0 to iClient
+                
+                While (not(bCommitable) and iClient < iClients)
+                    Get Data_Set_Client of hoOwner iClient to hoChild
+                    Get ParentNoSwitchIfCommitted of hoChild iMain to bCommitable
+                    Increment iClient
+                Loop
+            End
+        End
+        
+        Function_Return bCommitable
+    End_Function
+
+
+    // If there is no data binding (no Entry_Item command) but the DEO is served by a DDO then the DEO is 
+    // a calculated value. The initial data is filled by sending the OnSetCalculatedValue event. This is fired
+    // whenever the DDO performs a find, clear or delete operation.
+    //
+    // sValue - [out] a ByRef value which this event should fill with the calculated value.
+    { MethodType=Event }
+    Procedure OnSetCalculatedValue String ByRef sValue
+        // To be augmented by the user
+    End_Procedure
+    
+    // call to invoke a prompt list
+    // with drilldown apps, we always returns 0 for PromptObject and we 
+    // always do nothing with prompt. We expect you to handle this all via
+    // pbPromptButton and OnPrompt. This resolves forward reference issues and
+    // in the long run is more flexible
+    Procedure Prompt
+        Handle hoPrompt
+        Integer eStyle
+        Delegate Get WebViewStyle to eStyle
+        If (eStyle=wvsDesktop or eStyle=wvsDialog) Begin
+            Get PromptObject to hoPrompt
+            If hoPrompt Begin
+                Get WebViewStyle of hoPrompt to eStyle
+                If (eStyle =wvsDrillDown) Begin
+                    Error DFERR_PROGRAM "Cannot Prompt to a drill down object from a desktop view"
+                End
+                Else Begin
+                    Send Popup of hoPrompt Self
+                End
+            end
+        End
+    End_Procedure
+
+    // called by prompt lists as part of callback to customize a list
+    { MethodType=Event }
+    Procedure Prompt_Callback Handle hoPrompt
+    End_Procedure
+
+    // returns PromptObject. returns phoPrompt
+    Function PromptObject Returns Handle
+        Handle hoPrompt
+        Integer eStyle
+        Delegate Get WebViewStyle to eStyle
+        If (eStyle = wvsDesktop or eStyle=wvsDialog) Begin
+            Get phoPrompt to hoPrompt
+        End
+        Function_Return hoPrompt
+    End_Function    
+   
+    
+    // Sent by DDO when there is a clear/find/save/delete.
+    // This should Set all necessary web properties of the control
+    // For example psValue, pbEnabled, pbChanged.
+    //
+    // eMode - Determines the type of DDO operation which generated this refresh message. 
+    //         It may be one of the following:
+    //         Mode_Clear:             Used only for DEOs attached to the DDO that was the
+    //                                 "origin" of a Clear operation, (i.e., the DDO received
+    //                                 the original Clear message). All other DDOs Send their 
+    //                                 DEOs the refresh message passing mode_find_or_clear_set.  
+    //         Mode_Find_or_Clear_Set: Used for DEOs attached to DDOs which have Found and/or cleared records.  
+    //         Mode_Clear_All:         Used for DEOs attached to any DDO that participated in a clear_all operation.  
+    //         Mode_Delete:            Used for DEOs attached to any DDO that performed a successful deletion. 
+    //                                 DDOs that were merely updated as the result of a deletion Use Mode_Find_or_Clear_Set.  
+    //         Mode_Save:              Used for DEOs attached to any DDO involved in a successful Save operation. 
+    { MethodType=Event }
+    Procedure Refresh Integer eMode
+        Handle hoDDO
+        Integer iFile iField iDDOOptions eRTS eDataType
+        Boolean bActive bAppSynching bNoEnter bCommitable
+        Boolean bFieldChanged
+        String sValue sOldValue
+        Time tTimeVal tTimeNull
+        
+        Forward Send Refresh eMode
+        
+        Get Active_State to bActive
+        Get AppSynching of (Host(Self)) to bAppSynching
+    
+        If (bActive and not(bAppSynching)) Begin
+            Get Server to hoDDO
+            Get Data_File to iFile
+            Get Data_Field to iField
+            
+            Case Begin
+                Case (eMode = MODE_FIND_OR_CLEAR_SET)
+                Case (eMode = MODE_CLEAR)
+                Case (eMode = MODE_CLEAR_ALL)
+                Case (eMode = MODE_DELETE)
+                Case (eMode = MODE_SAVE)
+                    If (iFile <> 0) Begin
+                        Get DDRefreshTableStatus iFile to eRTS // see if this table is part of the DD's request
+    
+                        If (eRTS <> ddrtsNone or eMode = MODE_CLEAR_ALL or eMode = MODE_FIND_OR_CLEAR_SET) Begin
+                            // Handle dynamic switching of Enabled_State. This would only happen if the
+                            // file/field is commitable in the DDO....
+                            // only do commit check if the field is design-time enabled
+                            If (pbEnabled(Self)) Begin
+                                Send SetDynamicEnabled
+                            End            
+                            
+                            //  Do security check
+                            If (not(FillDEOAllowed(Self))) Begin
+                                Procedure_Return
+                            End
+                            
+                            // Refresh should read from the global file buffers unless doing a clear and there are
+                            // default values waiting in the DDO buffer....
+    
+                            If (eRTS = ddrtsCleared or eMode = MODE_CLEAR_ALL) Begin
+                                // if the DD's field changed state is true, we must have a default value to use
+                                Get File_Field_Changed_State of hoDDO iFile iField to bFieldChanged
+                            End
+                            Else Begin
+                                Move False to bFieldChanged
+                            End
+            
+                            If (bFieldChanged) Begin
+                                // The DD buffer value has changed after a clear. That means there is a default
+                                // value to read from the DDO buffer....
+                                Get File_Field_Current_Value of hoDDO iFile iField to sValue
+                            End
+                            Else Begin
+                                // In all other cases we read the value directly from the file buffer....
+                                Get_Field_Value iFile iField to sValue 
+                                
+                                // If this was a DDO Clear and the value is "0" for a numeric field
+                                // then we will Set psValue to "" instead of "0". This simulates 
+                                // Windows DEO behavior.
+                                If (eRTS = ddrtsCleared) Begin
+                                    Get peDataType to eDataType   // If the object supports psValue it should also support peDataType. If not peDataType will get delegated to ghoWebApp and return typeASCII.
+                                    
+                                    If (eDataType = typeNumber and Number(sValue) = 0) Begin
+                                        Move "" to sValue
+                                    End
+                                    
+                                    If (eDataType = typeTime) Begin
+                                        Move (NullDateTime()) to tTimeNull
+                                        Move sValue to tTimeVal
+                                        If (tTimeNull = tTimeVal) Begin
+                                            Move "" to sValue
+                                        End
+                                    End
+                                End
+                            End
+                        
+                            Move (Rtrim(sValue)) to sValue
+                           
+    
+                            // Set the value and changed flag web properties....
+                            Send HideAllControlErrors
+                            WebSet psValue to sValue
+                            WebSet pbChanged to False
+                            WebSet pbFieldDefault to bFieldChanged // if true, a default is set
+                        End
+                    End
+                    Else Begin
+                        WebGet psValue to sValue
+                        Move sValue to sOldValue
+                        Send OnSetCalculatedValue (&sValue)
+                
+                        // Set the value and changed flag web properties. In the case of a Clear
+                        // we will unconditionally set the value/changed flag because a clear always
+                        // occurs during InitForShow. During InitForShow we have no idea what is 
+                        // stored on the client so therefore we must make sure that the cleared
+                        // value is forced to update the client otherwise the current client value
+                        // would just stay there. 
+                        If (sValue <> sOldValue or eMode = MODE_CLEAR_ALL) Begin
+                            WebSet psValue to sValue
+                            WebSet pbChanged to False
+                            WebSet pbFieldDefault to False
+                        End
+                    End
+                    Case Break
+            Case End
+        End
+    End_Procedure
+    
+    /*
+    Refresh event during intialization of FlexTron controls. Latches onto the current record buffer 
+    which may not have been recently found.
+    */
+    { Visibility=Private }
+    Procedure InitialRefresh
+        Send Refresh MODE_FIND_OR_CLEAR_SET
+    End_Procedure
+    
+    // helper function returns true if any child DDO relates to this
+    { Visibility=Private } 
+    Function IsConstrainingParent Handle hoDDO Returns Boolean
+        Integer iClients i iFile
+        Handle hoClient
+        Boolean bRelates
+        Get Main_File of hoDDO to iFile
+        Get Data_Set_Client_Count of hoDDO to iClients
+        For i from 0 to (iClients-1)
+            Get Data_Set_Client of hoDDO i to hoClient
+            Get IsRelatesToConstrained of hoClient iFile to bRelates
+            If bRelates Begin
+                Function_Return True
+            End
+        Loop
+        Function_Return False
+    End_Function
+    
+    // returns true if control supports prompt buttons and the prompt button
+    // default property value (not webproperty) is enabled. Augmented in cWebBaseForm 
+    { Visibility = Private }
+    Function HasPromptButton Returns Boolean
+        Function_Return False
+    End_Function
+    
+    // this figures out if a control *should* be dynamically enabled/disabled.
+    // Typically used by SetDynamicEnabled to webset pbEnabled but can be called
+    // at any time.
+    { Visibility=Private }
+    Function IsDynamicEnabled Returns Boolean
+        Handle hoServer
+        Handle hoDDO
+        Integer iFile iField
+        Boolean bHasRecord bNoEnter bNoPut bKeyField bDisable bAutoFind bAutoFindGe 
+        Boolean bCommitable bNoFind bIsReadOnly bPromptButton
+        Integer iDDOOptions
+    
+        Get Server to hoServer
+        Get Data_File to iFile        
+        Get Data_Field to iField        
+        If (not(hoServer) or not (iFile)) Begin
+            Error DFERR_PROGRAM "Server / Data_File required"
+            Function_Return True
+        End
+    
+        Get IsViewReadOnly to bIsReadOnly
+        
+        If (bIsReadOnly) Begin
+            Move True to bDisable                      
+        End
+        Else Begin
+            Get Data_Set of hoServer iFile to hoDDO
+            
+            If (not(hoDDO)) Begin
+                Error DFERR_PROGRAM "DDO for binding data_file not found"
+                Function_Return True
+            End
+            
+            // this will handle main and foreign options but not commit options
+            Get File_Field_Options of hoServer iFile iField to iDDOOptions
+            Move (IsFlagIn(DD_NoEnter, iDDOOptions)) to bNoEnter
+            Move (IsFlagIn(DD_NoPut, iDDOOptions)) to bNoPut
+            Move (IsFlagIn(DD_AUTOFIND, iDDOOptions)) to bAutoFind
+            Move (IsFlagIn(DD_AUTOFIND_GE, iDDOOptions)) to bAutoFindGe
+            Get HasPromptButton to bPromptButton
+            
+            // if main file ddo
+            If (hoServer = hoDDO) Begin
+                Get IsViewNoFindOnMain to bNoFind
+                Get HasRecord of hoServer to bHasRecord
+                Get Key_Field_State of hoServer iField to bKeyField
+                If (bNoEnter) Begin
+                    Move True to bDisable                      
+                End
+                Else If (bHasRecord and bNoFind and (bNoPut or bKeyField or bAutoFind or bAutoFindGe)) Begin
+                    Move True to bDisable                      
+                End
+                Else If (not(bHasRecord) and bNoFind and bNoPut) Begin
+                    Move True to bDisable 
+                End
+                Else Begin
+                    Get IsCommitable to bCommitable
+                    If (bCommitable) Begin
+                        Get File_Field_Committed_Options of hoServer iFile iField to iDDOOptions  // possible NoPut, NoEnter additions
+                        If bNoFind Begin
+                            Move (iDDOOptions) to bDisable
+                        End
+                        Else Begin
+                            Move (IsFlagIn(DD_NoEnter, iDDOOptions)) to bDisable
+                        End
+                    End
+                End
+            End
+            // if parent
+            Else Begin
+                If (bNoEnter) Begin
+                    Move True to bDisable
+                End
+                If (bNoPut and not(bPromptButton)) Begin
+                    Move True to bDisable
+                End
+                Else Begin
+                    Get IsViewNoFindOnConstrainedParent to bNoFind
+                    If bNoFind Begin
+                        Get IsConstrainingParent hoDDO to bDisable
+                    End
+                    If not bDisable Begin
+                        Get IsCommitable to bCommitable
+                        If (bCommitable) Begin
+                            Get File_Field_Committed_Options of hoServer iFile iField to iDDOOptions  // possible NoPut, NoEnter additions
+                            Move (IsFlagIn(DD_NoEnter, iDDOOptions)) to bDisable
+                        End
+                    End
+                End
+            End
+        End
+        Function_Return bDisable
+    End_Function
+    
+    { Visibility=Private }
+    Procedure SetDynamicEnabledDesktopStyle
+        Handle hoServer
+        Integer iFile iField iDDOOPtions
+        Boolean bDisable bNoEnter bCommitable
+        
+        Get Server to hoServer
+        Get Data_File to iFile        
+        If (not(hoServer) or not (iFile)) Begin
+            Procedure_Return
+        End
+        
+        Get IsCommitable to bCommitable
+        If (bCommitable) Begin
+            Get Data_Field to iField
+            Get File_Field_DynamicEntryOptions of hoServer iFile iField to iDDOOptions
+            Move (IsFlagIn(DD_NoEnter, iDDOOptions)) to bNoEnter
+            WebSet pbEnabled to (not(bNoEnter))
+        End
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure SetDynamicEnabledDrillDownStyle
+        Handle hoServer
+        Integer iFile
+        Boolean bDisable
+        Get Server to hoServer
+        Get Data_File to iFile        
+        If (not(hoServer) or not (iFile)) Begin
+            Procedure_Return
+        End
+        
+        Get IsDynamicEnabled to bDisable
+        WebSet pbEnabled to (not(bDisable))
+    End_Procedure
+    
+    // this websets the enabled state based on the state of the
+    // web view and the control. This is usually called during Refresh
+    Procedure SetDynamicEnabled
+        Integer eWebViewStyle
+        Boolean bStatic
+    
+        Get pbEnabledStatic to bStatic
+        If (not(bStatic)) Begin
+            Delegate Get WebViewStyle to eWebViewStyle
+            If (eWebViewStyle = wvsDrillDown) Begin
+                Send SetDynamicEnabledDrillDownStyle
+            End
+            Else Begin
+                Send SetDynamicEnabledDesktopStyle
+            End
+        End                
+    End_Procedure
+
+    
+    Procedure Request_Find Integer eFindMode
+        // Generic request find method for handling Request_Find
+        // eFindMode - Can be one of... lt, le, eq, ge, gt, or it may be either Next_Record, First_Record, or Last_Record
+        Integer iField iFile iMainIndex
+        Handle hoServer
+
+        Get Server to hoServer
+        
+        If (hoServer <> 0) Begin
+            Get Data_File to iFile
+            Get Data_Field to iField
+            
+            If (iFile > 0) Begin
+                Send Item_Find to hoServer eFindMode iFile iField True False False   // Entry Update = True, Show find error = True, Deferred State = False
+            End
+        End
+    End_Procedure
+    
+    // Reads the synchronized psValue and pbChanged properties and updates the DDO data binding appropriately.
+    // Sent if pbDataBindable is True. Called during the AJAX Call's SynchronizeDDOs stage.
+    { Visibility=Private }
+    Procedure UpdateDataBinding
+        Integer iField iFile
+        Handle hoServer
+        Boolean bChanged bDefault
+        String sValue
+        Boolean bNoPut bNoEnter
+        Integer iDDOOptions
+        
+        If (not(UpdateDDAllowed(Self))) Begin
+            Procedure_Return
+        End
+        
+        Get Server to hoServer
+        
+        If (hoServer <> 0) Begin
+            Get Data_File to iFile
+            Get Data_Field to iField
+            
+            If (iFile > 0) Begin
+                WebGet pbChanged to bChanged
+                WebGet pbFieldDefault to bDefault
+                
+                Get File_Field_DynamicEntryOptions of hoServer iFile iField to iDDOOptions
+                If (bChanged or bDefault or IsFlagIn(DD_FORCEPUT, iDDOOptions)) Begin
+                    WebGet psValue to sValue
+                    
+                    Set private_pbIgnoreOnValueChanged to True                        // Don't process the DDO's File_Field_Value_Changed event!
+                    
+                    If (bChanged) ;
+                        Set File_Field_Changed_Value of hoServer iFile iField to sValue   // Use File_Field because the field doesn't have to be in the server
+                    Else If (IsFlagIn(DD_FORCEPUT, iDDOOptions)) ;
+                        Set File_Field_Current_Value of hoServer iFile iField to sValue
+                    Else ;  // if bDefault
+                        Set File_Field_default_Value of hoServer iFile iField to sValue
+    
+                    Move (IsFlagIn(DD_NoPut, iDDOOptions)) to bNoPut
+                    If (bNoPut) Begin
+                        // this tells the DD that this is a DEO update on a noput field, which should only
+                        // happen with foreign index fields (noput=T,noenter=F). This stops the save update
+                        Set File_Field_NoPutValueChangedByDeo of hoServer iFile iField to True
+                    End
+                    Set private_pbIgnoreOnValueChanged to False
+                End    
+            End
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Function ExecFileFieldMessage Handle hMsg Returns Integer
+        Integer iFile iField iResult
+        Handle hoDDO
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        If ((hoDDO <> 0) and (iFile <> 0)) Begin
+            Get Exec_File_Field_Message of hoDDO iFile iField hMsg to iResult
+        End
+        Function_Return iResult
+    End_Function
+    
+    // Set the field_changed_value of the the DD Field for this DEO
+
+    Procedure DDSetChangedValue String sValue
+        Integer iFile iField
+        Handle hoDDO
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        If ((hoDDO <> 0) and (iFile <> 0)) Begin
+            Set File_Field_Changed_Value of hoDDO iFile iField to sValue
+        End
+    End_Procedure
+
+
+    // send the Field_Entry message for this DEO
+    
+    Procedure DDFieldEntryMessage
+        Integer iResult
+        Get ExecFileFieldMessage (RefFunc(Field_Entry_msg)) to iResult
+    End_Procedure
+
+    // send the Field_Exit message for this DEO
+
+    Procedure DDFieldExitMessage
+        Integer iResult
+        Get ExecFileFieldMessage (RefFunc(Field_Exit_msg)) to iResult
+    End_Procedure
+    
+    // Perform a DD File Field Validate for this DEO
+
+    Function DDFieldValidate Returns Integer
+        Integer iResult iFile iField
+        Handle hoDDO
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        If ((hoDDO <> 0) and (iFile <> 0)) Begin
+            Get File_Field_Validate_Field of hoDDO iFile iField to iResult
+        End
+        Function_Return iResult
+    End_Function
+
+    { MethodType=Event }
+    Function OnValidate Returns Boolean
+        Integer iResult
+        Get DDFieldValidate to iResult
+        Function_Return (iResult = 0)
+    End_Function
+
+    // required DD/DEO interface. This is sent from the DD during a save Request_Validate is used to allow
+    // fields with DEOs bound to them to do the first validation.  
+    { Visibility=Private }
+    Function Validate_Items Boolean bNotFindReq Returns Integer
+        Boolean bOk
+        Handle hoOrigin 
+        Integer iMode
+        // DoAutoFind may do a DD find and reset these modes. Make sure the get restored
+        Move OPERATION_MODE to iMode
+        Move OPERATION_ORIGIN to hoOrigin
+        Send DoAutoFind // we must make sure autofind happens before the validation
+        Move iMode to OPERATION_MODE
+        Move hoOrigin to OPERATION_ORIGIN
+        Get OnValidate to bOk
+        Function_Return (not(bOk))
+    End_Function
+    
+    
+    // performs a clear of the DD that owns the Data_File. This can be used to clear a parent
+    // field in a view (e.g., salesperson in order view). This is not assigned a hot key by
+    // default and it is up to the developer to use this. We also use this with autofinds that
+    // allow null parents. Also note that there are no data-loss messages sent for this message
+    // Added as part of null parent support.
+    Procedure Request_ClearBindingTable
+        Handle hoServer
+        Integer iFile
+        Get Server to hoServer
+        Get Data_File to iFile
+        If (hoServer and iFile) Begin
+            Send ClearForTable of hoServer iFile
+        End
+    End_Procedure
+    
+    { Visibility=Private}
+    Procedure DDSetRememberValue String sValue
+        Handle hoDD hoServer
+        Integer iFile iField
+        Get Server to hoServer
+        Get Data_File to iFile
+        Get Data_Field to iField
+        If (hoServer and iFile) Begin
+            Get Which_Data_Set of hoServer iFile to hoDD
+            Set Field_RememberedValue of hoDD iField to sValue
+        End
+    End_Procedure
+
+    // Remember the DEO current value for this DEO's file/field owner DD
+    Procedure DDFieldRemember
+        String sValue
+        WebGet psValue to sValue
+        Send DDSetRememberValue sValue
+    End_Procedure
+
+
+    // Remember the DEO last value before clear for this DEO's file/field owner DD
+    Procedure DDFieldRememberLast
+        Send DDSetRememberValue DD_RememberLast
+    End_Procedure
+
+    // UnRemember his DEO's file/field owner DD
+    Procedure DDFieldUnRemember
+        Send DDSetRememberValue ''
+    End_Procedure
+
+    
+    { MethodType=Event }
+    Procedure OnChange String sNewValue String sOldValue
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnAutoFind
+        Send DoAutoFind
+    End_Procedure 
+   
+
+    // required DD/DEO interface
+    { Visibility=Private }
+    Procedure Update_Dependent_Items
+        // do nothing
+    End_Procedure
+    
+    
+    //  Override the ShowControlError function called by the error system to show control errors. 
+    //  Returns true to let the error system know that this control can show errors.
+    { Visibility=Private }
+    Function ShowControlError Integer iErrNum String sErrText Returns Boolean
+        Boolean bInSync bRender
+        
+        Get IsInCallActionScope to bInSync
+        If (bInSync) Begin
+            Get IsControlRendered to bRender
+            If (bRender) Begin
+                Send ShowControlError iErrNum sErrText
+                Function_Return True        
+            End
+        End
+        
+        Function_Return False
+    End_Function
+    
+    
+    //  Displays a control error in an error balloon around the control. The error number is used 
+    //  as identifier to hide the error. The error will be cleared by a WebSet of psValue and the 
+    //  HideControlError / HideAllControlErrors procedures and by a succesfull server-side 
+    //  validation.
+    // 
+    //  Params:
+    //      iErrNum     Error number used as identifier.
+    //      sErrText    Error description.
+    Procedure ShowControlError Integer iErrNum String sErrText
+        String[] aParams
+        
+        Move iErrNum    to aParams[0]
+        Move sErrText   to aParams[1]
+        
+        WebSet pbHasControlError to True
+        Send ClientAction "showControlError" aParams
+    End_Procedure
+        
+    
+    //  Hides an error shown using ShowControlError based on its error number.
+    // 
+    //  Params:
+    //      iErrNum     Error number used as identifier.
+    Procedure HideControlError Integer iErrNum
+        String[] aParams
+        
+        Move iErrNum    to aParams[0]
+        
+        Send ClientAction "hideControlError" aParams
+    End_Procedure
+    
+    //  Hides all active control errors on this control.
+    Procedure HideAllControlErrors
+        Boolean bHas
+        
+        WebGet pbHasControlError to bHas
+        
+        If (bHas) Begin
+            Send ClientAction "hideAllControlErrors"
+            WebSet pbHasControlError to False
+        End
+    End_Procedure
+    
+    
+    //  Called to determine if filling the DEO with data is allowed.
+    //
+    //  Params:
+    //      bAllow      ByRef boolean set to false if not allowed.
+    { MethodType=Event }
+    Procedure AllowFillDEO Boolean ByRef bAllow
+        If (bAllow) Begin
+            Get IsControlAccessible False (pbNoFillIfHidden(Self)) to bAllow
+        End
+    End_Procedure
+    
+    //  Called to determine if the DEO has permission to update the Data Dictionary with new value(s).
+    //
+    //  Params:
+    //      bAllow      ByRef boolean set to false if not allowed.
+    { MethodType=Event }    
+    Procedure AllowUpdateDD Boolean ByRef bAllow
+        If (bAllow) Begin
+            Get IsControlAccessible True (pbNoUpdateIfHidden(Self)) to bAllow
+        End
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishFunction OnValidate
+        WebPublishProcedure OnChange
+        WebPublishProcedure OnAutoFind
+    End_Procedure
+End_Class

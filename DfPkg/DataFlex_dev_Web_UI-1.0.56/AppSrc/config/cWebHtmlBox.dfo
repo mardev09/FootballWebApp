@@ -1,0 +1,4 @@
+Object
+    Set piColumnSpan to 0
+    Set psHtml to "HTML Box"
+End_Object

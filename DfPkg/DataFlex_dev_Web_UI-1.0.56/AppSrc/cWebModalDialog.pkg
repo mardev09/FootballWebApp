@@ -1,0 +1,261 @@
+﻿Use cWebView.pkg
+
+// Use this class to implement a floating modal window that can contain a data entry view.
+// For example a prompt list dialog.
+//
+// Add support for:
+// - Invoking view object handle.
+// - Window size.
+{ ComponentType=WebDGClass }
+{ HelpTopic=cWebModalDialog }
+{ DesignerJSClass=df.WebModalDialog }
+
+// Make the following interface for this class private...
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProcedure=ChangeEditMode Visibility=Private }
+{ OverrideFunction=GetBreadCrumbCaption Visibility=Private }
+{ OverrideFunction=GetHeaderCaption Visibility=Private }
+{ OverrideFunction=GetNavigateData Visibility=Private }
+{ OverrideFunction=IsViewReadOnly Visibility=Private }
+{ OverrideProcedure=NavigateBegin Visibility=Private }
+{ OverrideProcedure=NavigateCancel Visibility=Private }
+{ OverrideProcedure=NavigateCancelTo Visibility=Private }
+{ OverrideProcedure=NavigateClose Visibility=Private }
+{ OverrideProcedure=NavigateCloseTo Visibility=Private }
+{ OverrideProcedure=NavigateForward Visibility=Private }
+{ OverrideProcedure=NavigateForwardCustom Visibility=Private }
+{ OverrideProcedure=SetBreadCrumbCaption Visibility=Private }
+{ OverrideProcedure=SetHeaderCaption Visibility=Private }
+{ OverrideProcedure=SetNavigateData Visibility=Private }
+
+Class cWebModalDialog is a cWebView
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbResizable True             // True if the window can be resized (with mouse)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowClose True             // True if the title has a close button to hide the window
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowMax False              // True if the title has a max button to maximize the window 
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowMin False              // True if the title has a min button to minimize the window
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piLeft 0                   // Left co-ordinate, in pixels of the window
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMinHeight 80               // Minimum height, in pixels, of the window
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piTop 0                    // Top co-ordinate, in pixels of the window
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piWidth -1                   // Width, in pixels of the window
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnEscape False   // Set to true to trigger server OnEscape event
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnEscape ""       // Name of client side OnEscape event handler
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psReturnMessage "OnCloseModalDialog"   // callback method name
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psReturnObject             // callback object name
+        { WebProperty=Client } 
+        { DesignTime=False }
+        Property Boolean pbCanceled True          // maintained by class when used in a default manner
+        
+        //  Configure super classes
+        Set pbOverrideStateOnShow to True
+        Set pbScroll to False
+        
+        Set piMinWidth to 200
+        Set peWebViewStyle to wvsDialog
+        
+        Set psJSClass to "df.WebModalDialog"
+    End_Procedure
+    
+
+    // Returns a handle to the invoking view object. i.e. the view that activated this modal dialog.
+    // Returns C_WebUnresolvedObject if there is no invoking view. See also psInvokingView
+    Function InvokingView Returns Handle
+        Handle hoInvokingView
+        String sInvokingView
+        
+        WebGet psInvokingView to sInvokingView
+        If (Trim(sInvokingView) <> "") Begin
+            Get FindWebObject of (Owner(Self)) sInvokingView to hoInvokingView
+            Function_Return hoInvokingView
+        End
+         
+        Function_Return C_WebUnresolvedObject    
+    End_Function   
+    
+     
+    // Does a standard modal dialog invocation. It web-sets pbCanceled to True (which can be
+    // set to true on a successful close), it sets the callback object and sets the default
+    // callback message "OnCloseModalDialog". Finally it calls OnPopup
+    Procedure Popup Handle hoReturnObject
+        String sReturnMethod sReturnObject
+        WebSet pbCanceled to True // this gets reset if it closes ok
+        Get WebObjectName of hoReturnObject to sReturnObject
+        WebSet psReturnObject to sReturnObject
+        Send Show
+    End_Procedure
+    
+    // Can be called to do a successful closing of a panel. It sets pbCanceled to False, sends hide
+    // and class NotifyCloseModalDialog, which performs the callback using data web-set in Popup
+    Procedure Ok
+        WebSet pbCanceled to False
+        Send NotifyCloseModalDialog
+        Send CloseDialog
+    End_Procedure
+
+    // Can be called to do a non-successful closing of a panel. pbCanceled will be True (from Popup),
+    // it sends hide and it optionally sends NotifyCloseModalDialog, which performs the callback using data web-set in Popup.
+    // It sends NotifyCloseModalPanel if pbServerOnEscape is True. This makes the assumption that pbServerOnEscape means that
+    // you want to send a close notification and callback even when canceled in any manner.
+    Procedure Cancel
+        Boolean bServerOnEscape
+        WebGet pbServerOnEscape to bServerOnEscape
+        If (bServerOnEscape) Begin
+            Send NotifyCloseModalDialog
+        End
+        Send CloseDialog
+    End_Procedure
+    
+    // this is called when the Esc key or "x" is pressed
+    { MethodType=Event }
+    Procedure OnEscape
+        Send Cancel
+    End_Procedure
+    
+    
+    // Sends the callback method to the callback object using values web-set in Popup. This is 
+    // usually called by Ok and maybe Cancel.
+    { Visibility=Public }
+    Procedure NotifyCloseModalDialog
+        Handle hoReturnObject hReturnMessage
+        String sReturnObject sReturnMessage
+        Boolean bOpenedWithNavigate
+        
+        //Check if we got here through navigation or through Send popup
+        Get OpenedWithNavigate to bOpenedWithNavigate
+        //If sReturnObject is an empty string we got here through Send popup
+        If (bOpenedWithNavigate) Begin
+            WebGet psInvokingObject to sReturnObject
+        End
+        Else Begin
+            WebGet psReturnObject to sReturnObject
+        End
+        
+        WebGet psReturnMessage to sReturnMessage
+
+        Get WebObjectByName sReturnObject to hoReturnObject
+        If hoReturnObject Begin
+            If (sReturnMessage <> "") Begin
+                Get WebMethodByName of hoReturnObject sReturnMessage to hReturnMessage
+                If hReturnMessage Begin
+                    Send hReturnMessage of hoReturnObject Self
+                End
+            End
+        End
+    End_Procedure
+    
+    // Returns a handle to the return object. This is used by controls (cWebPromptList) to get
+    // the return object using delegation.
+    { Visibility=Public }
+    Function ReturnObject Returns Handle
+        String sWO
+        Handle hoWO
+        Boolean bOpenedWithNavigate
+        
+        Move C_WebUnresolvedObject to hoWO
+        Get OpenedWithNavigate to bOpenedWithNavigate
+        
+        //When opened with navigate we rely on psInvokingObject, otherwise psReturnObject.
+        If (bOpenedWithNavigate) Begin
+            WebGet psInvokingObject to sWO
+        End
+        Else Begin
+            WebGet psReturnObject to sWO
+        End
+
+        If (sWO <> "") Begin
+            Get WebObjectByName sWO to hoWO
+        End
+        
+        Function_Return hoWO
+    End_Function
+    
+    { Visibility=Private }
+    Function IsDialog Returns Boolean
+        Function_Return True
+    End_Function
+    
+    //Calls navigate close for a modal dialog
+    { Visibility=Private }
+    Procedure NavigateCloseDialog
+        Boolean bCanceled
+        WebGet  pbCanceled to bCanceled
+        WebSet pbServerOnEscape to False
+        Send SetInvokingObject C_WebUnresolvedObject
+        If (bCanceled) Begin
+            Send NavigateCancel    
+        End
+        Else Begin
+            Send NavigateClose Self
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Function OpenedWithNavigate Returns Boolean
+        String sInvokingObject
+        
+        WebGet psInvokingObject of Self to sInvokingObject
+        //If the invoking object is either empty or [NULL] we didnt get here through navigation but through a popup
+        If (sInvokingObject = "" or sInvokingObject = "[NULL]") Begin
+            Function_Return False
+        End
+        
+        Function_Return True
+    End_Function
+    
+    // Whenever we come in here through navigation we need pbServerOnEscape to be true.
+    // Otherwise we can't properly update the viewstack whenever a user cancels with the x button.
+    { Visibility=Private }
+    Procedure NavigateForward2 Handle hoInvokingObject tWebNavigateData NavigateData Integer eNavMode
+        Forward Send NavigateForward2 hoInvokingObject NavigateData eNavMode
+        WebSet pbServerOnEscape to True 
+    End_Procedure
+    
+    //Helper procedure that closes a dialog with either hide or navigateclose/cancel based on how it was opened
+    { Visibility=Private }
+    Procedure CloseDialog
+        Boolean bOpenedWithNavigate
+        
+        Get OpenedWithNavigate to bOpenedWithNavigate
+        If (bOpenedWithNavigate) Begin
+            Send NavigateCloseDialog
+        End
+        
+        Send Hide
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        WebPublishProcedure OnEscape
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

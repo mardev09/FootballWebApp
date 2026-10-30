@@ -1,0 +1,94 @@
+﻿Use WebUIConstants.pkg
+Use cWebBaseControl.pkg
+Use tWebBreadcrumbItem.pkg
+
+{ DesignerJSClass=df.WebBreadcrumb }
+Class cWebBreadcrumb is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties
+        { WebProperty=Client }
+        { Category="Appearance" }
+        {EnumList="crumbHorizontal, crumbDropDown, crumbCaption"}
+        Property Integer peBreadcrumbStyle crumbHorizontal   // determines the look & feel of the breadcrumb     
+        
+        Set piColumnSpan to 0
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebBreadcrumb"
+        
+        // Assert that the WebApp has a view stack object
+        If (ViewStack(Self) = C_WebUnresolvedObject) Begin
+            Error DFERR_PROGRAM "View stack object missing in application using the breadcrumb control." 
+        End
+        Send AddClient to (ViewStack(Self)) Self    // add this to the set of web view stack listners
+    End_Procedure
+
+       
+    // Send this method to fire a client action to refresh the breadcrumb items.
+    Procedure FullRefresh
+        Integer i iCount
+        tWebViewInfo[] aViewStack
+        tWebBreadcrumbItem[] aItems
+        String[] aParams
+        
+        //  Load the items
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        Move (SizeOfArray(aViewStack)) to iCount
+        
+        For i from 0 to (iCount-1)
+            Move aViewStack[i].sViewName      to aItems[i].sViewName
+            Move aViewStack[i].sCaption       to aItems[i].sCrumbCaption
+            Move aViewStack[i].sHeaderCaption to aItems[i].sHeadCaption
+        Loop
+        
+        Send CancelClientAction "refresh"
+        Send CancelClientAction "clear"
+
+        //  Add client message
+        If (iCount > 0) Begin
+            Move "" to aParams[0]        
+            Send ClientAction "refresh" aParams aItems
+        End
+        Else Begin
+            Send ClientAction "clear"
+        End        
+    End_Procedure
+
+    
+    // Triggered when one of the view tags in the breadcrumb is selected.
+    // sViewName - Is the name of the view object that was clicked. This is
+    //             converted to an object handle. This object must understand the
+    //             NavigateBack message.
+    { MethodType=Event }
+    { Visibility=Private }
+    Procedure OnSelect String sViewName
+        Send NavigateBackByName of (ViewStack(Self)) sViewName
+    End_Procedure
+
+
+    { MethodType=Event }
+    { Visibility=Private }
+    Procedure OnLoad
+        Forward Send OnLoad       
+        //  Load items
+        Send FullRefresh
+    End_Procedure
+
+
+    { MethodType=Event }
+    // Triggered by the view stack each time the stack is updated.
+    // i.e. each time a view is pushed or poped form the stack (or any other change to the stack)
+    Procedure OnUpdateViewStack
+        Send FullRefresh
+    End_Procedure
+
+    
+    Procedure End_Construct_Object
+        // Publish the event methods....
+        WebPublishProcedure OnSelect
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

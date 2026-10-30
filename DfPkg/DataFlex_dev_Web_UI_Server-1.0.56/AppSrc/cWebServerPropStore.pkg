@@ -1,0 +1,377 @@
+﻿// Stores serialized web property values in the database and retrieves them based on their key. Has
+// logic for locking the records and spreading the data over multiple records for databases that 
+// don't have the field size large enough for the data field. Works on the WebAppServerProps table 
+// and uses its data dictionary.
+//
+
+Use cli.pkg
+
+// cWebObject_Mixin functions
+Use cWebObject_API.pkg
+
+{ ClassLibrary=WebApp }
+{ Visibility=Private }
+Class cWebServerPropStore is a cObject
+    
+    Procedure Construct_Object
+        Integer iMaxSize
+        
+        Forward Send Construct_Object
+        
+        // Global handle is deprecated
+        Move Self to ghoWebServerPropStore
+        // Set it on the cWebApp
+        Delegate Set phoServerPropStore to Self
+        
+        Property Boolean pbLocking False
+        
+        Open WebAppServerProps
+        
+        //  Determine the length of the data field, on Embedded and DB2 the usable size is two bytes 
+        //  less the DF_FIELD_LENGHT, so we substract that for every driver to be sure.
+        Get_Attribute DF_FIELD_LENGTH of (RefTable(WebAppServerProps)) (RefTable(WebAppServerProps.Data)) to iMaxSize
+        Move (iMaxSize - 2) to iMaxSize
+        
+        { Visibility=Private }
+        Property Integer piMaxSize iMaxSize
+        
+    End_Procedure
+    
+    
+    //
+    //  Loads the serialized property data for the specified scope. If no data is stored yet
+    //  nothing is returned. If the data is locked (and waiting did not help) false is returned.
+    //
+    //  Params:
+    //      sKey        Key for the scope.
+    //      ucPropData  Serialized property data.
+    //
+    { Visibility=Private }
+    Function LoadPropValues String sKey UChar[] ByRef ucPropData Returns Boolean
+        DateTime dtExpires dtLocked dtCreated
+        Boolean bLocking
+        Integer iAttempts iPage iMaxSize
+        UChar[] ucPage
+        
+        Get pbLocking to bLocking
+        Get piMaxSize to iMaxSize
+        Move 0 to iPage
+        
+        Clear WebAppServerProps
+        Move sKey to WebAppServerProps.Key
+        Move 0 to WebAppServerProps.Page
+        Find EQ WebAppServerProps by 1
+        
+        If (Found) Begin
+            //  Locking...            
+            If (bLocking) Begin
+                //  Check if locked
+                If (WebAppServerProps.Locked = 1) Begin    
+                    
+                    //  Ignore locks older than a minute
+                    Get StringToTime WebAppServerProps.LockedDate WebAppServerProps.LockedTime to dtLocked
+                    If (DateAddSecond(dtLocked, 60) > CurrentDateTime()) Begin
+                        //  Wait 3 seconds to see if unlocked
+                        While (WebAppServerProps.Locked = 1 and iAttempts < 3)
+                            Sleep 1
+                            Find EQ WebAppServerProps.Key
+                            Increment iAttempts
+                        Loop
+                        
+                        //  Failure
+                        If (WebAppServerProps.Locked = 1) Begin
+                            Error DFERR_PROGRAM "Session data locked!"
+                            Function_Return False 
+                        End
+                    End
+                    
+                End
+                
+                //  Place lock
+                Reread WebAppServerProps
+                    Move 1 to WebAppServerProps.Locked
+                    
+                    Move (CurrentDateTime()) to dtLocked
+                    Move dtLocked to WebAppServerProps.LockedDate
+                    Get TimeToString dtLocked to WebAppServerProps.LockedTime
+                    
+                    SaveRecord WebAppServerProps
+                Unlock
+            End
+            
+            //  Actually read data
+            While ((iPage = 0 or Found) and WebAppServerProps.Key = sKey and WebAppServerProps.Page = iPage)    
+            
+                //  Actually read data
+                If (iPage = 0) Begin
+                    Get_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPropData    
+                End
+                Else Begin
+                    Get_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPage
+                    If (SizeOfArray(ucPage) > iMaxSize) Begin
+                        Move (ResizeArray(ucPage, iMaxSize)) to ucPage
+                    End
+                    Move (AppendArray(ucPropData, ucPage)) to ucPropData
+                End
+                
+                Increment iPage
+                Find GT WebAppServerProps by 1
+            Loop
+            
+            Function_Return True
+        End
+        Else If (bLocking) Begin
+            //  If we are locking we need to create an empty record to place the lock
+            Get CalculateExpires to dtExpires
+            
+            Clear WebAppServerProps
+            Move sKey to WebAppServerProps.Key
+            Move 0 to WebAppServerProps.Page
+            
+            Move (CurrentDateTime()) to dtCreated
+            Move dtCreated to WebAppServerProps.CreateDate
+            Get TimeToString dtCreated to WebAppServerProps.CreateTime
+            
+            
+            Move dtExpires to WebAppServerProps.ExpiresDate
+            Get TimeToString dtExpires to WebAppServerProps.ExpiresTime
+            
+            Move 1 to WebAppServerProps.Locked
+            
+            Move (CurrentDateTime()) to dtLocked
+            Move dtLocked to WebAppServerProps.LockedDate
+            Get TimeToString dtLocked to WebAppServerProps.LockedTime
+            
+            SaveRecord WebAppServerProps
+        End
+        
+        
+        Function_Return False
+    End_Function
+    
+  
+    
+
+    
+    //
+    //  Stores the serialized property values for the specified scope. Creates a new record if it
+    //  doesn't exist. Immediately unlocks and updates expiration date.
+    //
+    //  Params:
+    //      sKey        Key for the scope.
+    //      ucPropData  The serialized property data.
+    //
+    { Visibility=Private }
+    Procedure StorePropValues String sKey UChar[] ByRef ucPropData
+        DateTime dtExpires dtCreated
+        Integer iMaxSize iPages iPage iChar
+        UChar[] ucPage
+        Boolean bLocking
+        String sExpiresTime sCreatedTime
+        
+        Move (CurrentDateTime()) to dtCreated
+        Get TimeToString dtCreated to sCreatedTime
+        
+        Get CalculateExpires to dtExpires
+        Get TimeToString dtExpires to sExpiresTime
+        Get pbLocking to bLocking
+        Get piMaxSize to iMaxSize
+
+        
+        Move (Round((Number(SizeOfArray(ucPropData)) / Number(iMaxSize)) + 0.5)) to iPages
+        Move 0 to iPage
+        Move 0 to iChar
+        
+        Move sKey to WebAppServerProps.Key
+        Move 0 to WebAppServerProps.Page
+        Find EQ WebAppServerProps by 1
+        
+        While (Found and (Trim(WebAppServerProps.Key) = sKey))
+            If (iPage < iPages) Begin
+                Reread WebAppServerProps
+                
+                    If (iPage = 0) Begin
+                        If (bLocking) Begin
+                            Move 0 to WebAppServerProps.Locked
+                        End
+                    End
+                    Move dtExpires to WebAppServerProps.ExpiresDate
+                    Move sExpiresTime to WebAppServerProps.ExpiresTime
+                    
+                    //  Update record with new data
+                    Move iPages to WebAppServerProps.Pages
+                    Move iPage to WebAppServerProps.Page
+                    
+                    If (iPages = 1) Begin
+                        Set_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPropData 
+                    End
+                    Else Begin
+                        Move (CopyArray(ucPropData, iChar, (iChar + iMaxSize) - 1)) to ucPage
+                        Set_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPage
+                    End
+                    
+                    SaveRecord WebAppServerProps
+                Unlock
+            End
+            Else Begin
+                //  Remove record
+                Delete WebAppServerProps
+                
+                Move sKey to WebAppServerProps.Key
+                Move iPage to WebAppServerProps.Page
+            End
+            
+            Increment iPage
+            Move ((iChar + iMaxSize)) to iChar
+            Find GT WebAppServerProps by 1
+        Loop
+        
+        //  Create new records
+        While (iPage < iPages)
+            Clear WebAppServerProps
+            
+            If (iPage = 0) Begin
+                If (bLocking) Begin
+                    Move 0 to WebAppServerProps.Locked
+                End
+            End
+            Move dtExpires to WebAppServerProps.ExpiresDate
+            Move sExpiresTime to WebAppServerProps.ExpiresTime
+            
+            Move dtCreated to WebAppServerProps.CreateDate
+            Move sCreatedTime to WebAppServerProps.CreateTime
+            
+            Move sKey to WebAppServerProps.Key
+            Move iPages to WebAppServerProps.Pages
+            Move iPage to WebAppServerProps.Page
+            
+            If (iPages = 1) Begin
+                Set_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPropData 
+            End
+            Else Begin
+                Move (CopyArray(ucPropData, iChar, (iChar + iMaxSize) - 1)) to ucPage
+                Set_Field_Value WebAppServerProps.File_Number (RefTable(WebAppServerProps.Data)) to ucPage
+            End
+            
+            SaveRecord WebAppServerProps
+            
+            Move ((iChar + iMaxSize)) to iChar
+            Increment iPage
+        Loop
+    End_Procedure
+    
+    //
+    //  Called when the request is done processing but no values where changed. Not called if when 
+    //  StorePropValues is called. Unlocks (if locking is enabled and updates expiration date).
+    //
+    //  Params:
+    //      sKey    Key for the scope.
+    //
+    { Visibility=Private }
+    Procedure ReleasePropValues String sKey
+        DateTime dtExpires
+        Boolean bLocking
+        
+        Get pbLocking to bLocking
+        
+        Move sKey to WebAppServerProps.Key
+        Move 0 to WebAppServerProps.Page
+        
+        Find EQ WebAppServerProps by 1
+        If (Found) Begin
+            Reread WebAppServerProps
+            
+                Get CalculateExpires to dtExpires
+                Move dtExpires to WebAppServerProps.ExpiresDate
+                Get TimeToString dtExpires to WebAppServerProps.ExpiresTime
+    
+                If (bLocking) Begin
+                    Move 0 to WebAppServerProps.Locked
+                End
+                
+                SaveRecord WebAppServerProps
+            Unlock
+        End
+    End_Procedure
+    
+    //
+    // Calculates when a set of web properties expires by looking at the piSessionTimeout property
+    // of the session manager. This is only stored for cleanup purposes.
+    //
+    { Visibility=Private }
+    Function CalculateExpires Returns DateTime
+        DateTime dtExpires
+        Integer iTimeout
+        
+        Get piSessionTimeout of (SessionManager(Self)) to iTimeout
+        Move (DateAddMinute(CurrentDateTime(), iTimeout)) to dtExpires
+        
+        
+        Function_Return dtExpires
+    End_Function
+    
+    //
+    //  Converts the given time to an string that can be saved in the database.
+    //
+    //  Params:
+    //      dtTime  Time to convert
+    //  Returns:
+    //      String with "HH:MM:SS" format
+    //
+    { Visibility=Private }
+    Function TimeToString DateTime dtTime Returns String
+        String sHours sMinutes sSeconds sMillis
+        
+        //  Extract parts
+        Move (String(DateGetHour(dtTime))) to sHours
+        Move (String(DateGetMinute(dtTime))) to sMinutes
+        Move (String(DateGetSecond(dtTime))) to sSeconds
+        Move (String(DateGetMillisecond(dtTime))) to sMillis
+        
+        //  Fill out with 0
+        If (Length(sHours) = 1) ;
+            Move ("0" + sHours) to sHours
+        If (Length(sMinutes) = 1) ;
+            Move ("0" + sMinutes) to sMinutes
+        If (Length(sSeconds) = 1) ;
+            Move ("0" + sSeconds) to sSeconds
+        Move (Right("00" + sMillis, 3)) to sMillis
+        
+        Function_Return (sHours + ":" + sMinutes + ":" + sSeconds + "." + sMillis)
+    End_Function
+
+
+    //
+    //  Sets the time of the datetime variable to the time in the string.
+    //
+    //  Params:
+    //      dtTime  Datetime variable to add time to
+    //      sTimeString String with time in the format "HH:MM:SS"
+    //  Returns:
+    //      dtDateTime with the loaded time
+    //
+    { Visibility=Private }
+    Function StringToTime DateTime dtTime String sTimeString Returns DateTime
+        String sHours sMinutes sSeconds sMillis
+        
+        //  Extract parts
+        Move (Mid(sTimeString, 2, 1)) to sHours
+        Move (Mid(sTimeString, 2, 4)) to sMinutes
+        Move (Mid(sTimeString, 2, 7)) to sSeconds
+        Move (Right(sTimeString, 3)) to sMillis
+        
+        //  Set to DateTime
+        Move (DateSetHour(dtTime, (Integer(sHours))))   to dtTime
+        Move (DateSetMinute(dtTime, (Integer(sMinutes)))) to dtTime
+        Move (DateSetSecond(dtTime, (Integer(sSeconds)))) to dtTime
+        Move (DateSetMillisecond(dtTime, (Integer(sMillis)))) to dtTime
+        
+        Function_Return dtTime
+    End_Function
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

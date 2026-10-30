@@ -1,0 +1,18 @@
+﻿Define __DF_PROP_MARK for $10000000
+Define __DF_PROP_SET_BIT for (__DF_PROP_MARK ior $20000000)
+
+Class cWebBaseObject is a cObject
+End_Class
+
+Define _SetWebProp_Addr for (!a + 2)
+{ Visibility=Private }
+Procedure Set SetWebProp for cWebBaseObject Variant vValue
+    Handle hmSetter
+    
+    Move (CURRENT_MESSAGE ior __DF_PROP_SET_BIT) to hmSetter
+    
+    Send MarkWebPropChanged CURRENT_MESSAGE
+    
+    //  Forward to actual property set
+    Forward Set hmSetter to vValue
+End_Procedure

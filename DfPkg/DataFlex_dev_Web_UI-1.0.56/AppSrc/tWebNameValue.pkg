@@ -1,0 +1,5 @@
+﻿// Used for WebApp Synchronized and Published properties
+Struct tWebNameValue
+    String sN      // property name
+    String sV      // property value
+End_Struct

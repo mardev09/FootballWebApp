@@ -1,0 +1,1718 @@
+﻿Use WebUIConstants.pkg
+Use LanguageTextWebApp.pkg
+Use cWebObjectOwner_mixin.pkg
+Use cWebView_mixin.pkg
+Use WebPropertyMetaData.pkg
+Use tWebForwardPath.pkg
+
+// NavPath messages
+Register_Procedure PerformNavigateByInvokingObj Handle hoInvokingObject
+Register_Procedure PerformRetrieveNavigateInfo Handle hoInvokingObject tWebForwardPath[] ByRef aNavInfo
+
+// cWebObjectHost_Mixin properties
+Register_Function phoViewStack Returns Handle
+Register_Function phoSessionManager Returns Handle
+Register_Function phoResourceManager Returns Handle
+Register_Function phoServerPropStore Returns Handle
+Register_Function phoServiceDispatcher Returns Handle
+
+Class cWebObject_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebObject_mixin
+        Handle hoMeta
+        
+        Send Define_cWebPropertyMetaData_mixin
+        
+        //  cWebClassPropertyData object handling administration of class level web properties
+        { Visibility=Private }
+        Property Handle phoClassPropMeta C_WebUnresolvedObject
+        
+        //  Find reference to the class level web properties
+        Get CreateClassPropMetaData of ghoWebClassPropertyMetaStore (ObjectClass(Self)) to hoMeta
+        Set phoClassPropMeta to hoMeta
+        
+        { Visibility=Private }
+        Property tWebPropRule[] paPubPropertyRules     // Responsive mode property values
+        
+        // Published Methods:
+        // The set of published procedures and functions in this object. This comprises
+        // the legal call interface of this object i.e. client calls. When CallAction is
+        // received from the client, the name of the action method must match one of these
+        // published methods otherwise it will be ignored. This makes resolving the action
+        // method easier and closes a possible security hole if any action could be called.
+        // - Procedure Set is not supported.
+        // - You cannot publish a Procedure and a Function with the same name in the same object.
+        //
+        // These  arrays should contain matching members. i.e. the i'th member
+        // of each array should pertain to the same published method. The data
+        // is stored in separate arrays instead of an array of struct in order
+        // to allow fast searches in each array.
+        { Visibility=Private }
+        Property Handle[]  paPubMethodHandles       // handle to the procedure or function
+        { Visibility=Private }
+        Property String[]  paPubMethodNames         // name of the method
+        { Visibility=Private }
+        Property Boolean[] paPubMethodIsFunction    // true if the published method is a function, False if it is a procedure.
+        
+        // Array of nested child cWebControl object handles. This is iterated during the
+        // SerializeToJSON call. See Also paChildWebControlNames
+        { Visibility=Private }
+        Property Handle[] paChildWebControls
+
+        { Visibility=Private }
+        Property Boolean pbDataBindable False    // True if the object supports the cWebBaseDEO interface (i.e. Entry_Item, Data_File & Data_Field)
+        
+        { DesignTime=False }
+        Property Handle phoActionJsonData C_WebUnresolvedObject // cJsonObject handle representing the action data during a server action.
+        
+        { DesignTime=False }
+        Property String psJSClass ""             // JavaScript class name of client-side object
+        
+        { Visibility=Private }
+        Property Handle phoWebNeighborhood C_WebUnresolvedObject  // object handle of this object's container WebView, WebDialog or cWebApp object.
+
+
+        // Dynamic object properties:
+        // A cWebObject can be a dynamic object. In that case, some additional properties
+        // will be set. These properties should be used with caution. Dynamic object rely 
+        // on certain hooks in the regular flow of an application, so changes in these 
+        // properties can stop an application from functioning.      
+        { DesignTime=False }
+        Property String psDynamicObjectId           // The (unique) ID of the dynamic object
+        
+        { Visibility=Private }
+        Property Handle phoOwner C_WebUnresolvedObject  // The owner object of this (dynamic) web object
+        
+        { Visibility=Private }
+        Property Handle phoHost C_WebUnresolvedObject   // The host of this web object (cWebApp or cLocalWebControlHost)
+        
+        { Visibility=Private }
+        Property Boolean pbGhost False  // Ghost objects do not communicate to the client
+
+        Set peNeighborhood to nhNo
+        Set psJSClass to "df.WebObject"
+        Send RegisterThisWebObject
+    End_Procedure
+    
+    Import_Class_Protocol cWebPropertyMetaData_mixin
+    
+    // Checks whether the object is dynamic. Relies on the fact that 'phoOwner'
+    // will only be set for dynamic objects. Therefore, the property should
+    // never be set for regular objects.
+    Function IsDynamicObject Returns Boolean
+        Handle hoOwner
+        Boolean bRes
+        
+        Get Owner to hoOwner
+        If (hoOwner <> Self) ;
+            Get IsDynamicObjectContainer of hoOwner to bRes
+        Else ;
+            Move False to bRes
+        
+        Function_Return bRes
+    End_Function  
+    
+    
+    // Checks if the webobject is loaded to the client by asking the owner.
+    Function IsLoaded Returns Boolean
+        
+        Handle hoOwner hoNeighborhood
+        Boolean bIsLoaded
+        
+        Move False to bIsLoaded
+        If (pbGhost(Self)) ;
+            Function_Return False
+        
+        If (IsDynamicObject(Self)) Begin
+            Get Owner to hoOwner
+            Get IsLoaded of hoOwner to bIsLoaded
+        End
+        Else Begin
+            Get phoWebNeighborHood to hoNeighborhood
+            If (hoNeighborhood <> C_WebUnresolvedObject) Begin
+                Get IsLoaded of hoNeighborhood to bIsLoaded
+            End
+        End
+            
+        Function_Return bIsLoaded
+    End_Function
+    
+    // Returns the owner of the object which is the host (cWebApp/cLocalWebControlHost) or the cWebDynamicObjectContainer.
+    { Visibility=Private }
+    Function Owner Returns Handle
+        Handle hoOwner
+
+        Get phoOwner to hoOwner
+        
+        If (hoOwner = C_WebUnresolvedObject) Begin
+            Delegate Get FindOwner to hoOwner
+
+            If (hoOwner = C_WebUnresolvedObject) ;
+                Error DFERR_PROGRAM "WebObject without owner"
+            
+            Set phoOwner to hoOwner
+        End
+        
+        Function_Return hoOwner
+    End_Function
+    
+    // Uses delegation to find the owner object.
+    { Visibility=Private }
+    Function FindOwner Returns Handle
+        Handle hoOwner
+
+        Get phoOwner to hoOwner
+        
+        If (hoOwner = C_WebUnresolvedObject) Begin
+            Delegate Get FindOwner to hoOwner
+        End
+        
+        Function_Return hoOwner
+    End_Function
+    
+    // Returns the host of the web object (cWebApp or cLocalWebControlHost).
+    Function Host Returns Handle
+        Handle hoHost
+
+        Get phoHost to hoHost
+        
+        If (hoHost = C_WebUnresolvedObject) Begin
+            Delegate Get FindHost to hoHost
+            
+            If (hoHost = C_WebUnresolvedObject) ;
+                Error DFERR_PROGRAM "WebObject without host"
+            
+            Set phoHost to hoHost
+        End
+        
+        Function_Return hoHost
+    End_Function
+    
+    // Uses delegation to find the host object.
+    { Visibility=Private }
+    Function FindHost Returns Handle
+        Handle hoHost
+
+        Get phoHost to hoHost
+        
+        If (hoHost = C_WebUnresolvedObject) Begin
+            Delegate Get FindHost to hoHost
+        End
+        
+        Function_Return hoHost
+    End_Function
+    
+    // Returns the handle to the view stack
+    Function ViewStack Returns Handle
+        Function_Return (phoViewStack(Host(Self)))
+    End_Function
+    
+    // Returns the handle to the session manager
+    Function SessionManager Returns Handle
+        Function_Return (phoSessionManager(Host(Self)))
+    End_Function
+    
+    // Returns the handle to the resource manager
+    Function ResourceManager Returns Handle
+        Function_Return (phoResourceManager(Host(Self)))
+    End_Function 
+    
+    // Returns the handle to the server prop store
+    Function ServerPropStore Returns Handle
+        Function_Return (phoServerPropStore(Host(Self)))
+    End_Function
+    
+    // Returns the handle to the service dispatcher
+    Function ServiceDispatcher Returns Handle
+        Function_Return (phoServiceDispatcher(Host(Self)))
+    End_Function
+    
+    // Initializes a dynamic property. Dynamic properties hold
+    // the values of properties for dynamic objects that are
+    // different from their class-defined values. 
+    //
+    //This should be compared to setting properties inside object definition:
+    // Object oButton is a cWebButton
+    //     Set psCaption to ...
+    //     Set piColumnIndex to ...
+    // End_Object
+    Procedure InitDynamicProp String sPropName Variant vPropValue
+        String sName
+        Integer iPubPropIndex
+        Handle hoOwner hmSetter
+        Boolean bIsDynamicObject
+        tWebPropMetaData pubProp
+        
+        Get IsDynamicObject to bIsDynamicObject
+        
+        If (bIsDynamicObject) Begin
+            Get FindWebPropertyMetaByName sPropName to pubProp
+            
+            If (pubProp.hmGetter > 0) Begin        
+                Get Owner to hoOwner
+                Set pubProp.hmSetter to vPropValue
+                Send SetDynamicProp of hoOwner (Self) pubProp vPropValue
+            End
+            Else Begin
+                Get Name to sName
+                Error DFERR_PROGRAM (SFormat(C_$PropertyDoesNotExist, sPropName, sName))
+            End        
+        End
+        Else Begin
+            Get Name to sName
+            Error DFERR_PROGRAM (SFormat("Object '%1' is not a dynamic object", sName))
+        End
+    End_Procedure
+    
+    // Retrieves the action data for a server action as value tree. Available to support older 
+    // controls working with value trees, this function performs the conversion from JSON handle.
+    Function ptActionData Returns tWebValueTree
+        Handle hoJsonObj
+        tWebValueTree result
+        
+        Get phoActionJsonData to hoJsonObj
+        If (hoJsonObj <> C_WebUnresolvedObject) Begin
+            If (IsOfJsonType(hoJsonObj, jsonTypeObject)) Begin
+                Set pbRequireAllMembers of hoJsonObj to False
+                Get JsonToDataType of hoJsonObj to result
+            End
+        End
+        
+        Function_Return result
+    End_Function
+    
+    
+    // Adds a client action to the array of client actions that is returned to the client. The 
+    // action will address this web object on the client.
+    // Interface for requesting a client side action to be sent back in the CallAction response.
+    // sName        - Name of the method to call on client
+    // aParams      - [optional] Parameters to pass to the client method
+    // vActionData  - [optional] Additional struct with action data sent to the client. This can be
+    //              any struct that is serializable to JSON using DataTypeToJson.
+    Procedure ClientAction String sName String[] aOptParams Variant vActionData
+        Handle hoJsonObj
+        
+        If (num_arguments > 2) Begin
+            Get Create (RefClass(cJsonObject)) to hoJsonObj
+            Send DataTypeToJson of hoJsonObj vActionData
+            
+            Send ClientActionEx sName aOptParams hoJsonObj
+            Send Destroy of hoJsonObj    
+        End
+        Else If (num_arguments > 1) Begin
+            Send ClientActionEx sName aOptParams
+        End
+        Else Begin
+            Send ClientActionEx sName
+        End
+    End_Procedure
+    
+    // Adds a client action to the array of client actions that is returned to the client. The 
+    // action will address this web object on the client.
+    // Interface for requesting a client side action to be sent back in the CallAction response.
+    // sName        - Name of the method to call on client
+    // aParams      - [optional] Parameters to pass to the client method
+    // vActionData  - [optional] Additional struct with action data sent to the client. This can be
+    //              any struct that is serializable to JSON using DataTypeToJson.
+    { Visibility=Private }
+    Procedure ClientActionEarly String sName String[] aOptParams Handle hjActionData
+        tWebClientAction tClientAction
+        
+        Move ctExecEarly to tClientAction.eType
+        
+        Move sName   to tClientAction.sName
+        Get WebObjectName to tClientAction.sTarget
+        
+        If (num_arguments > 1) Begin
+            Move aOptParams to tClientAction.aParams
+        End
+        
+        Move 0 to tClientAction.iAttached
+        If (num_arguments > 2) Begin
+            Get AddResponseAttachment of (Host(Self)) hjActionData to tClientAction.iAttached
+        End
+
+        Send AddClientAction of (Owner(Self)) tClientAction
+    End_Procedure
+    
+    // Extended ClientAction API. Adds a client action to the response that will be executed on the
+    // client. A client action executes a JavaScript function on a specific object. If no object
+    // (window. or this.) is specified it will be executed on the JavaScript object presentation of
+    // this web object. Client actions are asynchronous!
+    // sName        - Name of the method to call on the client (can contain object specification
+    //              like this. or window.)
+    // aParams      - [optional] Parameters to pass to the client method
+    // hoOptJsonAttachment  - Handle to a cJsonObject that is sent as attachment and will be 
+    //                      available as _tActionData on the client during the ClientAction.
+    Procedure ClientActionEx String sName String[] aOptParams Handle hoOptJsonAttachment
+        tWebClientAction tClientAction
+        
+        If (pbGhost(Self)) ;
+            Procedure_Return
+        Get OwnerActionState of (Owner(Self)) Self to tClientAction.eType
+        
+        Move sName   to tClientAction.sName
+        Get WebObjectName to tClientAction.sTarget
+        
+        If (num_arguments > 1) Begin
+            Move aOptParams to tClientAction.aParams
+        End
+        
+        Move 0 to tClientAction.iAttached
+        If (num_arguments > 2) Begin
+            Get AddResponseAttachment of (Host(Self)) hoOptJsonAttachment to tClientAction.iAttached
+        End
+
+        Send AddClientAction of (Owner(Self)) tClientAction
+    End_Procedure
+    
+    // This procedure cancels all client actions with the specified name for this object. In some 
+    // cases only the last client action really makes sense for the component. An example is a 
+    // gridRefresh where sending multiple refreshes immediately after each other are just 
+    // inefficient.
+    // sName - Name of the method to call on client
+    {Visibility=Private}
+    Procedure CancelClientAction String sName
+        If (pbGhost(Self)) ;
+            Procedure_Return
+        Send OwnerCancelClientAction of (Owner(Self)) Self sName
+    End_Procedure
+    
+    /*
+    Converts a web property value from the unlocalized string format into the proper format, before
+    returning it as a string which will then be in the localized format.
+    */
+    { Visibility=Private }
+    Function ConvertFromTransport Handle hmGetter String sValue Integer eType Returns String
+        Date dateVal
+        Real realVal
+        DateTime datetimeVal
+        Number numberVal
+        Time timeVal
+        Currency currencyVal
+        TimeSpan timespanVal
+        Decimal decimalVal
+        Float floatVal        
+        
+        Case Begin
+            Case (eType = cArgDate)
+                CvtLocalization Off
+                Move sValue to dateVal
+                CvtLocalization On
+                Function_Return dateVal
+            Case (eType = cArgReal)
+                CvtLocalization Off
+                Move sValue to realVal
+                CvtLocalization On
+                Function_Return realVal
+            Case (eType = cArgTime)
+                CvtLocalization Off
+                Move sValue to timeVal
+                CvtLocalization On
+                Function_Return timeVal
+            Case (eType = cArgDateTime)
+                ConvertFromXml xsDatetime sValue to datetimeVal
+                Function_Return datetimeVal
+            Case (eType = cArgFloat)
+                CvtLocalization Off
+                Move sValue to floatVal
+                CvtLocalization On
+                Function_Return floatVal
+            Case (eType = cArgNum)
+                CvtLocalization Off
+                Move sValue to numberVal
+                CvtLocalization On
+                Function_Return numberVal
+            Case (eType = cArgCurrency)
+                CvtLocalization Off
+                Move sValue to currencyVal
+                CvtLocalization On
+                Function_Return currencyVal
+            Case (eType = cArgTimeSpan)
+                CvtLocalization Off
+                Move sValue to timespanVal
+                CvtLocalization On
+                Function_Return timespanVal
+            Case (eType = cArgDecimal)
+                CvtLocalization Off
+                Move sValue to decimalVal
+                CvtLocalization On
+                Function_Return decimalVal
+            Case Else
+                Function_Return sValue
+        Case End
+    End_Function
+
+
+    /*
+    Converts web property values to a transportable format (string) in a fixed unlocalized format. 
+    Do this it first makes sure the value is converted to its actual type before converting it 
+    into a string.
+    */
+    { Visibility=Private }
+    Function ConvertToTransport Handle hmGetter Variant vValue Integer eType  Returns String
+        String sValue
+        Date dateVal
+        Real realVal
+        DateTime datetimeVal
+        Number numberVal
+        Time timeVal
+        Currency currencyVal
+        TimeSpan timespanVal
+        Decimal decimalVal
+        Float floatVal
+        
+        Case Begin
+            Case (eType = cArgDate)
+                Move vValue to dateVal
+                CvtLocalization Off
+                Move dateVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgReal)
+                Move vValue to realVal
+                CvtLocalization Off
+                Move realVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgTime)
+                Move vValue to timeVal
+                CvtLocalization Off
+                Move timeVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgDateTime)
+                Move vValue to datetimeVal
+                ConvertToXml xsDatetime datetimeVal to sValue
+                Break
+            Case (eType = cArgFloat)
+                Move vValue to floatVal
+                CvtLocalization Off
+                Move floatVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgNum)
+                Move vValue to numberVal
+                CvtLocalization Off
+                Move numberVal to sValue
+                CvtLocalization On
+                Break
+            Case (eType = cArgCurrency)
+                Move vValue to currencyVal
+                CvtLocalization Off
+                Move currencyVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgTimeSpan)
+                Move vValue to timespanVal
+                CvtLocalization Off
+                Move timespanVal to sValue
+                Cvtlocalization On
+                Break
+            Case (eType = cArgDecimal)
+                Move vValue to decimalVal
+                CvtLocalization Off
+                Move decimalVal to sValue
+                Cvtlocalization On
+                Break
+            Case Else
+                CvtLocalization Off
+                Move vValue to sValue
+                CvtLocalization On
+        Case End
+        
+        Function_Return sValue
+    End_Function
+
+    Function DEO_Object Returns Boolean
+        // all web objects should understand this message. Will be set True in sub-classes
+        Function_Return False
+    End_Function
+
+    
+    // Returns the addressed web property value. (see also SetSyncProp)
+    // Forwards the message to the central singleton ghoSyncPropHandler after having determined if 
+    // it is scalar or non scalar property type. This separation is made here as non scalars are 
+    // passed as variants and doing so with scalar types (especially string) will perform
+    // unnessecary conversions. The function return type is variant but when returning a string
+    // value the runtime does only convert it the return value is actually placed in a variant
+    // variable (which is very unlikely).
+    // hoObject  - Is handle to the object which ownes the property.
+    // hmSetter  - Is a handle to the property's setter message.
+    // sPropName - Is the (case sensitive) property name.
+    // Returns   - The property value as a string.
+    //
+    // Use the WebGet command instead of sending this message.
+    { Visibility=Private }
+    Function GetSyncProp Handle hoObject Handle hmSetter String sPropName Returns Variant
+        Variant vReturn
+        String sReturn sObject
+        tWebPropMetaData pubProp
+        
+        //  Find property index
+        Get FindWebPropertyMetaBySetter hmSetter to pubProp
+        
+        If (pubProp.hmGetter <= 0) Begin
+            Get Object_Label to sObject
+            Error DFERR_PROGRAM (SFormat(C_$WebAppPropertyNotPublished, "WebGet", sPropName, sObject, C_NewLine+C_NewLine))        
+            Function_Return
+        End
+        
+        //  Switch between scalar and non-scalar (advanced) web properties
+        If (pubProp.eType = cArgArray or pubProp.eType = cArgStruct) Begin
+            Get OwnerGetAdvSyncProp of (Owner(Self)) hoObject (&pubProp) to vReturn
+            Function_Return vReturn
+        End
+        Else Begin
+            Get OwnerGetSyncProp of (Owner(Self)) hoObject (&pubProp) to sReturn  
+            Function_Return sReturn // Explicitly return a string to prevent conversion (this wins from the return type, confirmed in runtime @DF20)
+        End
+        
+        Function_Return sReturn
+    End_Function
+
+    
+    // This method is received by the Web Control that is the target of a CallAction that is sent
+    // from the client. The requested action must belong to the control's collection of published
+    // methods.
+    { Visibility=Private }
+    Function HandleAction String sAction String[] aParams Handle hoAttachment Returns String
+        Integer iIndex i icParameters
+        Integer eDataType
+        Boolean bAllow
+        String sReturnVal
+        Handle[] aPubMethodHandles
+        String[] aPubMethodNames
+        Boolean[] aPubMethodIsFunction
+        Boolean bInScope
+        
+        //  Security Check: Only allow actions if object is in scope!
+        Get IsInCallActionScope to bInScope
+        If (not(bInScope)) Begin
+            Error DFERR_PROGRAM (SFormat("Object '%2' being accessed by server action '%1' not in scope!", sAction, Object_Label(Self)))
+            Function_Return ""
+        End
+        
+        //  Get published methods
+        Get paPubMethodHandles    to aPubMethodHandles    
+        Get paPubMethodNames      to aPubMethodNames      
+        Get paPubMethodIsFunction to aPubMethodIsFunction
+        
+        // Lookup the passed action....
+        Move (SearchArray(Uppercase(sAction), aPubMethodNames)) to iIndex
+        
+        If (iIndex = -1) Begin
+            // Unregistered methods cannot be called by client (security)
+            Error DFERR_PROGRAM (SFormat(C_$WebAppMethodNotPublished, sAction, Object_Label(Self)))
+        End
+        Else Begin            
+            //  Perform security check
+            Move True to bAllow
+            Send AllowServerAction (&bAllow) aPubMethodNames[iIndex] aPubMethodHandles[iIndex] aPubMethodIsFunction[iIndex] (&aParams)
+            If (not(bAllow)) Begin
+                
+                Error DFERR_WEBAPP_ACTION_NOT_ALLOWED (SFormat(C_$WebAppMethodNotAllowed, aPubMethodNames[iIndex], Object_Label(Self)))
+                Function_Return ""
+            End
+            
+            
+            //  Store the action data in a property so it is accessible for the action method
+            Set phoActionJsonData to hoAttachment
+            
+            // Get the parameter count....
+            Move (SizeOfArray(aParams)) to icParameters
+            
+            // Special Case: OnChange
+            If (Uppercase(sAction) = "ONCHANGE") Begin
+                // If the action is an OnChange event then we must test if the data type is a number, 
+                // Date or DateTime. If so we must convert each parameter value from the universal 
+                // transfer format
+                Get peDataType to eDataType   // If the object supports psValue it should also support peDataType. If not peDataType will get delegated to ghoWebApp and return typeASCII.
+                // Note: For efficienty we do not WebGet peDataType! In other words we do not
+                // get the "synchronized copy of peDataType (if there is one). This is much more
+                // efficient but it also assumes that a control's peDataType does not change 
+                // dynamically. This should be OK....
+                For i from 0 to (icParameters - 1)
+                    Move (ConvertFromClient(eDataType, aParams[i])) to aParams[i]
+                Loop
+            End
+           
+            // Call the action
+            If (aPubMethodIsFunction[iIndex]) Begin
+                Case Begin
+                    Case (icParameters = 0)
+                        Get aPubMethodHandles[iIndex] to sReturnVal     // calls the function
+                        Case Break
+                    Case (icParameters = 1)
+                        Get aPubMethodHandles[iIndex] aParams[0] to sReturnVal
+                        Case Break
+                    Case (icParameters = 2)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] to sReturnVal
+                        Case Break
+                    Case (icParameters = 3)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] to sReturnVal
+                        Case Break
+                    Case (icParameters = 4)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] to sReturnVal
+                        Case Break
+                    Case (icParameters = 5)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] to sReturnVal
+                        Case Break
+                    Case (icParameters = 6)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] to sReturnVal
+                        Case Break
+                    Case (icParameters = 7)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] to sReturnVal
+                        Case Break
+                    Case (icParameters = 8)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] to sReturnVal
+                        Case Break
+                    Case (icParameters = 9)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] to sReturnVal
+                        Case Break
+                    Case (icParameters = 10)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] to sReturnVal
+                        Case Break
+                    Case (icParameters = 11)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] to sReturnVal
+                        Case Break
+                    Case (icParameters = 12)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] to sReturnVal
+                        Case Break
+                    Case (icParameters = 13)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] to sReturnVal
+                        Case Break
+                    Case (icParameters = 14)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13] to sReturnVal
+                        Case Break
+                    Case (icParameters = 15)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13] aParams[14] to sReturnVal
+                        Case Break
+                    Case (icParameters = 16)
+                        Get aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13] aParams[14] aParams[15] to sReturnVal
+                        Case Break
+                    Case Else
+                        Error DFERR_PROGRAM (SFormat(C_$WebAppTooManyParameters,sAction))
+                Case End
+            End
+            Else Begin
+                Move "" to sReturnVal
+                
+                Case Begin
+                    Case (icParameters = 0)
+                        Send aPubMethodHandles[iIndex]                  // calls the procedure
+                        Case Break
+                    Case (icParameters = 1)
+                        Send aPubMethodHandles[iIndex] aParams[0]
+                        Case Break
+                    Case (icParameters = 2)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1]
+                        Case Break
+                    Case (icParameters = 3)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2]
+                        Case Break
+                    Case (icParameters = 4)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3]
+                        Case Break
+                    Case (icParameters = 5)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4]
+                        Case Break
+                    Case (icParameters = 6)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5]
+                        Case Break
+                    Case (icParameters = 7)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6]
+                        Case Break
+                    Case (icParameters = 8)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7]
+                        Case Break
+                    Case (icParameters = 9)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8]
+                        Case Break
+                    Case (icParameters = 10)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9]
+                        Case Break
+                    Case (icParameters = 11)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10]
+                        Case Break
+                    Case (icParameters = 12)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11]
+                        Case Break
+                    Case (icParameters = 13)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12]
+                        Case Break
+                    Case (icParameters = 14)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13]
+                        Case Break
+                    Case (icParameters = 15)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13] aParams[14]
+                        Case Break
+                    Case (icParameters = 16)
+                        Send aPubMethodHandles[iIndex] aParams[0] aParams[1] aParams[2] aParams[3] aParams[4] aParams[5] aParams[6] aParams[7] aParams[8] aParams[9] aParams[10] aParams[11] aParams[12] aParams[13] aParams[14] aParams[15]
+                        Case Break
+                    Case Else
+                        Error DFERR_PROGRAM (SFormat(C_$WebAppTooManyParameters,sAction))
+                Case End
+            End
+            
+            //  Clear action data array
+            Set phoActionJsonData to C_WebUnresolvedObject
+        End
+        
+        Function_Return sReturnVal
+    End_Function
+    
+    
+    { Visibility = Private }
+    Function IsAjaxWebObject Returns Boolean
+        // If this is called it means that the receiving object is a cWebObject
+        Function_Return True
+    End_Function
+    
+    { Visibility = Private }
+    Function ShowControlError Integer iErrNum String sErrText Returns Boolean
+        // Can be called by the error system to show a friendly field error, subclasses supporting this will return true
+        Function_Return False
+    End_Function
+    
+
+    { Visibility = Private }
+    Function IsInCallActionScope Returns Boolean
+        Function_Return (OwnerIsInCallActionScope(Owner(Self), Self))
+    End_Function
+    
+    
+    // Called for each cWebObject during LoadView or LoadWebApp. The event is called before the published
+    // properties are serialized. Can be used to:
+    // - Modify an Object's published properties as a view is being loaded,
+    // - Call client actions to be executed after the view/webapp is loaded,
+    // - Set web properties as the view/webapp is loaded.
+    { MethodType=Event }
+    Procedure OnLoad
+        // Stub: User event hook
+    End_Procedure
+    
+    
+    // Registers the passed cWebControl in pChildWebControls array.
+    // (see also RegisterThisWebObject)
+    { Visibility=Private }
+    Procedure RegisterChildWebObject Handle hoChild
+        Handle[] aChildWebControls
+        Integer iSize
+        Boolean bChildExists
+        
+        Get ChildExists hoChild to bChildExists
+        
+        If (not(bChildExists)) Begin
+            Get paChildWebControls to aChildWebControls
+            Move (SizeOfArray(aChildWebControls)) to iSize
+            Move hoChild to aChildWebControls[iSize]
+            Set paChildWebControls to aChildWebControls
+        End
+    End_Procedure
+    
+    
+    // Registers the passed method as a procedure or function that is permitted to be called from the client.
+    { Visibility=Private }
+    Procedure RegisterPublishedMethod Handle hMethod String sName Boolean bIsFunction
+        Integer iPos iSize
+        Handle[] aPubMethodHandles
+        String[] aPubMethodNames
+        Boolean[] aPubMethodIsFunction
+        
+        Get paPubMethodHandles to aPubMethodHandles
+        Get paPubMethodNames   to aPubMethodNames
+        Get paPubMethodIsFunction to aPubMethodIsFunction
+        Move (SearchArray(hMethod, aPubMethodHandles)) to iPos
+        
+        If (iPos = -1) Begin
+            Move (SizeOfArray(aPubMethodHandles)) to iSize
+            Move hMethod            to aPubMethodHandles[iSize]
+            Move (Uppercase(sName)) to aPubMethodNames[iSize]     // make the name search case insensitive
+            Move bIsFunction        to aPubMethodIsFunction[iSize]
+
+            Set paPubMethodHandles to aPubMethodHandles
+            Set paPubMethodNames   to aPubMethodNames
+            Set paPubMethodIsFunction to aPubMethodIsFunction
+        End
+    End_Procedure
+
+
+    // Registers the passed property as a property to publish to the client object.
+    { Visibility=Private }
+    Procedure RegisterPublishedProperty Handle hmGetter Handle hmSetter String sName Integer iType Integer eMode Boolean bObject
+        Handle hoMeta
+        Variant vDefault
+        String sDefault
+        
+        If (bObject) Begin
+            Send RegisterWebProperty hmGetter hmSetter sName iType eMode
+        End
+        Else Begin
+            Get phoClassPropMeta to hoMeta
+            
+            //  Only add to class if it is not already sealed
+            If (not(pbSealed(hoMeta))) Begin
+                If (iType <> cArgStruct and iType <> cArgArray) Begin
+                    Get hmGetter to vDefault
+                    Get ConvertToTransport hmGetter vDefault iType to sDefault
+                End
+                    
+                Send RegisterWebProperty of hoMeta hmGetter hmSetter sName iType eMode sDefault
+            End
+        End
+    End_Procedure
+    
+    // Looks up the meta data for a web property based on its setter. Returns the meta data in a tWebPropMetaData struct.
+    { Visibility=Private }
+    Function FindWebPropertyMetaBySetter Handle hmSetter Returns tWebPropMetaData
+        tWebPropMetaData result
+        
+        //  Look in object properties if we have them
+        Get FindWebPropertyBySetter hmSetter to result
+        
+        //  Look in class properties if we did not find it yet
+        If (result.hmGetter = 0) ;
+            Get FindWebPropertyBySetter of (phoClassPropMeta(Self)) hmSetter to result
+            
+        Function_Return result
+    End_Function
+    
+    // Looks up the meta data for a web property based on its getter. Returns the meta data in a tWebPropMetaData struct.
+    { Visibility=Private }
+    Function FindWebPropertyMetaByGetter Handle hmGetter Returns tWebPropMetaData
+        tWebPropMetaData result
+        
+        //  Look in object properties if we have them
+        Get FindWebPropertyByGetter hmGetter to result
+        
+        //  Look in class properties if we did not find it yet
+        If (result.hmGetter = 0) ;
+            Get FindWebPropertyByGetter of (phoClassPropMeta(Self)) hmGetter to result
+            
+        Function_Return result
+    End_Function
+    
+    // Looks up the meta data for a web property based on its name. Returns the meta data in a tWebPropMetaData struct.
+    { Visibility=Private }
+    Function FindWebPropertyMetaByName String sName Returns tWebPropMetaData
+        tWebPropMetaData result
+        
+        //  Look in object properties if we have them
+        Get FindWebPropertyByName sName to result
+        
+        //  Look in class properties if we did not find it yet
+        If (result.hmGetter = 0) ;
+            Get FindWebPropertyByName of (phoClassPropMeta(Self)) sName to result
+        
+        Function_Return result
+    End_Function
+    
+    
+    // Registers this cWebControl in pChildWebControls array of parent control.
+    // Override this method to prevent registering a cWebControl
+    // (see also RegisterChildWebObject)
+    { Visibility=Private }
+    Procedure RegisterThisWebObject
+        Handle hoWebNeighborhood
+        
+        Delegate Send RegisterChildWebObject Self              // register the control with parent container
+        
+        Send OwnerRegisterWebObject of (Owner(Self)) Self   // register control in cWebControlLocator
+        
+        // Get the web neighborhood object handle. This is used to test which neighborhood 'scope'
+        // the cWebObject belongs to....
+        Get WebNeighborhood to hoWebNeighborhood  // delegate to nearest neighborhood object (cWebApp or cWebWindow)
+        Set phoWebNeighborhood to hoWebNeighborhood
+    End_Procedure
+    
+    { Visibility=Private }
+    Function IsWebView Returns Boolean
+        Function_Return False
+    End_Function
+    
+    { Visibility=Private }
+    Function IsWebWidget Returns Boolean
+        Function_Return False
+    End_Function
+    
+    { Visibility=Private }
+    Function GetParentWidget Returns Handle
+        Handle hoParent
+        Boolean bIsWidget bIsView bIsWebapp
+        
+        // Check if we're a widget ourselves, if so return
+        Get IsWebWidget to bIsWidget
+        
+        If (bIsWidget) Begin
+            Function_Return Self
+        End
+        
+        Get IsWebView to bIsView
+        If (bIsView) Begin
+            Function_Return C_WebUnresolvedObject
+        End
+        
+        // Recursively find parent until we reach a view or have no parent
+        Get Parent to hoParent
+        
+        If (hoParent <> 0) Begin
+            Get GetParentWidget of hoParent to hoParent
+        End
+        
+        Function_Return hoParent
+    End_Function
+    
+    
+    // Checks if child has already been registered with this object.
+    { Visibility=Private }
+    Function ChildExists Handle hoChild Returns Boolean
+        Integer iIndex
+        Handle[] aChildWebControls
+        
+        Get paChildWebControls to aChildWebControls
+        Move (SearchArray(hoChild, aChildWebControls)) to iIndex
+        
+        If (iIndex <> -1) ;
+            Function_Return True
+        Else ;
+            Function_Return False
+    End_Function
+    
+    { MethodType=Event }
+    Procedure PreSerializeObject
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure PostSerializeObject
+    End_Procedure
+
+
+    // Serializes this cWebObject, and its child cWebObjects.
+    { Visibility=Private }
+    Function DoSerializeObject Handle hjClassArray Handle[] ByRef aClasses Returns Handle
+        Handle hClass hjClass hjProps hjAdvProps hjObject hjVT hjChildren hjChild hoClassMeta
+        tWebPropMetaData[] aProperties
+        Integer iProperty icProperty iChild icChild
+        Variant vValue
+        String sValue
+        tWebValueTree tVT tVTEmpty
+        Handle[] aChildWebControls
+        
+        If (pbGhost(Self)) ;
+            Function_Return C_WebUnresolvedObject
+            
+        // Hook for controls to do pre serialize initialization
+        Send PreSerializeObject
+        
+        // Send a user event hook to each object before fetching the published properties....
+        Send OnLoad
+        
+        Get ObjectClass to hClass
+        If (SearchArray(hClass, aClasses) = -1) Begin
+            Get phoClassPropMeta to hoClassMeta
+            Get paWebPropertyMeta of hoClassMeta to aProperties    
+            
+            Move hClass to aClasses[-1]
+            
+            If (pjJsonCache(hoClassMeta) <> C_WebUnresolvedObject) Begin
+                Get pjJsonCache of hoClassMeta to hjClass
+            End
+            Else Begin
+                Get Create of hoClassMeta (RefClass(cJsonObject)) to hjClass
+                Send InitializeJsonType of hjClass jsonTypeObject
+                Send SetMemberValue of hjClass "sType" jsonTypeString (psJSClass(Self))
+                Send SetMemberValue of hjClass "hClassId" jsonTypeInteger hClass
+                
+                Get Create (RefClass(cJsonObject)) to hjProps
+                Send InitializeJsonType of hjProps jsonTypeObject
+                
+                Move (SizeOfArray(aProperties) - 1) to icProperty
+                For iProperty from 0 to icProperty 
+                    If (aProperties[iProperty].eMode = wptClient or aProperties[iProperty].eMode = wptClientProtected) Begin
+                        If (aProperties[iProperty].eType = cArgArray or aProperties[iProperty].eType = cArgStruct) Begin
+                            If (hjAdvProps = C_WebUnresolvedObject) Begin
+                                Get Create (RefClass(cJsonObject)) to hjAdvProps
+                                Send InitializeJsonType of hjAdvProps jsonTypeObject
+                            End
+                            
+                            Get aProperties[iProperty].hmGetter to vValue    // call the getter function
+                                
+                            ValueTreeSerializeParameter vValue to tVT
+                            Get Create (RefClass(cJsonObject)) to hjVT
+                            Send DataTypeToJson of hjVT tVT
+                            Send SetMember of hjAdvProps aProperties[iProperty].sName hjVT
+                            Send Destroy of hjVT
+                            Move tVTEmpty to tVT
+                        End
+                        Else Begin
+                            Send SetMemberValue of hjProps aProperties[iProperty].sName jsonTypeString aProperties[iProperty].sDefault
+                        End
+                    End
+                Loop  
+                
+                Send SetMember of hjClass "props" hjProps 
+                If (hjAdvProps <> C_WebUnresolvedObject) Begin
+                    Send SetMember of hjClass "advProps" hjAdvProps
+                    Send Destroy of hjAdvProps
+                    Move C_WebUnresolvedObject to hjAdvProps
+                End
+                
+                Send Destroy of hjProps
+                
+                Set pjJsonCache of hoClassMeta to hjClass
+            End
+            
+            Send AddMember of hjClassArray hjClass
+        End
+        
+        Get Create (RefClass(cJsonObject)) to hjObject
+        Send InitializeJsonType of hjObject jsonTypeObject
+        Send SetMemberValue of hjObject "sName" jsonTypeString (Object_Label(Self))
+        Send SetMemberValue of hjObject "hClassId" jsonTypeInteger hClass
+        
+        Get Create (RefClass(cJsonObject)) to hjProps
+        Send InitializeJsonType of hjProps jsonTypeObject
+        Move C_WebUnresolvedObject to hjAdvProps
+        
+        Get paWebPropertyMeta to aProperties
+            
+        Move (SizeOfArray(aProperties) - 1) to icProperty
+        For iProperty from 0 to icProperty 
+            If (aProperties[iProperty].eMode = wptClient or aProperties[iProperty].eMode = wptClientProtected and aProperties[iProperty].hmGetter <> 0) Begin
+                If (aProperties[iProperty].eType = cArgArray or aProperties[iProperty].eType = cArgStruct) Begin
+                    If (hjAdvProps = C_WebUnresolvedObject) Begin
+                        Get Create (RefClass(cJsonObject)) to hjAdvProps
+                        Send InitializeJsonType of hjAdvProps jsonTypeObject
+                    End
+                    
+                    If (aProperties[iProperty].eMode = wptClientProtected) ;
+                        Get GetSyncProp Self aProperties[iProperty].hmSetter aProperties[iProperty].sName to vValue // for protected web properties we query the synchronized server value as it might have WebSet before
+                    Else ;
+                        Get aProperties[iProperty].hmGetter to vValue    // call the getter function
+                        
+                    ValueTreeSerializeParameter vValue to tVT
+                    Get Create (RefClass(cJsonObject)) to hjVT
+                    Send DataTypeToJson of hjVT tVT
+                    Send SetMember of hjAdvProps aProperties[iProperty].sName hjVT
+                    Send Destroy of hjVT
+                    Move tVTEmpty to tVT
+                End
+                Else Begin
+                    If (aProperties[iProperty].eMode = wptClientProtected) ;
+                        Get GetSyncProp Self aProperties[iProperty].hmSetter aProperties[iProperty].sName to vValue // for protected web properties we query the synchronized server value as it might have WebSet before
+                    Else ;
+                        Get aProperties[iProperty].hmGetter to vValue    // call the getter function
+                    
+                    Get ConvertToTransport aProperties[iProperty].hmGetter vValue aProperties[iProperty].eType to sValue
+                    Send SetMemberValue of hjProps aProperties[iProperty].sName jsonTypeString sValue
+                End
+            End
+        Loop
+        
+        Send SetMember of hjObject "props" hjProps
+        Send Destroy of hjProps
+        If (hjAdvProps <> C_WebUnresolvedObject) Begin
+            Send SetMember of hjObject "advProps" hjAdvProps
+            Send Destroy of hjAdvProps
+        End
+        
+        Send PassPropertyRules
+        
+        //  Serialize children
+        Get Create (RefClass(cJsonObject)) to hjChildren
+        Send InitializeJsonType of hjChildren jsonTypeArray
+        
+        Get paChildWebControls to aChildWebControls
+        Move (SizeOfArray(aChildWebControls) - 1) to icChild
+        
+        For iChild from 0 to icChild
+            Get DoSerializeObject of aChildWebControls[iChild] hjClassArray (&aClasses) to hjChild
+            If (hjChild <> C_WebUnresolvedObject) Begin
+                Send AddMember of hjChildren hjChild
+                Send Destroy of hjChild
+            End
+        Loop 
+        
+        Send SetMember of hjObject "aObjs" hjChildren
+        Send Destroy of hjChildren
+        
+        
+        Send PostSerializeObject
+        
+        Function_Return hjObject
+    End_Procedure
+    
+    { Visibility=Private }
+    // Serializes this Web Object and its children to JSON and returns a JSON Handle.
+    Function SerializeObject Returns Handle
+        Handle hjClasses hjObject hjWrap
+        Handle[] aClasses
+        
+        Get Create (RefClass(cJsonObject)) to hjClasses
+        Send InitializeJsonType of hjClasses jsonTypeArray
+        
+        Get DoSerializeObject hjClasses (&aClasses) to hjObject
+        
+        Get Create (RefClass(cJsonObject)) to hjWrap
+        Send InitializeJsonType of hjWrap jsonTypeObject
+        
+        If (hjObject <> C_WebUnresolvedObject) Begin
+            Send SetMember of hjWrap "obj" hjObject
+            Send Destroy of hjObject
+        End
+        
+        Send SetMember of hjWrap "aClasses" hjClasses
+        Send Destroy of hjClasses
+        
+        Function_Return hjWrap
+    End_Function
+    
+    { Visibility=Private }
+    // pass the responsive mode property rules to the client. These are passed to the client
+    // via Client Actions in the response data. This is the most flexible approach.
+    Procedure PassPropertyRules
+        Integer iProp icProp iMode icMode
+        String[] aParams
+        tWebPropRule PropRule
+        tWebPropRule[] aPropRules
+
+        // Iterate the properties....
+        Get paPubPropertyRules to aPropRules
+        Move (SizeOfArray(aPropRules)) to icProp
+        
+        For iProp from 0 to (icProp-1)
+            // iterate the modes...
+            Move aPropRules[iProp] to PropRule
+            Move (SizeOfArray(PropRule.aModeRules)) to icMode
+            
+            For iMode from 0 to (icMode-1)
+                // Write the client action
+                Move PropRule.sName                    to aParams[0]
+                Move PropRule.aModeRules[iMode].eMode  to aParams[1]
+                Move PropRule.aModeRules[iMode].vValue to aParams[2]
+                Send ClientAction "propRule" aParams
+            Loop
+        Loop
+    End_Procedure
+
+    // Sets the addressed web property to the passed value. (see also GetSyncProp)
+    // Simply delegates this message to the global cWebSyncPropsHandler. 
+    //
+    // Note that even through we use variant for the value, it is never really converted to a 
+    // variant for simple types (so no unnessecary UTF-16 conversions). Confirmed in the runtime @ DF20.
+    //
+    // hoObject   - Is handle to the object which owns the property.
+    // hmSetter   - Is a handle to the property's getter message
+    // sPropName  - Is the (case sensitive) property name.
+    // vPropValue - Is the property value.
+    //
+    // Use the WebSet command instead of sending this message.
+    { Visibility=Private }
+    Procedure SetSyncProp Handle hoObject Handle hmSetter String sPropName Variant vPropValue
+        String sObject
+        tWebPropMetaData pubProp
+        If (pbGhost(Self)) ;
+            Procedure_Return
+        
+         //  Find property index
+        Get FindWebPropertyMetaBySetter hmSetter to pubProp
+        
+        If (pubProp.hmGetter <= 0) Begin
+            Get Object_Label to sObject
+            Error DFERR_PROGRAM (SFormat(C_$WebAppPropertyNotPublished, "WebSet", sPropName, sObject, C_NewLine+C_NewLine))        
+            Procedure_Return
+        End
+        
+        Send OwnerSetSyncProp of (Owner(Self)) hoObject (&pubProp) vPropValue
+    End_Procedure
+    
+    // Marks a web property as changed (different than the class default).
+    // Called by SetWebProp in cWebBaseObject. 
+    { Visibility=Private }
+    Procedure MarkWebPropChanged Handle hmSetter
+        tWebPropMetaData propMeta
+
+        //  If it is already registered at object level we are done, else look up the class definition and register it if nessecary
+        Get FindWebPropertyBySetter hmSetter to propMeta
+        If (propMeta.hmGetter <> 0) ;
+            Procedure_Return
+    
+        Get FindWebPropertyBySetter of (phoClassPropMeta(Self)) hmSetter to propMeta
+        If (propMeta.hmGetter = 0) Begin
+            Error DFERR_PROGRAM "Web property administration error!"
+            Procedure_Return
+        End
+    
+        If (propMeta.eMode = wptClient or propMeta.eMode = wptClientProtected) Begin
+            Send RegisterWebProperty propMeta.hmGetter propMeta.hmSetter propMeta.sName propMeta.eType propMeta.eMode 
+        End
+
+    End_Procedure
+
+    // Unsynchronizes a client web property. Doing this prevents the property value from being sent
+    // with future requests (until it is webset or changes on the client again).
+    //
+    // Usage Example:
+    //  Send UnSyncWebProperty of oWebLabel1 (RefFunc(psCaption))
+    Procedure UnSyncWebProperty Handle hmGetter
+        tWebPropMetaData pubProp
+        String[] aParams
+    
+        // Find web property
+        Get FindWebPropertyMetaByGetter hmGetter to pubProp
+        
+        If (pubProp.hmGetter = 0) Begin
+            Error DFERR_PROGRAM "UnSyncWebProperty is only supported on published client web properties."   
+            Procedure_Return
+        End
+                
+        //  Check the type
+        If (pubProp.eMode = wptClient or pubProp.eMode = wptClientProtected) Begin
+            Move pubProp.sName to aParams[0]
+            Send ClientAction "unSync" aParams
+        End
+        Else Begin
+            Error DFERR_PROGRAM "UnSyncWebProperty is only supported on client web properties."
+        End
+    End_Procedure
+    
+    // Sets a responsive mode value for a web property. Note that this is here for compatibility, use SetPropertyRuleEx if possible.
+    // hmGetter   - Is a handle to the property's getter message
+    // sPropName  - Is the (case sensitive) property name.
+    // eMode      - Responsive mode, e.g. ModeTablet, ModeMobile
+    // vValue     - Is the property value.
+    //
+    // Use the WebSetRule command instead of sending this message.
+    { Visibility=Private }
+    Procedure SetPropertyRule Handle hmGetter String sPropName Integer eMode Variant vValue
+        tWebPropMetaData pubProp
+        
+        Get FindWebPropertyMetaByGetter hmGetter to pubProp
+        If (pubProp.hmGetter = 0) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppPropertyNotPublished, "WebSetRule", sPropName, C_NewLine + C_NewLine))        
+            Procedure_Return
+        End
+        
+        Send SetPropertyRuleEx pubProp.hmSetter sPropName eMode vValue
+    End_Procedure
+    
+    // Sets a responsive mode value for a web property.
+    // hmSetter   - Is a handle to the property's getter message
+    // sPropName  - Is the (case sensitive) property name.
+    // eMode      - Responsive mode, e.g. ModeTablet, ModeMobile
+    // vValue     - Is the property value.
+    //
+    // Use the WebSetRule command instead of sending this message.
+    { Visibility=Private }
+    Procedure SetPropertyRuleEx Handle hmSetter String sPropName Integer eMode Variant vValue
+        Integer iModeIndex i iCount iPropIndex
+        tWebPropRule PropRule
+        tWebPropRule[] aPropRules
+        tWebPropMetaData pubProp
+
+        // Test that the passed property name belongs to the set of web properties 
+        // for this object.
+        Get FindWebPropertyMetaBySetter hmSetter to pubProp
+        If (pubProp.hmGetter = 0) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppPropertyNotPublished, "WebSetRule", sPropName, C_NewLine + C_NewLine))        
+            Procedure_Return
+        End
+        
+        // sPropName is passed in "UPPERCASE". Use iIndex now to lookup the correctly cased
+        // property name.
+        Move pubProp.sName to sPropName
+        
+        // Now look to see if we already have an entry for this property. If so, get its index.
+        Move -1 to iPropIndex
+        Get paPubPropertyRules to aPropRules
+        Move (SizeOfArray(aPropRules)) to iCount
+        
+        For i from 0 to (iCount-1)
+            If (Uppercase(aPropRules[i].sName) = sPropName) Begin
+                Move i to iPropIndex
+            End
+            If (iPropIndex > -1) ;
+                Break
+        Loop
+        
+        If (iPropIndex = -1) Begin
+            // Create a new entry for this property.
+            Move iCount to iPropIndex
+            Move sPropName to PropRule.sName
+        End
+        Else Begin
+            Move aPropRules[iPropIndex] to PropRule
+        End
+        
+        // look if we already have an entry for this mode. If so get its index.
+        Move -1 to iModeIndex
+        Move (SizeOfArray(PropRule.aModeRules)) to iCount
+        
+        For i from 0 to (iCount-1)
+            If (PropRule.aModeRules[i].eMode = eMode) Begin
+                Move i to iModeIndex
+            End
+            If (iModeIndex > -1) ;
+                Break
+        Loop
+        
+        // Add or update the mode value...
+        If (iModeIndex = -1) Begin
+            Move iCount to iModeIndex
+        End
+        
+        Move eMode  to PropRule.aModeRules[iModeIndex].eMode
+        Move vValue to PropRule.aModeRules[iModeIndex].vValue
+        
+        // Save the changes back to the array property.
+        Move PropRule to aPropRules[iPropIndex]
+        Set paPubPropertyRules to aPropRules
+    End_Procedure
+    
+    
+    //  This procedure changes the action mode of the specified server action. The action  mode
+    //  determines how the browser application will behave while the call to the server is being 
+    //  executed. The client needs to know this upfront which is why this needs to be determined 
+    //  before the call is actually made. It is advised to set the action mode in the OnLoad event 
+    //  so that it is immediately set when the object is first loaded to the client. It also needs 
+    //  to be set for every session independently.
+    //
+    //  hMessage - The message for which the action mode needs to be updated. Note that this 
+    //  message should be on the same object as this procedure is called on.
+    //  eMode - The action mode that should be used.
+    //      scModeDefault : The default mode where the browser application is not locked and 
+    //      multiple actions can be joined to a single action.
+    //      scModeWait: Locks the user interface and shows the wait cursor.
+    //      scModeProgress: Locks the user interface and shows the wait dialog.
+    //  sOptWaitMessage - The message shown in the waiting dialog for scModeWait.
+    //  
+    Procedure SetActionMode Handle hMessage Integer eMode String sOptWaitMessage
+        String sMsg
+        String[] aParams
+        
+        Get WebMethodName hMessage to sMsg
+        
+        If (sMsg <> "") Begin
+            Move sMsg to aParams[0]
+            Move eMode to aParams[1]
+            
+            If (num_arguments > 2) Begin
+                Move sOptWaitMessage to aParams[2]
+            End
+            
+            Send ClientAction "setActionMode" aParams
+        End
+    End_Procedure
+    
+    
+    //  Sends a client-action to the client that calls back the specified message on the server. 
+    //  This extra round-trip causes the UI to be updated which can be interresting for operations 
+    //  that run longer. The extra parameters are passed back to the server with the calback 
+    //  message.
+    //
+    //  hMsg - The message that will be called in the new round-trip (should be published and on 
+    //         this web object).
+    //  sOptArg[1-10] - Arguments passed to the callback handler.
+    Procedure CallBack Handle hMsg String sOptArg1 String sOptArg2 String sOptArg3 String sOptArg4 String sOptArg5 String sOptArg6 String sOptArg7 String sOptArg8 String sOptArg9 String sOptArg10
+        String sMethodName
+        String[] aParams
+        
+        
+        Get WebMethodName hMsg to sMethodName
+        If (sMethodName <> "") Begin
+            Move sMethodName to aParams[0]
+            
+            If (num_arguments >= 2) ;
+                Move sOptArg1 to aParams[1]
+            If (num_arguments >= 3) ;
+                Move sOptArg2 to aParams[2]
+            If (num_arguments >= 4) ;
+                Move sOptArg3 to aParams[3]
+            If (num_arguments >= 5) ;
+                Move sOptArg4 to aParams[4]
+            If (num_arguments >= 6) ;
+                Move sOptArg5 to aParams[5]
+            If (num_arguments >= 7) ;
+                Move sOptArg6 to aParams[6]
+            If (num_arguments >= 8) ;
+                Move sOptArg7 to aParams[7]
+            If (num_arguments >= 9) ;
+                Move sOptArg8 to aParams[8]
+            If (num_arguments >= 10) ;
+                Move sOptArg9 to aParams[0]
+            If (num_arguments >= 11) ;
+                Move sOptArg10 to aParams[10]
+            
+            Send ClientAction "callBack" aParams
+        End
+        
+    End_Procedure
+
+    
+    //  This function searches the message handle based on the name of a web method. It will 
+    //  give an error if the web method is not found (not published). Use the WebPublishProcedure 
+    //  and WebPublishFunction commands to publish the message.
+    //      sMethodName - The name of the web method.
+    Function WebMethodByName String sMethodName Returns Handle
+        String[] aPubMethodNames
+        Handle[] aPubMethodHandles
+        Integer iIndex
+        
+        Get paPubMethodHandles to aPubMethodHandles
+        Get paPubMethodNames   to aPubMethodNames      
+          // Lookup the passed action....
+        Move (SearchArray(Uppercase(sMethodName), aPubMethodNames)) to iIndex
+        
+        If (iIndex = -1) Begin
+            // Unregistered methods cannot be called by client (security)
+            Error DFERR_PROGRAM (SFormat(C_$WebAppMethodNotPublished, sMethodName, Object_Label(Self)))
+
+            Function_Return C_WebUnresolvedObject
+        End
+        Else Begin
+            Function_Return aPubMethodHandles[iIndex] 
+        End
+    End_Function
+    
+    
+    //  Use this function to determine if a web method is a function or a procedure. An error is 
+    //  given when the method is not found or published. The function returns true if the method is
+    //  a function, false for a procedure or if it is not found.
+    //      hMessage   - The message handle.
+    Function WebMethodIsFunction Handle hMessage Returns Boolean
+        Handle[] aPubMethodHandles
+        Boolean[] aPubMethodIsFunction
+        Integer iIndex
+        
+        Get paPubMethodHandles      to aPubMethodHandles
+        Get paPubMethodIsFunction   to aPubMethodIsFunction      
+        Move (SearchArray(hMessage, aPubMethodHandles)) to iIndex
+        
+        //  Check if found
+        If (iIndex = -1) Begin
+            // Unregistered methods cannot be called by client (security, security, security!)
+            Error DFERR_PROGRAM (SFormat(C_$WebAppMethodNotPublished, hMessage, Object_Label(Self)))
+            
+            Function_Return False
+        End
+        Else Begin
+            Function_Return aPubMethodIsFunction[iIndex] 
+        End
+    End_Function
+    
+    
+    //  This function converts the message handle of a web method into a string. It will give an 
+    //  error if the message is not published and return an empty String. Use the 
+    //  WebPublishProcedure and WebPublishFunction commands to publish the message.
+    //      hMessage   - The message handle.
+    Function WebMethodName Handle hMessage Returns String
+        String[] aPubMethodNames
+        Handle[] aPubMethodHandles
+        Integer iIndex
+        
+        Get paPubMethodHandles to aPubMethodHandles
+        Get paPubMethodNames   to aPubMethodNames      
+        Move (SearchArray(hMessage, aPubMethodHandles)) to iIndex
+        
+        //  Check if found
+        If (iIndex = -1) Begin
+            // Unregistered methods cannot be called by client (security, security, security!)
+            Error DFERR_PROGRAM (SFormat(C_$WebAppMethodNotPublished, hMessage, Object_Label(Self)))
+            
+            Function_Return ""
+        End
+        Else Begin
+            Function_Return aPubMethodNames[iIndex] 
+        End
+    End_Function
+    
+    
+    //  This function searches the object handle of a web object using its public name. The object 
+    //  name can be obtained by calling the WebObjectName Function on a web Object. If it can't 
+    //  find the Object it will cause an Error and return 0.
+    //      sObjectName - Name of the web object.
+    Function WebObjectByName String sObjectName Boolean bOptErr Returns Handle
+        Handle hWO
+        Boolean bErr
+        
+        Move True to bErr
+        If (num_arguments > 1) ;
+            Move bOptErr to bErr
+        
+        Get FindWebObject of (Owner(Self)) sObjectName bErr to hWO
+        
+        If (hWO = C_WebUnresolvedObject and bErr) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound,sObjectName))
+        End
+        
+        Function_Return hWO
+    End_Function
+    
+    //  Get the public web object name of this object. The client knows the object by this name. 
+    //  The name is the long name of Object without the first level name "oWebApp". for example 
+    //  "oView.oButton". This name is used because the Object Handle itself should never be sent 
+    //  to the client (security and reliability).
+    Function WebObjectName Returns String
+        Handle hoOwner
+        Integer iPos
+        String sObjectName sOwnerName sContainer sDynamicObjectId
+        
+        Get Owner to hoOwner
+        Get Name to sObjectName
+        
+        Send OwnerMangleWebObjectName of hoOwner Self (&sObjectName)
+        
+        Function_Return sObjectName
+    End_Function
+
+
+
+    // Callback method sent to the callback control when a view receives NavigateForward.
+    // This should populate the tWebNavigateData in the default way according to the control's data bindings.
+    {Visibility=Private}
+    Procedure GetNavigateBackData Handle hoView tWebNavigateData ByRef NavigateData
+        // ask the view to load the default data
+        Send LoadDefaultNavigateBackData of hoView Self (&NavigateData)
+        // Send event hook for manually populating the NavigateData struct.
+        Send OnGetNavigateBackData (&NavigateData) hoView 
+    End_Procedure
+
+    
+    // Callback method sent to the callback control when a view receives NavigateForward.
+    // This should populate the tWebNavigateData in the default way according to the control's data bindings.
+    {Visibility=Private}
+    Procedure GetNavigateForwardData Handle hoView tWebNavigateData ByRef NavigateData
+        Send LoadDefaultNavigateForwardData of hoView Self (&NavigateData)    
+        
+        // Send event hook for manually populating the NavigateData struct.
+        Send OnGetNavigateForwardData (&NavigateData) hoView
+    End_Procedure
+        
+        
+    // Event fired before a view is shown via the view stack Navigate API
+    // when closing one view and returning to the previous view. 
+    // Intended as a hook for developers who need to perform special
+    // preparation of the NavigateData struct that is passed back to
+    // the previous view.
+    //
+    // NavigateData - see tWebNavigateData
+    //
+    // See also GetNavigateBackData
+    {MethodType=Event}
+    Procedure OnGetNavigateBackData tWebNavigateData ByRef NavigateData Handle hoBackToView
+    End_Procedure
+        
+        
+    // Event fired before a view is shown via the view stack Navigate API
+    // when adding a new view to the stack. 
+    // Intended as a hook for developers who need to perform special
+    // preparation of the NavigateData struct that is passed to the new view.
+    //
+    // NavigateData - see tWebNavigateData
+    //
+    // See also GetNavigateForwardData
+    {MethodType=Event}
+    Procedure OnGetNavigateForwardData tWebNavigateData ByRef NavigateData Handle hoToView
+    End_Procedure
+
+    // event fired by a navigate back event. This sent to the invoking object of
+    // the view being navigated back to. This is only sent when this is one level back.
+    // It can be used to customize a navigateback update. 
+    {MethodType=Event}
+    Procedure OnNavigateBack Handle hoCallback tWebNavigateData NavigateData   
+    End_Procedure
+    
+    // Called at the end of a webapp client call. An object must be registered
+    // before this event can be triggered. This can be done with:
+    // Delegate Send RegisterOnCallEndEvent
+    { MethodType=Event }
+    Procedure OnCallEnd
+    End_Procedure
+    
+    // Performs the navigation operation defined using WebRegisterPath for this object. Results in
+    // an error if no or multiple navigation paths are defined.
+    Procedure NavigatePath
+        Send PerformNavigateByInvokingObj Self
+    End_Procedure
+    
+    // Attempts to find the info that is being used in navigation.
+    // The byref is filled with te requested information, and True is returned.
+    // If no info is found, false is returned.
+    Function NavigateInfo Returns tWebForwardPath[]
+        tWebForwardPath[] aNavInfo
+        Send PerformRetrieveNavigateInfo Self (&aNavInfo)
+        Function_Return aNavInfo
+    End_Function
+
+    //  Called to confirm if a server action is allowed on this web object. Set bAllow to false to block an action.
+    { MethodType=Event }
+    Procedure AllowServerAction Boolean ByRef bAllow String sMethodName Handle hoMessage Boolean bIsFunction
+    End_Procedure
+
+    // Returns the object handle of the first child web control with a data binding
+    // matching the passed Table.column (file & field). 
+    //
+    // This is a Recursive Function, you call it the first time passing the object 
+    // handle of a cWebView (or other window) as hoParent. It will recursively
+    // search the children of the view. It is assumed the view itself is not the
+    // object we are looking for.
+    //
+    // hoParent - Is the view containing the cWebControl objects to be searched.
+    // iFile  - Is the data binding table number we are looking for.
+    // iField - Is the data binding column we are looking for.
+    // Returns - The object handle of the first matching child web control.
+    { Visibility=Private }
+    Function FirstControlWithDataBinding Integer iFile Integer iField Returns Handle
+        Integer iTestFile iTestField
+        Integer i icWebObject
+        Boolean bDataBindable
+        Handle hoTarget
+        Handle[] aChildWebControls
+        
+        // Iterate and test the parent's children....
+        Get paChildWebControls to aChildWebControls
+        Move (SizeOfArray(aChildWebControls)) to icWebObject
+        
+        For i from 0 to (icWebObject - 1)
+            Get pbDataBindable of aChildWebControls[i] to bDataBindable
+            
+            If (bDataBindable) Begin
+                Get Data_File  of aChildWebControls[i] to iTestFile
+                Get Data_Field of aChildWebControls[i] to iTestField
+                
+                If ((iTestFile = iFile) and (iTestField = iField)) Begin
+                    Function_Return aChildWebControls[i]
+                End
+            End
+        Loop
+        
+        // If we got to this point then we need to look deeper by recursing
+        // into the child objects....
+        For i from 0 to (icWebObject - 1)
+            Get FirstControlWithDataBinding of aChildWebControls[i] iFile iField to hoTarget
+            
+            If (hoTarget <> C_WebUnresolvedObject) Begin
+                Function_Return hoTarget
+            End
+        Loop
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // Marks this web object and its children as ghost object. Ghost web objects do not communicate 
+    // with the client. The dashboard technology uses these to make the drill-down navigation work 
+    // which needs an available object to talk to.
+    { Visibility=Private }
+    Procedure MarkGhost
+        Set pbGhost to True
+        
+        Broadcast Send MarkGhost
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebOject_mixin
+        Send SealDefinition of (phoClassPropMeta(Self))
+    End_Procedure
+End_Class

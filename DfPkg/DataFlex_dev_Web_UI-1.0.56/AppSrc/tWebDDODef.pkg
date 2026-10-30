@@ -1,0 +1,25 @@
+﻿// Structures used to pass data dictionary object synchronized data in WebApp AJAX Request & Response messages
+
+Use tDDRemembered.pkg
+
+Struct tWebDDparentChanged
+    Integer iTable
+    Boolean bSwitched
+End_Struct
+
+// Synchronized DDO data
+Struct tWebDDO
+    String sName    // Name of the DDO object: "oCustomerDD"
+    String sRowID   // Row ID of the DDO's current record.
+    Integer iConstrainFile // used if constrain file is set dynamically, -1 if no change
+    tDDRemembered[] aRemembered
+    Boolean bChanged
+    tWebDDparentChanged[] aParentChanged
+End_Struct
+
+// Represents the structure of DDOs in a view
+Struct tWebDDODef
+    String sView                   // name of the view that owns the DDO structure
+    Boolean bA
+    tWebDDO[] aDDOs                // data dictionaries belonging to the DDO structure
+End_Struct

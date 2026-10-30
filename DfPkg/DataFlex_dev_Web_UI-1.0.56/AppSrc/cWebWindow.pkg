@@ -1,0 +1,215 @@
+﻿Use cWebBaseContainer.pkg
+Use cWebRadioContainer_mixin.pkg
+
+
+// Basic window container object. Window containers, and their subclasses, encapsulate a basic
+// unit of a web application, such as a Customer Entry view, etc.
+//
+// Adds support for...
+// - Show & Hide interface,
+// - Title,
+// - WBO registration in the global internet session object.
+{ ComponentType=WSOClass }
+{ HelpTopic=cWebWindow }
+{ DesignerJSClass=df.WebWindow }
+Class cWebWindow is a cWebBaseContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { Category="Security" }
+        // Normally AllowAccess does a login check. You can override this
+        // by setting this false (e.g. needed for a login dialog)
+        Property Boolean pbLoginModeEnforced True
+        
+        { DesignTime=False }
+        Property Handle phoCommandBar 0           // Handle to child cWebCommandbar object
+        
+        // Published properties
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnHide False     // Set to true to trigger server OnHide event
+        { Category="Server Events" }
+        { WebProperty=Client } 
+        Property Boolean pbServerOnShow False     // Set to true to trigger server OnShow event
+        
+        
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnHide ""         // Name of client side OnHide event handler
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnShow ""         // Name of client side OnShow event handler
+        { DesignTime=False }
+        { WebProperty=Client } 
+        Property String psInvokingView ""         // Name of the view object that invoked (activated) this window. Usually this is only set for popup modal windows. (see cWebModalDialog)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""              // Is the control's label (see pbShowLabel)
+        { WebProperty=Client } 
+        { PropertyType=Boolean }
+        { Category="Appearance" }
+        Property Integer pbShowCaption True  //  Allows to hide the captions
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbFocusFirstOnShow True  // Determines if the view / dialog will take the focus when it is shown
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMaxWidth 0             // Determines the maximum width of a view / panel. Only works if piWidth is 0.
+        
+        { EnumList="True,False,C_WebDefault" }
+        { Category="Behavior" }
+        Property Integer pbOverrideStateOnShow C_WebDefault    //  If set to true a window will become immediately in sync as soon as it is shown and the new state (DDO & Sync Props) will override the eventually existing state on the client
+        
+        Set psJSClass to "df.WebWindow"
+        Set peNeighborhood to nhPublic
+        
+        Send Define_cWebRadioContainer_mixin
+        
+        // register the view...
+        Delegate Send OwnerRegisterView Self
+    End_Procedure
+    
+    Import_Class_Protocol cWebRadioContainer_mixin
+    
+    { MethodType=Event }
+    Function AllowAccess Returns Boolean
+        Boolean bOk bEnforced
+        // User hook that is called by the session manager if a call comes in that tries to access 
+        // this view. Can be used to implement a custom access rights checks for this view.
+        
+        // first check with webapp to see if a login is required and we are logged in
+        // pbLoginModeEnforced can cancel this check, which might be needed with things like login dialogs
+        Move True to bOk
+        Get pbLoginModeEnforced to bEnforced
+        If (bEnforced) Begin
+            Delegate Get ValidLogin to bOk
+        End 
+        Function_Return bOk
+    End_Function
+    
+    // Used by AllowViewAccess to determine the name passed to the session manager.
+    { Visibility=Private }
+    Function ViewName Returns String
+        Function_Return (Name(Self))
+    End_Function
+
+
+    // Client Action: Sends message the client to hide this window. See also Show
+    Procedure Hide
+        Send HideView to (Host(Self)) Self
+    End_Procedure
+    
+    
+    // Returns true to indicate that the Ajax WebApp framework interface is supported by this object.
+    // Used by cWebControlLocator for locating WebApp Views, Windows, Dialogs.
+    { Visibility=Private }
+    Function IsAjaxWebAppSupported Returns Boolean
+        Function_Return True
+    End_Function
+    
+    
+    // On hide event stub.
+    { MethodType=Event }
+    Procedure OnHide
+    End_Procedure
+    
+    
+    // On show event stub.
+    { MethodType=Event }
+    Procedure OnShow
+    End_Procedure
+    
+    
+    // On before show event stub. This event is always fired before a view is shown on the client, use this to perform finds and updates needed to initialize the view.
+    { MethodType=Event }
+    Procedure OnBeforeShow
+    End_Procedure
+    
+    // This event is sent for every AJAX call to this view. This can be used by your
+    // security rights management system to set various rights and roles constraints
+    // properties in this view during the AJAX call, before the call is executed.
+    // Note: You should not use web properties for this purpose since synchronized
+    // properties are sync'ed to the client and thus considered insecure.
+    { MethodType=Event }
+    Procedure OnSyncView
+    End_Procedure
+
+    
+    { Visibility=Private }
+    Procedure NotifySyncWebApp
+        Send OnSyncView
+    End_Procedure
+
+        
+    // We override this method to prevent registering this cWebControl with its parent object.
+    // The window object is already the parent-most object in its scope.
+    { Visibility=Private }
+    Procedure RegisterThisWebObject
+        Send OwnerRegisterWebObject of (Host(Self)) Self
+        Set phoWebNeighborhood to Self
+    End_Procedure
+    
+    
+    // This function returns the object id of the database agent of this
+    // object, or 0.
+    //
+    // Overridden the Server function from cWebBaseDEOServer to ensure we never
+    // delegate this to the parent object of the view.
+    { MethodType=Property }
+    Function Server Returns Integer
+        Handle hoServer
+        Get private_Server to hoServer
+        Function_Return hoServer
+    End_Function
+
+
+    // Client Action: Sends message to the client to show this window. See also Hide
+    Procedure Show
+        Send ShowView to (Host(Self)) Self
+    End_Procedure
+    
+    
+    // Triggered by the cWebApp class to provide a hook to do additional intializations during the 
+    // view its showing / loading proces.
+    { Visibility=Private }
+    Procedure InitForShow
+    End_Procedure
+    
+    
+    // Returns a handle to this object. This can be sent to any child object to retrieve the object handle
+    // of the parent view via delegation.
+    Function ViewObject Returns Handle
+        Function_Return Self
+    End_Function    
+        
+    
+    // Returns a handle to this object. This can be sent to any child object to retrieve the object handle
+    // of the web neighborhood object delegation.
+    { Visibility=Private }
+    Function WebNeighborhood Returns Handle
+        Function_Return Self
+    End_Function
+
+
+    { Visibility=Private }
+    Procedure InitInvokingView String sInvokingView
+        // By default we do not set psInvoking view. This property is used by
+        // Modal dialogs and drill down cWebViews
+    End_Procedure    
+
+    
+    Procedure End_Construct_Object
+        // Publish the CallAction interface....
+        WebPublishProcedure OnHide
+        WebPublishProcedure OnShow        
+        
+        // Now that all the child web objects are defined, link together all Radio buttons in each
+        // radio group....
+        Send ConnectRadioButtons
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

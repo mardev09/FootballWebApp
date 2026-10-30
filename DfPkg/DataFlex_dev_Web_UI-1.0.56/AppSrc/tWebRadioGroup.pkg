@@ -1,0 +1,14 @@
+
+//  Represents a single group of radio control
+Struct tWebRadioGroup
+    Handle hoMaster          // object handle of the master cWebRadio
+    Handle[] aRadioButtons   // object handle of each cWebRadio belonging to this group
+    String sGroupName        // Unique identifier of this group
+End_Struct
+
+//  Dynamic version used by cWebDynamicObjectContainer
+Struct tWebDynamicRadioGroup
+    String sMaster           // Name of the master cWebRadio
+    String[] aRadioButtons   // Name of each cWebRadio belonging to this group
+    String sGroupName        // Unique identifier of this group
+End_Struct

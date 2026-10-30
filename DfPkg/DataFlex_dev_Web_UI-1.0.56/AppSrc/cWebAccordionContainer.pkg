@@ -1,0 +1,31 @@
+﻿Use cWebCardContainer.pkg
+
+{ CompositeClass=cWebAccordionCard }
+{ DesignerJSClass=df.WebAccordionContainer }
+{ OverrideProperty=pbSwipeCards Visibility=Private }
+Class cWebAccordionContainer is a cWebCardContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbOpenFirst True
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoHeight True
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbMultiOpen False
+
+        Set psJSClass to "df.WebAccordionContainer"
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

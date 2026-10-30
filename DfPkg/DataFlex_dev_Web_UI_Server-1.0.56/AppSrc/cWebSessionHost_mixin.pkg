@@ -1,0 +1,298 @@
+﻿Use VdfBase.pkg
+Use cWebCallHandler_mixin.pkg
+Use cWebSessionManager.pkg
+
+Register_Function ViewName Returns String
+
+//  Should be included after cWebViewHost_mixin!!
+Class cWebSessionHost_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebSessionHost_mixin
+        { Visibility=Private }
+        Property Handle[] paChangeRightsClients        // Array of client web objects that are sent the NotifyChangeRights message
+        
+        { Category="Security" }
+        { EnumList="lmLoginRequired, lmLoginSupported, lmLoginNone" }
+        Property Integer peLoginMode lmLoginRequired
+        { Category="Behavior" }
+        Property Boolean pbLogWebSession True
+    End_Procedure
+    
+    { Visibility=Private }
+    Function IsLoadWebAppCall tWebCallContext ByRef cctx Returns Boolean
+        Integer i 
+        
+        For i from 0 to (SizeOfArray(cctx.request.aActions) - 1)
+            If (cctx.request.aActions[i].sTarget = "" and cctx.request.aActions[i].sAction = "LoadWebApp") Begin
+                Function_Return True
+            End
+        Loop
+        
+        Function_Return False
+    End_Function
+    
+    { Visibility=Private }
+    Procedure Call_PreValidateSession tWebCallContext ByRef cctx
+        Boolean bSetCookie bLoadWebApp bValidSession
+        String sSessionKey sRemoteAddress
+        Handle hoSessionManager
+        
+        Get IsLoadWebAppCall (&cctx) to bLoadWebApp
+        
+        Move bLoadWebApp to bSetCookie
+        
+        //  Read the session key
+        Get ReadSessionKey to sSessionKey
+        
+        // Get the handle here so we do not have to call the function multiple times
+        Get SessionManager to hoSessionManager
+        
+        //  Create new session if no session key is sent
+        If (Trim(sSessionKey) = "" and bLoadWebApp) Begin
+            Get ServerVariable of (ServiceDispatcher(Self)) "REMOTE_ADDR" to sRemoteAddress
+            Get CreateSession of hoSessionManager sRemoteAddress to sSessionKey
+            Move True to bSetCookie
+        End
+
+        //  Validate session
+        Get ValidateSession of hoSessionManager sSessionKey bLoadWebApp to bValidSession
+        Get psSessionKey of hoSessionManager to sSessionKey //  The session key might have changed during validaiton
+        If (bValidSession) Begin
+
+            //  Write the cookie if session is created or on initial call
+            If (bSetCookie) Begin
+                Send StoreSessionKey sSessionKey
+                Move True to cctx.bNotifyChangeRights
+            End
+        End
+        Else Begin
+            //  Clear the vaulty session cookie
+            Send StoreSessionKey ""
+            Move False to cctx.bSuccess
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreNotifyChangeRights tWebCallContext ByRef cctx
+        If (cctx.bNotifyChangeRights) ;
+            Send NotifyChangeRights to (SessionManager(Self))
+    End_Procedure
+    
+    // Adds a new client object to the set of listeners to NotifyChangeRights.
+    // This is only supported for object in the global scope, i.e. not supported
+    // for menus/toolbars declared inside a view.
+    // See also OnChangeRights.
+    Procedure AddChangeRightsClient Handle hoClient
+        Integer iPos
+        Handle[] aClients
+        
+        Get paChangeRightsClients to aClients
+        Move (BinarySearchArray(hoClient, aClients, False)) to iPos
+        
+        If (iPos = -1) Begin
+            Move (InsertInArray(aClients, BinarySearchInsertPos(), hoClient)) to aClients
+            Set paChangeRightsClients to aClients
+        End
+    End_Procedure
+    
+    // Removes a new client object from the set of listeners to NotifyChangeRights.
+    Procedure RemoveChangeRightsClient Handle hoClient
+        Integer iPos
+        Handle[] aClients
+        
+        Get paChangeRightsClients to aClients
+        Move (BinarySearchArray(hoClient, aClients, False)) to iPos
+        
+        If (iPos <> -1) Begin
+            Move (RemoveFromArray(aClients, iPos)) to aClients
+            Set paChangeRightsClients to aClients
+        End
+    End_Procedure
+    
+    
+    // This function is called by the framework to read a session key. By default the session key 
+    // is read from the cookie. Overriding this procedure allows the developer to customize this 
+    // behavior.
+    //
+    // WARNING: Note that this method can also be called when the WebApp is out of sync (Web 
+    // Properties are not available at that point). This happens in case of a file download.
+    { MethodType=Event }
+    Function ReadSessionKey Returns String
+        String sSessionKey
+        
+        Get GetCookie (psSessionCookieName(SessionManager(Self))) to sSessionKey
+        
+        Function_Return sSessionKey
+    End_Function
+
+    // This procedure is called whenever a session key is stored by the framework. By default the 
+    // session key is stored in a cookie and the settings (cookie name,  timeout, path) are read 
+    // from the SessionManager. Overriding this procedure allows the developer to customize
+    // this behavior.
+    //
+    // Params:
+    //   sSessionKey   The new session key. "" if the session is cleared.
+    { MethodType=Event }
+    Procedure StoreSessionKey String sSessionKey
+        String sPath
+        Integer iPos
+        Handle hoSessionManager
+        
+        Get SessionManager to hoSessionManager
+        Get psSessionCookiePath of hoSessionManager to sPath
+        
+        //  If the path is empty we determine the current path where the cookie should be set, we can't leave it blank as the client interprets /CallAction/JSON in the URL as part of the path
+        If (Trim(sPath) = "") Begin
+            Get ServerVariable of (ServiceDispatcher(Self)) "SCRIPT_NAME" to sPath
+            
+            Move (Pos("WebServiceDispatcher.wso", sPath)) to iPos
+            If (iPos > 0) Begin
+                Move (Left(sPath, iPos - 1)) to sPath
+            End
+            
+            Move (RightPos("/", sPath)) to iPos    
+            If (iPos > 0) Begin
+                Move (Left(sPath, iPos)) to sPath
+            End
+        End
+        
+        Send SetCookie (psSessionCookieName(hoSessionManager)) sSessionKey (piSessionCookieTimeout(hoSessionManager)) sPath (psSessionCookieDomain(hoSessionManager)) (pbSessionCookieSecure(hoSessionManager)) (pbSessionCookieHttpOnly(hoSessionManager)) (psSessionCookieSameSite(hoSessionManager))
+    End_Procedure    
+
+    // Determines if a login is required to access this web application. If so it will determine if
+    // the current session is logged in by asking the session manager. This function is called by 
+    // views as a first level security test.
+    //
+    // Returns: 
+    //      True if a login is not required or if login is required and the session is logged in.
+    //      False if the login is required and the session is nog logged in.
+    Function ValidLogin Returns Boolean
+        Boolean bIsLoggedIn 
+        Integer eLoginMode
+        Get peLoginMode to eLoginMode
+        If (eLoginMode=lmLoginRequired) Begin
+            Get IsLoggedIn of (SessionManager(Self)) to bIsLoggedIn
+            Function_Return (bIsLoggedIn)
+        End
+        Function_Return True
+    End_Function
+
+    // Received whenever cWebSessionManager - NotifyChangeRights message is sent.
+    // Augment this event to manage any global rights settings.
+    { MethodType=Event }
+    Procedure OnChangeRights
+    End_Procedure
+
+    // Server-Action
+    //
+    // Call this from the client to create a new Session Key. This should effectively log out the current user.
+    { Visibility=Private }
+    Function RecreateSession Returns Boolean
+        String sSessionKey sRemoteAddress
+        Boolean bValidSession
+        Handle hoSessionManager
+        
+        Get SessionManager to hoSessionManager
+        Move False to bValidSession      
+
+        Get ServerVariable  of (ServiceDispatcher(Self)) "REMOTE_ADDR" to sRemoteAddress
+        Get CreateSession   of hoSessionManager sRemoteAddress to sSessionKey
+        Get ValidateSession of hoSessionManager sSessionKey to bValidSession
+
+        If (bValidSession) Begin
+            // Pass the session key back to the client using a client action
+            Send StoreSessionKey sSessionKey
+        End
+        
+        Function_Return bValidSession
+    End_Function
+    
+    // Your user login system should call this whenever the logged-in user changes, or their rights & roles are
+    // modified.
+    //
+    // This sends NotifyChangeRights to the command bar (which will create its own cascade or NotifyChangeRights/OnChangeRights)
+    // and then sends OnChangeRights.
+    { Visibility=Private }
+    Procedure FireNotifyChangeRights
+        Handle hoCommandBar
+        Integer i iCount
+        Handle[] aClients
+        
+        // Notify all listners....
+        Get paChangeRightsClients to aClients
+        Move (SizeOfArray(aClients)) to iCount
+        
+        For i from 0 to (iCount-1)
+            Send NotifyChangeRights of aClients[i]
+        Loop
+        
+        // Notify the command bar...
+        Get phoCommandBar to hoCommandBar
+        If (hoCommandBar) Begin
+            Send NotifyChangeRights of hoCommandBar
+        End
+
+        // Review: Determine if we should also send NotifyChangeRights/OnChangeRights to all views.
+        
+        Send OnChangeRights    // Send to self
+    End_Procedure
+    
+    // returns the login view/dialog which is normally phoLoginView.
+    // Is provided for augmentation so developers can specify the login view dynamically
+    Function GetLoginView Returns Handle
+        Handle hoView
+        Get phoLoginView to hoView
+        Function_Return hoView
+    End_Function
+    
+    // Override with logic determining if the login view should be shown.
+    // 
+    // Returns:
+    //  Handle to the initial view that needs to be shown (C_WebUnresolvedObject if none)
+    Function ForcedInitialView Returns Handle
+        Handle hoView
+        Integer eLoginMode
+        Boolean bIsLoggedIn
+        
+        
+        Move C_WebUnresolvedObject to hoView
+        
+        //  Determine if loginview needs to be shown
+        Get peLoginMode to eLoginMode
+        
+        If (eLoginMode=lmLoginRequired) Begin
+            // Test for login....
+            Get IsLoggedIn of (SessionManager(Self)) to bIsLoggedIn
+            
+            If (not(bIsLoggedIn)) Begin
+                // Send back the login view as the first view to load
+                Get GetLoginView to hoView
+                // If hoView is 0, this is probably a progamming error. No way to log in and it is required.
+                // For now do nothing which will load the default view
+                
+            End
+        End
+        
+        Function_Return hoView
+    End_Function
+    
+    // Determines if the current session has access to the specified view. Overridden by
+    // cWebSessionHost_mixin to communicate with the session manager.
+    //
+    // Returns:
+    //  True if the current session has access to the view.
+    Function AllowViewAccess Handle hoView Returns Boolean
+        Boolean bAllow
+        
+        Get AllowViewAccess of (SessionManager(Self)) hoView (ViewName(hoView)) to bAllow
+        
+        Function_Return bAllow
+    End_Function
+    
+    // Use by session manager to access login mode
+    { Visibility=Private }
+    Function LoginMode Returns Integer
+        Function_Return (peLoginMode(Self))
+    End_Function
+
+End_Class

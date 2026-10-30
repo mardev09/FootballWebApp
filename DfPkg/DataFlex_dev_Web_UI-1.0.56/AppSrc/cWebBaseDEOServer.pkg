@@ -1,0 +1,889 @@
+﻿Use Server.pkg
+Use brdcster.pkg
+Use cWebBaseUIObject.pkg
+Use Datadict.pkg
+Use cWebView_mixin.pkg
+Use WebUIConstants.pkg
+
+#IFNDEF ddrtsNone
+
+Enum_List
+    Define ddrtsNone
+    Define ddrtsFound
+    Define ddrtsCleared
+End_Enum_List
+
+#ENDIF
+
+// enums used for ShowYesNo and YesNoCancel message boxes
+Enum_List
+    Define cmClose for 0
+    Define cmYes for 1
+    Define cmNo for 2
+    Define cmCancel for 3
+End_Enum_List
+
+
+Register_Procedure SaveConfirmation Handle hmCallBack
+Register_Procedure DeleteConfirmation Handle hmCallBack
+Register_Procedure DataLossConfirmation Handle hmCallBack
+Register_Procedure SaveClearCancelConfirmation Handle hmCallBack
+
+// This provides DEO to DDO server support for Web DEOs.
+//
+// Notes:
+// Property Add_Focus_msg   - not supported.
+// Property Deferred_State  - not supported.
+// Property Default_static_server_state - not supported.
+// Property Refresh_Dirty_State         - not supported
+// Property Static_Server_State         - not supported.
+//
+// Function Find_Server - not supported.
+{ ClassType=Abstract }
+{ HelpTopic=cWebBaseDEOServer }
+Class cWebBaseDEOServer is a cWebBaseUIObject
+    //   Server is the object id of the database agent for this object.
+    //
+    //   Watched_Servers is a set of object ids for database agents whose state
+    //   must also be monitored by this object (but which never receive requests
+    //   directly from this object, unlike the Server).
+    //
+    //   Servers_Scanned determines if the items of this object have been
+    //   scanned to see if this object should be connected to other database
+    //   agents as 'just watching' (see Watched_Servers, above).
+    //
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { Category="Data" }
+        Property Boolean Auto_Fill_State False       // Used to tell DDO's whether first record should be found automatically after a clear.
+        { Visibility=Private }
+        Property Boolean pbAutoFillOnInit False      // Used to tell DDO's that we want autofill on initialization when DEO is attaching
+        
+        { Visibility=Private }
+        Property Integer private_Server 0
+        { Visibility=Private }
+        Property Integer Watched_Servers 0          // Handle to Broadcaster object broacasting tos server DDO's
+        // used to send Set Changed_State to "foreign" servers, while Watched_Servers
+        // is used for sending messages from the DDO to DEOs (there are more of them)
+        { Visibility=Private }
+        Property Integer ChangedStateWatched_Servers     0
+        { Visibility=Private }
+        Property Integer private_pbServersScanned 0
+        
+        // added to support DEO request-delegation. This is set true if the
+        // server is explicitly set in this DEO (normally via a USING parameter).
+        { Visibility=Private }
+        Property Integer Explicit_Server_State False
+        
+        // Since this package's SET changed_state is using change_disabled_state
+        // we might as well Define it here. This gets changed by Clear_mx to support
+        // setting of defaults without changing the objects changed_state.
+        //
+        // This stops changed_state from getting changed. It allows item_changed_state
+        // to change without the object's changed_state getting changed. This Should
+        // be considered protected (i.e., likely to change). The new messages Entry_Defaults
+        // and Set Default_Value are both public and Use this. Try to use these messages
+        // instead of this Property.
+        { Visibility=Private }
+        Property Integer Change_Disabled_State False
+        
+        { Visibility=Private }
+        Property Boolean Extended_DEO_State False    // Defines DEO behavior according to Extended_DEO_State of the server DDO
+        
+        { Visibility=Private }
+        Property Boolean Active_State False          // True when the DEO has been attached to the DDO
+        
+        { DesignTime=False }
+        Property Handle Verify_Save_msg (RefProc(SaveConfirmation))
+        { DesignTime=False }
+        Property Handle Verify_Data_Loss_msg (RefProc(DataLossConfirmation))
+        { DesignTime=False }
+        Property Handle Verify_Delete_msg (RefProc(DeleteConfirmation))
+        
+        // pbClearAfterSave: When true forces a DDO Request_Clear after performing a Request_Save. This property is reached
+        // via delegation from the DEO that processes the Request_Save operation. Thus this property will control the
+        // behavior for all DEOs belonging to this view.
+        { Category="Behavior" }
+        Property Boolean pbClearAfterSave True
+        
+        // Determines if the Delete callback is allowed, is set to true when the verification dialog is shown. Additional security check.
+        { Visibility=Private }
+        { WebProperty=Server }
+        Property Boolean pbDeleteCallbackActive False
+        // Determines if the Save callback is allowed, is set to true when the verification dialog is shown. Additional security check.
+        { Visibility=Private }
+        { WebProperty=Server }
+        Property Boolean pbSaveCallbackActive False
+        
+        WebPublishProcedure RequestClearCallback
+        WebPublishProcedure RequestDeleteCallback
+        WebPublishProcedure RequestSaveCallBack
+        WebPublishProcedure RequestClearAllCallback
+    End_Procedure
+    
+    
+    // This procedure adds the specified object id (hoServer) to this object's
+    // set of database agents who are merely 'watched', and establishes a
+    // connection between the database agent and this object.
+    //
+    { Visibility=Private }
+    Procedure Add_Watched_Server Integer hoServer
+        Integer iIndex
+        Handle hoWatchedServers
+        
+        Get Watched_Servers to hoWatchedServers
+        If (hoWatchedServers = 0) Begin
+            Get Create of Desktop U_Broadcaster to hoWatchedServers // modern syntax
+            Set Watched_Servers to hoWatchedServers
+        End
+        
+        Set Broadcast_State of hoWatchedServers to False
+        Get Find_Element of hoWatchedServers hoServer to iIndex
+        
+        If (iIndex < 0) Begin
+            Send Add_Element to hoWatchedServers hoServer
+        End
+        
+        Set Broadcast_State of hoWatchedServers to True
+        
+        If (iIndex < 0 and Active_State(Self)) Begin
+            Send Add_User_Interface to hoServer Self True // TRUE for watchers
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Add_ChangedStateWatched_Server Integer hoServer
+        Integer iIndex
+        Handle hoWatchedServers
+        
+        Get ChangedStateWatched_Servers to hoWatchedServers
+        If (hoWatchedServers = 0) Begin
+            Get Create of Desktop U_Broadcaster to hoWatchedServers // modern syntax
+            Set ChangedStateWatched_Servers to hoWatchedServers
+        End
+        
+        Set Broadcast_State of hoWatchedServers to False
+        Get Find_Element of hoWatchedServers hoServer to iIndex
+        
+        If (iIndex < 0) Begin
+            Send Add_Element to hoWatchedServers hoServer
+        End
+        
+        Set Broadcast_State of hoWatchedServers to True
+    End_Procedure
+    
+    
+    // Expects the class to understand the Active_State property. Relies on the pbDataBindable interface.
+    { Visibility=Private }
+    Procedure Attach_Deo_To_Server
+        Integer hoServer hoWatchedServers
+        Boolean bServerScan bDataBindable
+        
+        Get Server to hoServer
+        Get pbDataBindable to bDataBindable
+        
+        If (hoServer <> 0) Begin
+            Send Add_User_Interface to hoServer Self
+            // Extended_DEO_State is used to determine whether the object receives the data binding related
+            // message interface from the server DDO...
+            Set Extended_DEO_State to (Extended_DSO_State(hoServer) and bDataBindable)
+        End
+        
+        Get private_pbServersScanned to bServerScan
+        If (not(bServerScan)) Begin
+            Send Scan_Servers
+        End
+        
+        Get Watched_Servers to hoWatchedServers
+        If hoWatchedServers Begin
+            Send Add_User_Interface to hoWatchedServers Self True // True for watchers
+        End
+        
+        Set Active_State to True
+    End_Procedure
+    
+    
+    // Changed so that this respects Change_disabled_state. I don't
+    // like this here but its the best I can think of. Therefore, all
+    // objects using server.pkg must understand Change_disabled_state.
+    //
+    // Changed to not remove from server if static.
+    { MethodType=Property NoDoc=True }
+    { DesignTime=False }
+    { PropertyType=Boolean }
+    { Visibility=Private }
+    Procedure Set Changed_State Integer newVal
+        Integer hoServer hoWatchedServers
+        
+        If not (Change_Disabled_State(Self)) Begin
+            Get server to hoServer
+            
+            If (newVal and hoServer) Begin
+                Set Changed_State of hoServer to True
+                // We also set changed_state of all "foreign" servers. These
+                // are the ones whose Data_File is a parent File
+                Get ChangedStateWatched_Servers to hoWatchedServers
+                If hoWatchedServers ;
+                    Set Changed_State of hoWatchedServers to True
+            End
+        End
+    End_Procedure
+    
+    // returns the table's status for the refresh event. A table can either be
+    // cleared, found or not touched by the operation. This can only be called while
+    // within Refresh. This was created to hide the private is_file_included command
+    Function DDRefreshTableStatus Integer iTable Returns Integer
+        Boolean bIncluded
+        is_file_included iTable 1 to bIncluded // see if main file is in find done array
+        If bIncluded Begin
+            Function_Return ddrtsFound
+        End
+        is_file_included iTable 0 to bIncluded // see if main file is in clear done array
+        If bIncluded Begin
+            Function_Return ddrtsCleared
+            
+        End
+        Function_Return ddrtsNone
+    End_Function
+    
+    
+    
+    //   This procedure empties the Watched_Servers broadcaster, after
+    //   detaching this object from all of the broadcaster's elements.
+    //   This procedure is invoked by Find_Servers_to_Watch, in preparation
+    //   for a scan.
+    { Visibility=Private }
+    Procedure Delete_Watched_Servers
+        Integer hoWatchedServers
+        
+        Get Watched_Servers to hoWatchedServers
+        If hoWatchedServers Begin
+            Send Remove_User_Interface to hoWatchedServers Self True // detach from all, TRUE for watchers
+            Set broadcast_state of hoWatchedServers to False
+            Send Delete_Data to hoWatchedServers                     // empty it
+            Set broadcast_state of hoWatchedServers to True
+        End
+        
+        Get ChangedStateWatched_Servers to hoWatchedServers
+        If hoWatchedServers Begin
+            Set broadcast_state of hoWatchedServers to False
+            Send Delete_Data to hoWatchedServers                     // empty it
+            Set broadcast_state of hoWatchedServers to True
+        End
+    End_Procedure
+    
+    // Required DD/DEO interface. Indicates if this DEO is a data bindable control or a container.
+    // For cWebControls, this is just another way of querying pbDataBindable, used by DD's
+    Function DEO_Control_Object Returns Boolean
+        Boolean bDataBindable
+        Get pbDataBindable to bDataBindable
+        Function_Return bDataBindable
+    End_Function
+    
+    // Required DD/DEO interface. Indicates that this DEO understands the DEO Request_Find protocol
+    Function DEO_Find_Object Returns Boolean
+        Function_Return False
+    End_Function
+    
+    // Used to determine if the object understands the DEO interface.
+    // Probably not used in Ajax WebApps.
+    { NoDoc = True }
+    Function DEO_Object Returns Boolean
+        Function_Return True
+    End_Function
+    
+    // This only gets called when the developer is killing this object. During application
+    // shut-down, only destroy_object is called. This augmentation destroys the watched broadcaster
+    // (which is sitting on the desktop). During program shut down we don't care if this is called
+    // because it is getting destroyed anyway. We are making the assumption that a developer controlled
+    // destroy will always be called with the watcher still existing.
+    { NoDoc=True }
+    Procedure Destroy
+        Handle hoWatched
+        Set Changed_State to False //   is this really needed anymore???
+        // if non 0, The watched server, must still exist.
+        Get Watched_Servers to hoWatched
+        If hoWatched Begin
+            Set Broadcast_State of hoWatched to False
+            Send Destroy of hoWatched     // destroy the broadcaster
+        End
+        // if non 0, The bound watched server, must still exist.
+        Get ChangedStateWatched_Servers to hoWatched
+        If hoWatched Begin
+            Set Broadcast_State of hoWatched to False
+            Send Destroy of hoWatched     // destroy the broadcaster
+        End
+        Forward Send Destroy
+    End_Procedure
+    
+    
+    // Required DD/DEO interface
+    // sent by DD before a find and save. We only care about DD finds which
+    // means DoAll is 1
+    { Visibility=Private }
+    Procedure Entry_Update Integer iFile Integer iDoAll
+        // STUB: Not used with Ajax WebApp
+    End_Procedure
+    
+    
+    //   This procedure scans the fields of this object's items to determine
+    //   what other database agents (data_sets) other than this object's Server
+    //   should be 'watched' (for data changes).
+    //
+    //   iTableFlag is a boolean determining whether this object relies on a
+    //   prototype row (TRUE) or an item list (FALSE).
+    //   [JVH] VDF 17.0 - Ignored in this class.
+    //
+    //   This object must understand pbDataBindable, and have a private
+    //   boolean property named Private_pbServersScanned to note the event.
+    //
+    // Notes
+    //
+    //   This procedure is invoked once per object, the first time the object
+    //   is activated.  If the data_file, data_field, and/or main_file of this
+    //   object are changed (don't change them while this object is active!),
+    //   set Private_pbServersScanned to FALSE to force this object to scan
+    //   again (when it is next activated).
+    //
+    
+    // 17.0: The logic has been retooled to add more watched servers to the DDOs. This is done so
+    // DD operations will send Refresh to these additional watched-servers. There are two changes:
+    // 1. Containers are now made watched servers for the Server and all parent servers
+    // 2. Non-file.field DEOs (e.g., expressions) are made watched servers for the server (which it
+    //    already did and for all parent servers. Without this, parent entry_item expressions were not
+    //    getting updated
+    // Here is how watched-servers works.
+    // Each DEO attaches and detaches from its Server by sending Add_User_interface and Remove_User_interface
+    // to the server DD. Once attached, the DD knows about this DEO and sends messages to it as needed (Refresh,
+    // Entry_Update, etc.). In addition, a DEO may need to attach a parent DDO so that changes in that parent DD
+    // results in those messages being sent. This is needed if the binding table in entry_item refers to a parent
+    // table. So we need to send Add_User_interface and Remove_User_interface to that parent server as well. If a DEO
+    // has multiple, there could be multiple parent servers. As of 17.0, we are also attaching to parent servers if
+    // we are unsure about how the DEO is being used. If an expression is used, it might need to be updated when
+    // a parent (or any ancestor) changes. Each DEO keeps track of servers that it attaches to and this is referred
+    // to as the watched_server list. This list is maintained so the DEO knows which DDOs to attach and detach to.
+    //
+    // [JVH] VDF 17.1 cWebAppDEOServer_mixin Notes:
+    // - Modified to support only 1 item per control. Get Item_Count interface not supported.
+    // - Modified to not support the Prototype_Object interface (old windows Table class).
+    { Visibility=Private }
+    Procedure Find_Servers_To_Watch Integer iTableFlag
+        Integer iFileNum iServerFile
+        Handle hoServer hoDataSet
+        Boolean bDataBindable
+        
+        Get pbDataBindable to bDataBindable
+        Set Private_pbServersScanned to True
+        Get Server to hoServer
+        
+        If (hoServer = 0) Begin
+            Procedure_Return
+        End
+        
+        Send Delete_Watched_Servers  // empty Watched_Servers broadcaster first
+        Get Main_File of hoServer to iServerFile  // data-set's main-file
+        
+        If (not(bDataBindable)) Begin
+            // containers should get added to all parent DDOs
+            Send WatchAllParentServers hoServer
+            Procedure_Return
+        End
+        
+        Get Data_File to iFileNum
+        // we need watched server if file exists, it is not the main file
+        // and is not an updating file (as opposed to updating data-set).
+        If (iFileNum > 0 and iFileNum <> iServerFile) Begin
+            Get Which_Data_Set of hoServer iFileNum to hoDataSet
+            If (hoDataSet <> 0 and hoDataSet <> hoServer) Begin
+                Send Add_Watched_Server hoDataSet
+                Send Add_ChangedStateWatched_Server hoDataSet
+            End
+        End
+        Else If (iFileNum = 0) Begin
+            // if no file (e.g., expression) we don't know when it changes so we tell all servers
+            // that this is a watcher
+            Send WatchAllParentServers hoServer
+        End
+    End_Procedure
+    
+    // This function returns the object id of the database agent of this object,
+    // or 0.
+    { MethodType=Property Visibility=Private }
+    Function Locate_Server Returns Integer
+        Handle hoServer
+        Get Server to hoServer
+        Function_Return hoServer
+    End_Function
+    
+    { MethodType = Event }
+    Procedure Refresh Integer eMode
+    End_Procedure
+    
+    //   This procedure discontinues the connection between this object and its
+    //   database agent(s) (Server and Watched_Servers).
+    { Visibility=Private }
+    Procedure Remove_DEO_From_Server
+        Integer hoServer hoWatchedServers
+        
+        Get Server to hoServer
+        
+        If (hoServer <> 0) Begin
+            Send Remove_User_Interface to hoServer Self
+        End
+        
+        // Only send if watched-server exists
+        Get Watched_Servers to hoWatchedServers
+        
+        If hoWatchedServers Begin
+            Send Remove_User_Interface to hoWatchedServers Self True // TRUE for watchers
+        End
+        
+        // when removed the deo is no longer up to date.
+        Set Refresh_Dirty_State to True
+    End_Procedure
+    
+    
+    //   This procedure removes the specified object id (hoServer) from this object's
+    //   set of database agents who are merely 'watched', and destroys the
+    //   connection between the database agent and this object.
+    { Visibility=Private }
+    Procedure Remove_Watched_Server Integer hoServer
+        Integer iIndex
+        Handle hoWatchedServers
+        
+        Get Watched_Servers to hoWatchedServers
+        // Only if w server exists
+        If hoWatchedServers Begin
+            Set broadcast_state of hoWatchedServers to False
+            Get find_element of hoWatchedServers hoServer to iIndex
+            If (iIndex >= 0) Begin
+                Send remove_element to hoWatchedServers hoServer
+            End
+            Set broadcast_state of hoWatchedServers to True
+            If (iIndex >= 0 and Active_State(Self)) Begin
+                Send Remove_User_Interface to hoServer Self True // TRUE for watchers
+            End
+        End
+    End_Procedure
+    
+    
+    // This function returns the object id of the database agent of this object, or 0.
+    // If this object's Server is 0, this object's parent's Server is returned, if any.
+    // This function is used to allow nested data-entry objects to use the
+    // database agent defined by their parent object.
+    { MethodType=Property }
+    Function Server Returns Integer
+        Integer hoServer
+        Get private_Server to hoServer
+        If (hoServer = 0) Begin
+            Function_Return (Locate_Server(parent(Self)))
+        End
+        Function_Return hoServer
+    End_Function
+    
+    
+    // This procedure sets the value of the Server property of this object,
+    // notifying child-objects of the change, and destroying and creating
+    // connections with database agents, as required.
+    // If the Server of this object is changed while this object is inactive,
+    // no notification of child-objects is required or performed.
+    { MethodType=Property }
+    { DesignTime=False }
+    Procedure Set Server Integer newVal
+        Integer oldVal
+        
+        Set Explicit_Server_State to (newVal <> 0)
+        Get Server to oldVal
+        
+        If (newVal <> 0) Begin
+            Set private_Server to (object_id(newVal))
+        End
+        Else Begin
+            Set private_Server to newVal
+        End
+        
+        If (Active_State(Self)) Begin
+            Broadcast Send server_changed oldVal newVal
+            If (oldVal <> 0) Begin
+                Send Remove_DEO_From_Server  // detach from current server
+            End
+            If (newval <> 0) Begin
+                Send Attach_Deo_To_Server    // attach to new server
+            End
+        End
+    End_Procedure
+    
+    
+    //   This procedure servers as notification of a change in the connection
+    //   of this object's parent to its database agent.  If this object uses
+    //   its parent's database agent by default (see the Server and Find_Server
+    //   functions, above), it must disconnect from the old agent and connect
+    //   with the new agent.
+    { Visibility=Private }
+    Procedure Server_Changed Integer oldVal Integer newVal
+        Integer oldSrvr
+        
+        Get private_Server to oldSrvr
+        If (oldSrvr = 0) Begin  //assumes Server(self) = oldVal by deleg
+            If (oldVal <> 0) ;
+                Send remove_user_interface to oldVal Self
+            If (newVal <> 0) ;
+                Send add_user_interface to newVal Self
+        End
+    End_Procedure
+    
+    
+    // return the DEO that sets the server
+    Function ServerDEO Returns Handle
+        Handle hoServer hoServerDeo
+        Boolean bExplicitServer
+        Get Server to hoServer
+        If (hoServer) Begin
+            Get Explicit_Server_State to bExplicitServer
+            If (bExplicitServer) Begin
+                Move Self to hoServerDeo
+            End
+            Else Begin
+                Delegate Get ServerDEO to hoServerDeo
+            End
+        End
+        Function_Return hoServerDeo
+    End_Function
+    
+    //   This procedure causes the scanning of this object's items' fields,
+    //   and the production of a set of database agents who should be 'watched'.
+    { Visibility=Private }
+    Procedure Scan_Servers
+        Send Find_Servers_To_Watch False
+    End_Procedure
+    
+    
+    // Not used for cWebControls
+    { Visibility=Private }
+    Procedure Update_Dependent_Items
+        // Stub
+    End_Procedure
+    
+    
+    // required DD/DEO interface
+    { Visibility=Private }
+    Function Validate_Items Boolean bNotFindReq Returns Integer
+        // This is handled by the DDO
+    End_Function
+    
+    
+    // Required DD/DEO interface (maybe). We don't use the setter in cWebControls
+    { Visibility=Private }
+    Procedure Set Value Integer iItem String sValue
+    End_Procedure
+    
+    { Visibility=Private }
+    Function Value Integer iItem Returns String
+        Function_Return ""
+    End_Function
+    
+    // This adds every parent DDO for the passed DDO to the DEO's list of DDOs to watch.
+    // It adds the parents and then does this recursively up the DDO tree.
+    // This means that this DEO will respond to any DD change for any server. This does not
+    { Visibility = Private }
+    Procedure WatchAllParentServers Handle hoDDO
+        Handle hoSrvr
+        Integer iServer iServers
+        Get Data_Set_Server_Count of hoDDO to iServers
+        For iServer from 0 to (iServers-1)
+            Get Data_Set_Server of hoDDO iServer to hoSrvr
+            Send Add_Watched_Server hoSrvr
+            Send WatchAllParentServers hoSrvr
+        Loop
+    End_Procedure
+    
+    // standard helper used for all verify save, delete, clear confirmation
+    { Visibility=Private }
+    Procedure VerifyRequest Handle hmCallBack Handle hmVerifyMsg
+        Handle hmVerifyRequest
+        Get hmVerifyMsg to hmVerifyRequest // this is the verify message for this operation
+        If hmVerifyRequest Begin
+            // if a verify message exists call it passing the callback message
+            Send hmVerifyRequest hmCallBack
+        End
+        Else Begin
+            // if no verify message, just execute the callback with a yes
+            Send hmCallBack cmYes
+        End
+    End_Procedure
+    
+    // return true if this message can be delegated to an explicit server
+    { Visibility=Private }
+    Function DelegateDeoRequest Returns Boolean
+        Handle hoServer hoServerDEO
+        Get ServerDEO to hoServerDEO
+        Function_Return (hoServerDEO<>0 and hoServerDEO<>Self)
+    End_Function
+    
+    
+    // default save confirmation message
+    Procedure SaveConfirmation Handle hmCallBack
+        Send ShowYesNo (Self) hmCallBack C_$SaveThisRecord  C_$Confirm
+    End_Procedure
+    
+    // default Data_Loss Y/Nconfirmation message
+    Procedure DataLossConfirmation Handle hmCallBack
+        Send ShowYesNo (Self) hmCallBack C_$AbandonChanges  C_$Confirm
+    End_Procedure
+    
+    // default Data_Loss Save/Close/Cancel confirmation message
+    Procedure SaveClearCancelConfirmation Handle hmCallBack
+        Send ShowYesNoCancel (Self) hmCallBack C_$Save_Changes_Before_Closing  C_$Confirm
+    End_Procedure
+    
+    
+    // default Delete confirmation message
+    Procedure DeleteConfirmation Handle hmCallBack
+        Send ShowYesNo (Self) hmCallBack C_$DeleteThisRecord  C_$Confirm
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure RequestClearCallBack Integer eConfirmMode
+        If (eConfirmMode=cmYes) Begin
+            Send RequestClearExec
+        End
+    End_Procedure
+    
+    Procedure Request_Clear
+        Handle hoServer
+        Boolean bDelegate
+        
+        Get DelegateDeoRequest to bDelegate
+        If bDelegate Begin
+            Delegate Send Request_Clear
+            Procedure_Return
+        End
+        
+        Get Server to hoServer
+        If (hoServer <> 0) Begin
+            If (Should_Save(hoServer)) Begin
+                Send VerifyRequest (RefProc(RequestClearCallBack)) (RefFunc(Verify_Data_Loss_Msg))
+            End
+            Else Begin
+                Send RequestClearExec
+            End
+        End
+    End_Procedure
+    
+    Procedure RequestClearExec
+        Handle hoServer
+        Get Server to hoServer
+        Send Clear to hoServer
+        
+        Send FocusFirst
+        Send OnViewCleared hoServer
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure RequestClearAllCallBack Integer eConfirmMode
+        If (eConfirmMode=cmYes) Begin
+            Send RequestClearAllExec
+        End
+    End_Procedure
+    
+    Procedure Request_Clear_All
+        Handle hoServer
+        Boolean bDelegate
+        
+        Get DelegateDeoRequest to bDelegate
+        If bDelegate Begin
+            Delegate Send Request_Clear_All
+            Procedure_Return
+        End
+        
+        Get Server to hoServer
+        If (hoServer <> 0) Begin
+            If (Should_Save(hoServer)) Begin
+                Send VerifyRequest (RefProc(RequestClearAllCallBack)) (RefFunc(Verify_Data_Loss_Msg))
+            End
+            Else Begin
+                Send RequestClearAllExec
+            End
+        End
+    End_Procedure
+    
+    Procedure RequestClearAllExec
+        Handle hoServer
+        Get Server to hoServer
+        Send Clear_All to hoServer
+        
+        Send FocusFirst
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure RequestDeleteCallBack Integer eConfirmMode
+        Boolean bActive
+        
+        //  Security check
+        WebGet pbDeleteCallbackActive to bActive
+        If (not(bActive)) Begin
+            Error DFERR_WEBAPP_ACCESS_DENIED
+            Procedure_Return
+        End
+        WebSet pbDeleteCallbackActive to False
+        
+        If (eConfirmMode=cmYes) Begin
+            Send RequestDeleteExec
+        End
+    End_Procedure
+    
+    Procedure Request_Delete
+        // Request delete message for DDO delete.
+        Handle hoServer
+        Boolean bDelegate
+        
+        Get DelegateDeoRequest to bDelegate
+        If bDelegate Begin
+            Delegate Send Request_Delete
+            Procedure_Return
+        End
+        
+        Get Server to hoServer
+        
+        If (hoServer <> 0 and can_delete(hoServer) <> 0) Begin
+            WebSet pbDeleteCallbackActive to True
+            Send VerifyRequest (RefProc(RequestDeleteCallBack)) (RefFunc(Verify_Delete_Msg))
+        End
+    End_Procedure
+    
+    Procedure RequestDeleteExec
+        Handle hoServer
+        Get Server to hoServer
+        Move False to Err
+        Send Request_Delete to hoServer
+        // Always clear deleted record
+        If (not(err)) Begin
+            Send RequestClearExec
+            Send OnViewDeleted hoServer
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure RequestSaveCallBack Integer eConfirmMode
+        Boolean bActive
+        
+        //  Security check
+        WebGet pbSaveCallbackActive to bActive
+        If (not(bActive)) Begin
+            Error DFERR_WEBAPP_ACCESS_DENIED
+            Procedure_Return
+        End
+        WebSet pbSaveCallbackActive to False
+        
+        // called as a callback started by Request_Save
+        If (eConfirmMode=cmYes) Begin
+            Send RequestSaveExec
+        End
+    End_Procedure
+    
+    // What to do with a new unchanged record. The normal framework behavior has always been
+    // to do nothing. With drilldown, it might make the most sense to attempt a save. Currently
+    // when drilldown, we will return True, else false
+    { Visibility=Private }
+    Function AlwaysSaveNew Returns Boolean
+        Integer eViewStyle
+        Boolean bSave
+        Get WebViewStyle to eViewStyle
+        If (eViewStyle=wvsDrillDown) Begin
+            Get AlwaysSaveWhenNewDrillDown to bSave
+        End
+        Function_Return bSave
+    End_Function
+    
+    Procedure Request_Save
+        Handle hoServer
+        Integer iRetVal
+        Boolean bDelegate bRequestValidateAll bShouldSave bHasRec
+        
+        Get DelegateDeoRequest to bDelegate
+        If bDelegate Begin
+            Delegate Send Request_Save
+            Procedure_Return
+        End
+        
+        Get Server to hoServer
+        
+        If ((hoServer <> 0) and not(Read_Only_State(hoServer))) Begin
+            Get Should_Save of hoServer to bShouldSave
+            // if no changes but a new record, we may want to attempt a save anyway (for drilldown style)
+            If (not(bShouldSave)) Begin
+                Get HasRecord of hoServer to bHasRec
+                If not bHasRec Begin
+                    Get AlwaysSaveNew to bShouldSave
+                End
+            End
+            If bShouldSave Begin
+                // Handle save validation....
+                Get pbRequesteValidateAll to bRequestValidateAll
+                If bRequestValidateAll Begin
+                    Get Request_Validate_All of hoServer to iRetVal
+                End
+                Else Begin
+                    Get Request_Validate of hoServer to iRetVal
+                End
+                If (iRetVal=0) Begin
+                    WebSet pbSaveCallbackActive to True
+                    Send VerifyRequest (RefProc(RequestSaveCallBack)) (RefFunc(Verify_Save_Msg))
+                End
+            End
+            Else Begin
+                If (pbClearAfterSave(Self)) Begin
+                    Send RequestClearExec
+                End
+                Send OnViewSaved hoServer False
+            End
+        End
+    End_Procedure
+    
+    
+    Procedure RequestSaveExec
+        Handle hoServer
+        Integer iRetVal
+        Boolean bRequestValidateAll bErr
+        Get Server to hoServer
+        // this may be a 2nd request_validate, that's ok.
+        Get pbRequesteValidateAll to bRequestValidateAll
+        If bRequestValidateAll Begin
+            Get Request_Validate_All of hoServer to iRetVal
+        End
+        Else Begin
+            Get Request_Validate of hoServer to iRetVal
+        End
+        If (iRetVal=0) Begin
+            Move False to Err
+            Send Request_Save to hoServer
+            Move Err to bErr
+            If (not(bErr)) Begin
+                // clear saved record
+                If (pbClearAfterSave(Self)) Begin
+                    Send RequestClearExec
+                End
+                Send OnViewSaved hoServer True
+            End
+        End
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure FocusFirst
+        Handle hoWebNeighborhood
+        
+        Get phoWebNeighborhood to hoWebNeighborhood    // This property is set during object creation
+        
+        // Test if the neighborhood property is actually correctly set.
+        If (hoWebNeighborhood = C_WebUnresolvedObject) Begin
+            Procedure_Return
+        End
+        
+        Send ConditionalFocus of hoWebNeighborhood
+    End_Procedure
+    
+End_Class
+

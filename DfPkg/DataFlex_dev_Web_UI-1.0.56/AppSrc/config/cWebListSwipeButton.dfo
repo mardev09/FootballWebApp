@@ -1,0 +1,7 @@
+Object
+    Set psCaption to "button"
+    
+    Procedure OnClick String sRowId
+        
+    End_Procedure
+End_Object

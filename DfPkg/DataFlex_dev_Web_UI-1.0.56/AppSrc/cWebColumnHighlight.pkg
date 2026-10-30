@@ -1,0 +1,33 @@
+﻿Use cWebColumn.pkg
+
+{ DesignerJSClass=df.WebColumnHighlight }
+Class cWebColumnHighlight is a cWebColumn
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psHighlightCSSClass "WebHighlight"
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property String psHighlight ""
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbFullText True
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbSeparateWords True
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbCaseSensitive False
+        
+        Set psJSClass to "df.WebColumnHighlight"
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

@@ -1,0 +1,8 @@
+Object 
+    Set piColumnSpan to 0
+    Set psLabel to "Tags:"
+    Set pbAllowCreate to True
+    
+    Object oSelectionSource is a cSelectionSource
+    End_Object
+End_Object

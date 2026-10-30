@@ -1,0 +1,245 @@
+﻿Use cWebBaseControl.pkg
+Use tWebTreeItem.pkg
+
+{ HelpTopic=cWebTreeView }
+{ DesignerJSClass=df.WebTreeView }
+Class cWebTreeView is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties...
+        { DesignTime=False }
+        { WebProperty=Client } 
+        Property String psSelectedId ""
+        { DesignTime=False }
+        { WebProperty=Client } 
+        Property String psSelectedValue ""
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnSelect False
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnExpand False
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnCollapse False
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowIcons True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbAllowHtml False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnSelect ""
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnExpand ""
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnCollapse ""
+        
+        { Category="Behavior" } 
+        Property Boolean pbAutoFillOnLoad True
+        
+        Set piHeight to 200
+        Set pbFillHeight to True
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebTreeView"
+    End_Procedure
+    
+    //  Called by the client.
+    Procedure LoadSubNodes String sParentId String sParentValue Integer iLevel
+        String[] aParams
+        tWebTreeItem[] aItems
+        
+        //  Call actual loading method
+        Get OnLoadChildNodes sParentId sParentValue iLevel to aItems
+        
+        //  Add client message
+        Move sParentId to aParams[0]        
+        Send ClientAction "addSubItems" aParams aItems
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Function OnLoadChildNodes String sId String sValue Integer iLevel Returns tWebTreeItem[]
+        tWebTreeItem[] aItems
+        Function_Return aItems
+    End_Function
+
+    
+    { MethodType=Event }
+    Procedure OnLoad
+        Forward Send OnLoad       
+        //  Load root level items
+        If (pbAutoFillOnLoad(Self)) Begin
+            Send FullRefresh
+        End
+        
+//        If (pbDragDropEnabled(Self)) Begin
+//            Send DragDropInit
+//        End
+    End_Procedure
+    
+       
+    // Send this method to fire a client action to refresh the tree items.
+    Procedure FullRefresh
+        tWebTreeItem[] aItems
+        String[] aParams
+        
+        //  Load the items
+        Get OnLoadChildNodes "" "" 0 to aItems
+        
+        //  Add client message
+        Move "" to aParams[0]        
+        Send ClientAction "refresh" aParams aItems
+    End_Procedure
+    
+    
+    Procedure UpdateSubNodes String sId tWebTreeItem[] aSubItems
+        String[] aParams
+        
+        //  Add client message
+        Move sId to aParams[0]        
+        Send ClientAction "refresh" aParams aSubItems
+        
+    End_Procedure
+    
+    
+    Procedure UpdateNode tWebTreeItem tNode
+        tWebTreeItem[] aNodes
+        String[] aParams
+        
+        //  Encode the items
+        Move tNode to aNodes[0]
+        
+        //  Add client message
+        Send ClientAction "updateNode" aParams aNodes
+    End_Procedure
+
+    
+    Procedure InsertNode tWebTreeItem tNode
+        tWebTreeItem[] aNodes
+        String[] aParams
+        
+        //  Encode the items
+        Move tNode to aNodes[0]
+        
+        //  Add client message
+        Send ClientAction "insertNode" aParams aNodes
+    End_Procedure
+
+    
+    Procedure RemoveNode String sId
+        String[] aParams
+        
+        Move sId to aParams[0]
+        Send ClientAction "removeNode" aParams
+    End_Procedure
+
+    
+    // Send this method to fire a client action to expand the passes tree item (id)
+    Procedure Expand String sId
+        String[] aParams
+        
+        Move sId to aParams[0]
+        Send ClientAction "expand" aParams
+    End_Procedure
+    
+    
+    // Send this method to fire a client action to collapse the passed tree item (id)
+    Procedure Collapse String sId
+        String[] aParams
+        
+        Move sId to aParams[0]
+        Send ClientAction "collapse" aParams
+    End_Procedure
+
+    // Send this method fire a client action collapse all the tree items.
+    Procedure CollapseAll
+        Send ClientAction "collapseAll"
+    End_Procedure
+
+    
+    //  Note that psSelectedValue and psSelectedId are not updated untill the next call.
+    Procedure Select String sId
+        String[] aParams
+        
+        Move sId to aParams[0]
+        Send ClientAction "select" aParams
+    End_Procedure
+    
+    Function DragData Returns Variant
+        tWebTreeViewDragData DragData
+        Handle hoJsonData
+        
+        Get phoJsonDragData to hoJsonData
+        If (hoJsonData <> C_WebUnresolvedObject) Begin
+            Get JsonToDataType of hoJsonData to DragData
+        End
+        
+        Function_Return DragData
+    End_Function
+    
+    Function DropData Returns Variant
+        tWebTreeViewDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDragAction Integer eAction Returns Boolean
+        If (eAction = C_WebDragTreeviewFolder or eAction = C_WebDragTreeviewItem) Begin
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDropAction Integer eAction Returns Boolean
+        Boolean bSupported
+        
+        Forward Get SupportsDropAction eAction to bSupported
+        
+        If (not(bSupported)) Begin
+            If (eAction = C_WebDropTreeviewFolder or eAction = C_WebDropTreeviewItem) Begin
+                Move True to bSupported
+            End
+        End
+        
+        Function_Return bSupported
+    End_Function
+    
+    { MethodType=Event }
+    Procedure OnSelect String sId String sValue Integer iLevel
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnExpand String sId String sValue Integer iLevel
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnCollapse String sId String sValue Integer iLevel
+    End_Procedure
+
+    Procedure End_Construct_Object
+        // Publish the event methods....
+        WebPublishProcedure OnSelect
+        WebPublishProcedure OnExpand
+        WebPublishProcedure OnCollapse
+        WebPublishProcedure LoadSubNodes
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+
+End_Class

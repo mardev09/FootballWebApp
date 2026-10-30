@@ -1,0 +1,35 @@
+﻿// Structures used to pass information to the client in response to a completed action on the server.
+//
+// Note: member names are kept very short in order to minimize the size of the generated JSON
+// data that is sent to the client.
+
+Use tWebNameValue.pkg
+Use tWebAdvNameValue.pkg
+Use tWebSyncProps.pkg
+Use tWebAdvSyncProp.pkg
+Use tWebDDODef.pkg
+Use tWebTreeItem.pkg
+Use tWebValueTree.pkg
+
+// WebApp action data passed to client in Ajax call response headers. These represent actions to
+// be performed on the Client.
+
+Struct tWebClientAction
+    Integer eType           // Type of client action (ctExecDefault for default, ctExecEarly for early executed, ctExecViewLoad for view load)
+    String sTarget          // Name of the control to process the action
+    String sName            // Name of the method to call on client
+    String[] aParams        // Parameters to pass to the client method
+    Integer iAttached
+End_Struct
+
+Struct tWebResponseHeader
+    tWebSyncProps[] aSyncProps     // changes to synchronized properties that occurred during the request
+    tWebAdvSyncProp[] aAdvSyncP   // changes to synchronized properties of the advanced type (structs,  arrays)
+    tWebClientAction[] aActions    // special actions to perform on the client
+End_Struct
+
+// Generic AJAX call response (i.e. Save, Find, Onclick, etc).
+Struct tWebResponse
+    tWebResponseHeader Header
+    String[] asReturnValues           // Return value from the action method that was performed on the server
+End_Struct

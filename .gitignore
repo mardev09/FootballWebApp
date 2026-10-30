@@ -1,0 +1,5 @@
+Programs/
+*.cch
+*.obj
+*.exe
+*.sws.lock

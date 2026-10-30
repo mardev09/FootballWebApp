@@ -1,0 +1,82 @@
+﻿Use cWebBaseControl.pkg
+
+Enum_List
+    Define colorFormatHex for 1
+    Define colorFormatRGB
+End_Enum_List
+
+Struct tWebColorPaletteItem
+    String sColor
+    String sDescription
+End_Struct
+
+{ DesignerJSClass=df.WebColorPicker }
+Class cWebColorPicker is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property Integer piPaletteItemsPerRow 8
+        
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property Boolean pbShowColorBar True
+        { WebProperty=Client } 
+        { Category="Colors" }
+        { EnumList="colorFormatHex,colorFormatRGB" }
+        Property Integer peColorFormat colorFormatHex
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property String psValue "#000000"
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnChange False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnChange ""
+        
+        Set pbShowLabel to False
+        Set piColumnSpan to 0
+        Set piHeight to 150
+        
+        Set psJSClass to "df.WebColorPicker"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnChange String sColor
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefinePalette
+    End_Procedure
+    
+    Procedure AddPaletteItem String sColor String sDescription
+        String[] aParams
+        
+        Move sColor to aParams[0]
+        Move sDescription to aParams[1]
+        
+        Send ClientAction "addPaletteItem" aParams
+    End_Procedure
+    
+    Procedure UpdatePalette tWebColorPaletteItem[] aItems
+        String[] aParams
+        
+        Send ClientAction "updatePalette" aParams aItems
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Send OnDefinePalette
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnChange
+    End_Procedure
+
+End_Class

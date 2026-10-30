@@ -1,0 +1,202 @@
+﻿Use cWebFloatingPanel.pkg
+Use cWebMenuItem.pkg
+Use cWebBaseMenu_mixin.pkg
+Use cWebMenuItemCheckbox.pkg
+
+// Dependencies
+Use cWebList.pkg
+Use cWebTagsForm.pkg
+Use cWebTreeView.pkg
+
+Define WebUIContext for Integer
+Enum_List
+    Define C_WebUIContextCustom           for 0
+    Define C_WebUIContextListHead         for 1
+    Define C_WebUIContextListRow          for 2
+    Define C_WebUIContextListFull         for 3
+    Define C_WebUIContextListSelection    for 4
+    Define C_WebUIContextTreeviewFolder   for 5
+    Define C_WebUIContextTreeviewItem     for 6
+    Define C_WebUIContextTagsFormTag      for 7
+End_Enum_List
+
+{ OverrideProperty=pePosition Visibility=Private }
+{ OverrideProperty=piWidth Visibility=Private }
+{ OverrideProperty=phoFloatByControl Visibility=Private }
+{ OverrideProperty=piContentWidth Visibility=Private }
+{ OverrideProperty=pbHideOnBlur Visibility=Private }
+{ OverrideProperty=pbNaturalWidth Visibility=Private }
+{ OverrideProperty=pbScroll Visibility=Private }
+{ OverrideProperty=pbShrinkIfNoSpace Visibility=Private }
+{ OverrideProperty=pbVisible Visibility=Private }
+{ OverrideProperty=piColumnCount Visibility=Private }
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=pbFocusOnShow Visibility=Private }
+{ OverrideProperty=pbRender Visibility=Private }
+{ OverrideProperty=piBottom Visibility=Private }
+{ OverrideProperty=piHeight Visibility=Private }
+{ OverrideProperty=piLeft Visibility=Private }
+{ OverrideProperty=piRight Visibility=Private }
+{ OverrideProperty=piTop Visibility=Private }
+{ DesignerJSClass=df.WebContextMenu }
+Class cWebContextMenu is a cWebFloatingPanel
+    Import_Class_Protocol cWebBaseMenu_mixin
+
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set pePosition to fpFloatFixed
+        Set piWidth to 200
+        Set piColumnCount to 1
+        Set pbHideOnEscape to True
+        Set pbFocusOnShow to True
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Integer piMaxHeight            500 // Indicates the maximum height of the whole context menu, otherwise a scrollbar will appear.
+                    
+        Property Handle phoControl              0
+        
+        { WebProperty=Client }
+        { Category="Advanced" }
+        Property String psControlName           "" // Is the top element in which the context menu will react. If empty is covers the whole window.
+        { WebProperty=Client }
+        { Category="Advanced" }
+        Property String psContextCSSSelector    "" // Is a CSS query selector for an item inside of [Property] psControlName. If empty is covers all within the root.
+                                
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        { EnumList="C_WebUIContextCustom,C_WebUIContextListHead,C_WebUIContextListRow,C_WebUIContextListSelection,C_WebUIContextTreeviewFolder,C_WebUIContextTreeviewItem,C_WebUIContextTagsFormTag" }
+        Property WebUIContext peContext           C_WebUIContextCustom
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        Property String psContextValue              "" // This contains the value after the context menu is opened.
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbChildScopes False
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        Property String psContextScopeName ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnContextMenuOpen False
+        { WebProperty=Client }
+        { Category="Client Events" } 
+        Property String psClientOnContextMenuOpen ""
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowIcons False
+        
+        Send Define_cWebBaseMenu_Mixin
+        
+        Set pbServerOnItemClick to False
+        
+        Set psJSClass to "df.WebContextMenu"
+    End_Procedure
+    
+    Function ContextScope Returns Handle
+        Handle hoControl
+        String sLongName
+        WebGet psContextScopeName to sLongName
+        Get WebObjectByName sLongName False to hoControl
+        Function_Return hoControl
+    End_Function
+    
+    {Visibility=Private}
+    Function privateOnContextMenuOpen Returns Boolean
+        Boolean bCancel
+        Move False to bCancel
+        Send OnContextMenuOpen (&bCancel)
+        Function_Return bCancel
+    End_Function
+    
+    { MethodType=Event }
+    Procedure OnContextMenuOpen Boolean ByRef bCancel
+        // Stub
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Handle hoControl
+        Boolean bIsWebControl
+        String sControlName
+        WebUIContext eContext
+        
+        Get phoControl to hoControl
+        Get psControlName to sControlName
+        If (Length(sControlName) = 0 and hoControl <= 0) Begin
+            Get Parent to hoControl
+        End
+        
+        // If a phoControl is set; override the psControlName either way.
+        // Meanwhile we check if it is a valid webobject.
+        If (hoControl > 0) Begin
+            Get IsAjaxWebObject of hoControl to bIsWebControl
+            If (not(bIsWebControl)) Begin
+                Error DFERR_PROGRAM "The set phoControl is not a WebObject."
+            End
+            
+            Set psControlName to (WebObjectName(hoControl))
+        End
+    End_Procedure
+    
+    { Visibility=Private }    
+    Procedure PostSerializeObject
+        Send FullRefresh
+    End_Procedure
+    
+    // pbVisible is ignored as it is normally client protected.
+    { Visibility=Private }
+    Function GetAccessible Returns Integer
+        Integer iAccessible iAccessibleParent
+        Boolean bVal
+        
+        If (piAccessibilityCacheCall(Self) <> giWebAccCacheCtx) Begin
+            Move C_UIA_InSync to iAccessible
+            
+            If (pbNoAccessibilityCheck(Self)) Begin
+               Move C_UIA_All to iAccessible
+            End
+            Else Begin
+                WebGet pbRender to bVal
+                If (bVal) ;
+                    Move (iAccessible + C_UIA_Rendered) to iAccessible
+                
+                Move (iAccessible + C_UIA_Visible) to iAccessible
+                
+                WebGet pbEnabled to bVal
+                If (bVal) ;
+                    Move (iAccessible + C_UIA_Enabled) to iAccessible
+            End
+            
+            Delegate Get GetAccessible to iAccessibleParent
+            Move (iAccessibleParent iand iAccessible) to iAccessible
+            
+            Set piAccessibilityCache to iAccessible
+            Set piAccessibilityCacheCall to giWebAccCacheCtx
+        End
+        Else Begin
+            Get piAccessibilityCache to iAccessible
+        End
+        
+        Function_Return iAccessible
+    End_Function
+    
+    { Visibility=Private }
+    Procedure Destroy_Object
+        Send Destroy_Object_cWebBaseMenu_mixin
+        
+        Forward Send Destroy_Object
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send End_Define_cWebBaseMenu_mixin
+        WebPublishFunction privateOnContextMenuOpen
+    End_Procedure
+End_Class

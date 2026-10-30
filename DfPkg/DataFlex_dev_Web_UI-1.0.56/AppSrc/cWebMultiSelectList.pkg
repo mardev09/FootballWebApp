@@ -1,0 +1,400 @@
+﻿Use cWebList.pkg
+
+{ HelpTopic=cWebMultiSelectList }
+Class cWebMultiSelectList is a cWebList
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set pbOfflineEditing to True
+
+        Set psJSClass to "df.WebMuliSelectList"
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbSelectionByRow True
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbKeyboardSelection True
+        { WebProperty=Client }
+        Property Boolean pbAllSelected False
+        
+        { WebProperty=Client }
+        { DesignTime=False   }
+        { Visibility=Private }
+        Property String[] paSelectedRowIds
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnSelectRow False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnSelectRow ""
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnDeSelectRow False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnDeSelectRow ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnSelectAllRows False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnSelectAllRows ""
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnDeSelectAllRows False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnDeSelectAllRows ""
+        
+        // Change delete verification check to multiple entries check.
+        Register_Procedure MultiDeleteConfirmation
+        Set Verify_Delete_msg to (RefProc(MultiDeleteConfirmation))
+        
+        { Category="Behavior" }
+        Property Boolean pbThrowErrorIfDeleteFails True
+        
+        { Visibility=Private }
+        Property Boolean pbPrivateClearSelectionOnRefresh True // Used in OnSearch to avoid clearing of the selection.
+        
+        WebPublishProcedure privateOnSelectEvent
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure privateOnSelectEvent Integer iEvent
+        tWebRow Row
+        Handle hoJson
+        Get phoActionJsonData to hoJson
+        Case Begin
+            Case (iEvent = 1) // C_WEBLIST_MULTI_SELECT_SINGLE
+                Get JsonToDataType of hoJson to Row
+                Send OnSelectRow Row
+                Case Break
+            Case (iEvent = 2) // C_WEBLIST_MULTI_DESELECT_SINGLE
+                Get JsonToDataType of hoJson to Row
+                Send OnDeSelectRow Row
+                Case Break
+            Case (iEvent = 3) // C_WEBLIST_MULTI_SELECT_ALL
+                WebSet pbAllSelected to True
+                Send OnSelectAllRows
+                Case Break
+            Case (iEvent = 4) // C_WEBLIST_MULTI_DESELECT_ALL
+                WebSet pbAllSelected to False
+                Send OnDeSelectAllRows
+                Case Break
+        Case End
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnSelectRow tWebRow Row
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnDeSelectRow tWebRow Row
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnSelectAllRows
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnDeSelectAllRows
+    End_Procedure
+    
+    {MethodType=Property}
+    Procedure Set ListSelection String[] aSelection
+        WebSet paSelectedRowIds to aSelection
+    End_Procedure
+    
+    {MethodType=Property}
+    Function ListSelection Returns String[]
+        Boolean bAllSelected bDataAware
+        String[] aSelection
+
+        WebGet pbAllSelected to bAllSelected
+        WebGet pbDataAware to bDataAware
+        If (bAllSelected and bDataAware) Begin
+            Send FindAllRecords (&aSelection)
+        End
+        Else Begin
+            WebGet paSelectedRowIds to aSelection
+        End
+        Function_Return aSelection
+    End_Function
+    
+    Function AreAllSelected Returns Boolean
+        Boolean bAllSelected
+
+        WebGet pbAllSelected to bAllSelected
+        Function_Return bAllSelected
+    End_Function
+
+    Procedure SelectAll Boolean bChecked
+        String[] aParams
+        
+        Move bChecked to aParams[-1]
+        Send ClientAction "selectAll" aParams
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure FindAllRecords String[] ByRef aSelection
+        Integer iMainFile iPrimaryIndex
+        Boolean bOk
+        Handle hoDD
+
+        Get ReadingServer to hoDD
+        Get Main_File of hoDD to iMainFile
+        Get_Attribute DF_FILE_PRIMARY_INDEX of iMainFile to iPrimaryIndex
+
+        Send Request_Read of hoDD FIRST_RECORD iMainFile iPrimaryIndex
+        Move Found to bOk
+
+        While (bOk)
+            Move (SerializeRowID (GetRowID(iMainFile))) to aSelection[-1]
+
+            Send Request_Read of hoDD GT iMainFile iPrimaryIndex
+            Move Found to bOk
+        Loop
+    End_Procedure
+
+    Procedure ClearListSelection
+        String[] aSelection
+
+        WebSet pbAllSelected to False
+        Set ListSelection to aSelection
+    End_Procedure
+    
+    Procedure DeleteListSelection
+        Send RequestDeleteExec
+    End_Procedure
+    
+    {Visibility = Private}
+    Function SupportsDragAction Integer eAction Returns Boolean
+        Boolean bRet
+        Forward Get SupportsDragAction eAction to bRet
+        If (bRet) Begin
+            Function_Return True
+        End
+        
+        Function_Return (eAction = C_WebDragListSelection)
+    End_Function
+    
+    Function DragData Returns Variant
+        tWebMultiSelectListDragData DragData
+        Handle hoJsonData
+        
+        Get phoJsonDragData to hoJsonData
+        
+        If (hoJsonData <> C_WebUnresolvedObject) Begin
+            Get JsonToDataType of hoJsonData to DragData
+        End
+        
+        Function_Return DragData
+    End_Function
+    
+    Function DropData Returns Variant
+        tWebMultiSelectListDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    
+    // Sent by DDO when there is a clear/find/save/delete.
+    //
+    // eMode - Determines the type of DDO operation which generated this refresh message. 
+    //         It may be one of the following:
+    //         Mode_Clear:             Used only for DEOs attached to the DDO that was the
+    //                                 "origin" of a Clear operation, (i.e., the DDO received
+    //                                 the original Clear message). All other DDOs Send their 
+    //                                 DEOs the refresh message passing mode_find_or_clear_set.  
+    //         Mode_Find_or_Clear_Set: Used for DEOs attached to DDOs which have Found and/or cleared records.  
+    //         Mode_Clear_All:         Used for DEOs attached to any DDO that participated in a clear_all operation.  
+    //         Mode_Delete:            Used for DEOs attached to any DDO that performed a successful deletion. 
+    //                                 DDOs that were merely updated as the result of a deletion Use Mode_Find_or_Clear_Set.  
+    //         Mode_Save:              Used for DEOs attached to any DDO involved in a successful Save operation. 
+    { MethodType=Event }
+    Procedure Refresh Integer eMode
+        Boolean bActive bAppSynching bClearSelectionOnRefresh bRowDisplay
+        
+        Get Active_State to bActive
+        Get AppSynching to bAppSynching
+        Get pbPrivateClearSelectionOnRefresh to bClearSelectionOnRefresh
+        Get pbNotifyingExternalDD to bRowDisplay
+
+        If (bActive and not(bAppSynching) and bClearSelectionOnRefresh and not(bRowDisplay)) Begin
+            If (eMode = MODE_CLEAR or eMode = Mode_Find_or_Clear_Set or eMode = MODE_CLEAR_ALL) Begin
+                Send ClearListSelection
+            End
+        End
+        Forward Send Refresh eMode
+    End_Procedure
+    
+    // Abstracted to disable selection-clearing if just searching for text.
+    { MethodType=Event } 
+    Procedure OnSearch String sSearchText
+        Boolean bPrivateClearSelectionOnRefresh
+        Get pbPrivateClearSelectionOnRefresh to bPrivateClearSelectionOnRefresh
+        
+        Set pbPrivateClearSelectionOnRefresh to False
+        Forward Send OnSearch sSearchText
+        Set pbPrivateClearSelectionOnRefresh to bPrivateClearSelectionOnRefresh
+    End_Procedure
+    
+    // default Delete confirmation message
+    Procedure MultiDeleteConfirmation Handle hmCallBack
+        String[] aSelection
+        Get ListSelection to aSelection
+        Send ShowYesNo (Self) hmCallBack (SFormat(C_$DeleteTheseRecords, SizeOfArray(aSelection))) C_$Confirm
+    End_Procedure
+    
+    // Delete Logic to delete the current row pointed to by psCurrentRowId.
+    // returns True if the delete was successful.
+    {Visibility=Private}
+    Function DeleteSelectedRow Returns Integer
+        Handle hmVerify
+        Boolean bContinue
+        
+        Get pbAllowDeleteRow to bContinue
+        If (not(bContinue)) Begin
+            Error DFERR_OPERATION_NOT_ALLOWED
+            Procedure_Return
+        End
+        
+        Get Verify_Delete_msg to hmVerify
+        If (hmVerify) Begin
+            WebSet pbDeleteCallbackActive to True
+            Send VerifyRequest (RefProc(RequestDeleteCallBack)) (RefFunc(Verify_Delete_Msg))
+            Function_Return sroPending
+        End
+        Else Begin
+            Send RequestDeleteExec
+            // we actually don't know if this will work or not, since this finds another row. For now, we say success
+        End
+        Function_Return sroSucceed
+    End_Function
+    
+    Procedure RequestDeleteExec
+        Handle hoDD
+        RowID riSelectedRow
+        String[] aSelection
+        Integer iIndex iMainFile iOrdering
+        Boolean bDataAware bContinue bReverseOrdering
+
+        Get ListSelection to aSelection
+        If (SizeOfArray(aSelection) = 0) Begin
+            Procedure_Return
+        End
+        
+        Get pbAllowDeleteRow to bContinue
+        If (not(bContinue)) Begin
+            Error DFERR_OPERATION_NOT_ALLOWED
+            Procedure_Return
+        End
+        
+        Get pbDataAware to bDataAware
+        
+        If (bDataAware) Begin
+            // Perform the db-aware delete
+            Get ReadingServer to hoDD
+            Get Main_File of hoDD to iMainFile
+                
+            While (iIndex < SizeOfArray(aSelection))
+                Move (DeserializeRowID(aSelection[iIndex])) to riSelectedRow
+                
+                Get FindByRowIdEx of hoDD iMainFile riSelectedRow to bContinue
+                If (bContinue) Begin
+                    Get OnDeleteRow aSelection[iIndex] to bContinue
+                    If (bContinue) Begin
+                        Send Request_Delete to hoDD       // Perform the delete
+                        If (not(Err)) Begin
+                            Send RemoveRow aSelection[iIndex]      // Tell the client to remove the deleted row.
+                            Move (RemoveFromArray(aSelection, iIndex)) to aSelection
+                        End
+                        Else Begin
+                            Increment iIndex
+                        End
+                    End
+                    Else Begin
+                        Increment iIndex
+                    End
+                End
+                Else Begin
+                    Increment iIndex
+                End
+            Loop
+            
+            // Select the next logical row
+            Get IndexOrder to iOrdering
+            WebGet pbReverseOrdering to bReverseOrdering
+    
+            If (bReverseOrdering) Begin
+                Send Establish_Find_Direction of hoDD LT iMainFile iOrdering 
+            End
+            Else Begin
+                Send Establish_Find_Direction of hoDD GT iMainFile iOrdering 
+            End
+            
+            Send Locate_Next of hoDD    // Try to find the row below the deleted row.
+            
+            If (not(Found)) Begin
+                // If the row below the deleted row was not found then it means we deleted the
+                // last row. Now we will try to load the new last row. If there are no remaining
+                // rows in the dataset then the buffer will be automatically cleared (which is 
+                // what we want)
+                If (bReverseOrdering) Begin
+                    Send Request_Read of hoDD FIRST_RECORD iMainFile iOrdering
+                End
+                Else Begin
+                    Send Request_Read of hoDD LAST_RECORD iMainFile iOrdering
+                End
+            End
+            
+            If (Found) Begin
+                Send Request_Assign of hoDD iMainFile
+            End
+            Else Begin
+                Send ClearGrid
+            End
+            
+            Send UpdateCurrentRowID
+        End
+        Else Begin
+            While (iIndex < SizeOfArray(aSelection))
+                Get OnDeleteRow aSelection[iIndex] to bContinue
+                If (bContinue) Begin
+                    Send RemoveRow aSelection[iIndex]      // Tell the client to remove the deleted row.
+                    Move (RemoveFromArray(aSelection, iIndex)) to aSelection
+                End
+                Else Begin
+                    Increment iIndex
+                End
+            Loop
+        End
+            
+        If (iIndex) Begin
+            Send OnMultipleRowsDeletionError aSelection
+        End
+        
+        WebSet pbAllSelected to False
+        Set ListSelection to aSelection
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnMultipleRowsDeletionError String[] aNonDeletedSelection
+        If (pbThrowErrorIfDeleteFails(Self)) Begin
+            Error DFERR_CANT_DELETE_RECORD (SFormat(C_$FailedToDeleteNrRecords, SizeOfArray(aNonDeletedSelection)))
+        End
+    End_Procedure
+
+End_Class

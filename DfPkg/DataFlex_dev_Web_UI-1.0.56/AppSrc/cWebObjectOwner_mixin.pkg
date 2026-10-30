@@ -1,0 +1,201 @@
+﻿Use VdfBase.pkg
+Use cWebCallHandler_mixin.pkg
+Use WebUIConstants.pkg
+Use WebPropertyMetaData.pkg
+Use tWebRadioGroup.pkg
+
+// Defines the interface used by web objects (cWebObject) to communicate with the 'owner' of the web
+// object. The owner can be a cWebApp, cWebDynamicObjectContainer or a cLocalWebControlHost. The owner
+// itself implements the API (in their own way).
+Class cWebObjectOwner_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebObjectOwner_mixin
+    End_Procedure
+    
+    // This procedure delegates the SetSyncProp call to the ghoSyncPropsHandler. It is 
+    // implemented as part of the dynamic objects framework, in which certain functions
+    // should be delegated to the cWebApp object, whereas other functions should be
+    // delegated to a cWebDynamicObjectContainer object.
+    { Visibility=Private }
+    Procedure OwnerSetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Variant vPropValue
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    
+    // This procedure delegates the GetSyncProp call to the ghoSyncPropsHandler. It is 
+    // implemented as part of the dynamic objects framework, in which certain functions
+    // should be delegated to the cWebApp object, whereas other functions should be
+    // delegated to a cWebDynamicObjectContainer object.
+    { Visibility=Private }
+    Function OwnerGetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns String
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return ""
+    End_Procedure  
+    
+    // This procedure delegates the GetSyncProp call to the ghoSyncPropsHandler. It is 
+    // implemented as part of the dynamic objects framework, in which certain functions
+    // should be delegated to the cWebApp object, whereas other functions should be
+    // delegated to a cWebDynamicObjectContainer object.
+    { Visibility=Private }
+    Function OwnerGetAdvSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns Variant
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return 0
+    End_Procedure  
+    
+    // Called during initialization of a web object to register itself with its owner.
+    { Visibility=Private }
+    Procedure OwnerRegisterWebObject Handle hoWO
+        Error DFERR_PROGRAM "Not imlemented"
+    End_Procedure
+    
+    // Called during initialization of a view to register itself.
+    { Visibility=Private }
+    Procedure OwnerRegisterView Handle hoView
+        Error DFERR_PROGRAM "Views are not supported by this web control host."
+    End_Procedure
+    
+    // Determines if the owner is currently 'in scope' which means that its client web properties 
+    // are accessible.
+    { Visibility=Private }
+    Function OwnerIsInCallActionScope Handle hoWO Returns Boolean
+        Error DFERR_PROGRAM "Not implemented"
+        Function_Return False
+    End_Function
+    
+    //  This function searches the object handle of a web object using its public name. The object 
+    //  name can be obtained by calling the WebObjectName Function on a web Object. If it can't 
+    //  find the Object it will cause an Error and return 0.
+    //      sObjectName - Name of the web object.
+    { Visibility=Private }
+    Function FindWebObject String sObjectName Boolean bOptErr Returns Handle
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // This function is called for special owners like the dynamic object container to solve $ references.
+    { Visibility=Private }
+    Function OwnerFindWebObject String sObjectName Returns Handle
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    //  This function searches the object handle of a web object using its public name. The object 
+    //  name can be obtained by calling the WebObjectName Function on a web Object. If it can't 
+    //  find the Object it will return C_WebUnresolvedObject (0).
+    //      sObjectName - Name of the web object.
+    { Visibility=Private }
+    Function FindWebObjectSilent String sObjectName Returns Handle
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    { Visibility=Private }
+    Function FindView String sViewName Boolean bSilent Returns Handle
+        Error DFERR_PROGRAM "Views are not supported by this web control host."
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // Adds a ClientAction to be executed during the next response.
+    // tClientAction    - Is the action to be executed
+    { Visibility=Private }
+    Procedure AddClientAction tWebClientAction tClientAction
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    // Cancels a client action that was scheduled.
+    // tClientAction    - Is the action to be executed
+    { Visibility=Private }
+    Procedure OwnerCancelClientAction Handle hoWO String sName
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure AddChangeRightsClient Handle hoClient
+        // OnChangeRights is only triggered by hosts that have sessions so this is implemented in cWebSessionHost_mixin
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure RemoveChangeRightsClient Handle hoClient
+        // OnChangeRights is only triggered by hosts that have sessions so this is implemented in cWebSessionHost_mixin
+    End_Procedure
+    
+    // Used with delegation to determine the owner of a web object (cWebApp, cLocalWebControlHost or cWebDynamicObjectContainer).
+    { Visibility=Private }
+    Function FindOwner Returns Handle
+        Function_Return Self
+    End_Function
+    
+    // Determines if the owner is a dynamic object container.
+    { Visibility=Private }
+    Function IsDynamicObjectContainer Returns Boolean
+        Function_Return False
+    End_Function
+    
+    // Determines the current WebViewStyle which is called using delegaiton and overriden by cWebView.
+    { Visibility=Private }
+    Function WebViewStyle Returns Integer
+        Function_Return wvsNone
+    End_Function
+    
+    // Indicates that we are in the process of syncing a DDO's field_defaults state, called using delegation and overriden by cWebView.
+    { Visibility=Private }
+    Function SynchingFieldDefaults Returns Boolean 
+        Function_Return False
+    End_Function
+    
+    //  Implemented in dynamic object container
+    { Visibility=Private }
+    Procedure SetDynamicProp Handle hoObj tWebPropMetaData pubProp Variant vPropValue
+        Error DFERR_PROGRAM "Only use SetDynamicProp on dynamic objects!"
+    End_Procedure
+    
+    //  Implemented in dynamic object container
+    { Visibility=Private }
+    Function DynamicObjectEx String sDynamicObjectId Returns Handle
+        Error DFERR_PROGRAM "Not implemented"
+    End_Function
+    
+    //  Implemented in dynamic object container
+    { Visibility=Private }
+    Function DynamicObject String sDynamicObjectId Returns Handle
+        Error DFERR_PROGRAM "Not implemented"
+    End_Function
+    
+    //  Implemented in dynamic object container
+    { Visibility=Private }
+    Function FindRadioGroup String sDynamicObjectId Boolean ByRef bFound Returns tWebDynamicRadioGroup
+        tWebDynamicRadioGroup empty
+        
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return empty
+    End_Function
+    
+    // Hook for customizing nav path registration, implemented by widget container
+    { Visibility=Private }
+    Procedure OwnerNavRegisterPath Boolean ByRef bCancel Integer ByRef eNavMode Handle ByRef hoView Handle ByRef hoInvokingObject String ByRef sName
+    End_Procedure
+    
+    // Hook for customizing invoking object when finding navigation path, implemented by widget container
+    { Visibility=Private }
+    Procedure OwnerNavTranslateInvoking Handle ByRef hoInvokingObject
+    End_Procedure
+    
+    // Hook for adjusting the object name, by default an owner like cWebApp would like to cut off its own name
+    { Visibility=Private }
+    Procedure OwnerMangleWebObjectName Handle hoWebObject String ByRef sObjectName
+        String sOwnerName
+        
+        Get Name to sOwnerName
+        
+        Move (Remove(sObjectName, 1, Length(sOwnerName))) to sObjectName
+        If (Left(sObjectName, 1) = ".") ;
+            Move (Remove(sObjectName, 1, 1)) to sObjectName
+    End_Procedure
+End_Class

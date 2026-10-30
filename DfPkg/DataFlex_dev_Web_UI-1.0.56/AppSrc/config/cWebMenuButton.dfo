@@ -1,0 +1,16 @@
+Object
+    Set piColumnSpan to 0
+    Set psCaption to "Menu"
+    Set psCSSClass to "WebIcon_Hamburger"
+    Set psMenuCSSClass to "WebMenuButton_Arrow"
+    Set piMenuWidth to 120
+    Set pbMenuShowCaption to False
+
+    Procedure OnDefineMenu tWebMenuItem[] ByRef aMenu
+        //  Define your menu items here
+    End_Procedure
+    
+    Procedure OnItemClick String sId String sCaption
+        //  Handle your menu clicks here
+    End_Procedure
+End_Object

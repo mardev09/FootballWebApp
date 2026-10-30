@@ -1,0 +1,43 @@
+﻿Use cWebForm.pkg
+Use cWebList.pkg
+Use cWebColumn_mixin.pkg
+
+
+// Class: cWebColumn
+
+// Used to represent each column of a cWebGrid or cWebLookup control.
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProperty=psLabel Visibility=Private }
+{ OverrideProperty=psLabelColor Visibility=Private }
+{ OverrideProperty=peLabelAlign Visibility=Private }
+{ OverrideProperty=peLabelPosition Visibility=Private }
+{ OverrideProperty=piLabelOffset Visibility=Private }
+{ OverrideProperty=pbShowLabel Visibility=Private }
+{ OverrideProperty=piColumnIndex Visibility=Private }
+{ OverrideProperty=piColumnSpan Visibility=Private }
+{ OverrideProperty=piRowIndex Visibility=Private }
+{ OverrideProperty=piRowSpan Visibility=Private }
+{ HelpTopic=cWebColumn }
+{ DesignerJSClass=df.WebColumn }
+{ Navigable=OnPrompt NavigableRequiredParent=cWebGrid}
+Class cWebColumn is a cWebForm
+    
+    Import_Class_Protocol cWebColumn_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Send Define_cWebColumn_mixin
+        Set psJSClass to "df.WebColumn"
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        { EnumList="wbNone, wbWrap, wbPre, wbPreWrap, wbEllipsis" }
+        Property Integer peWordBreak wbNone
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        { EnumList="vaTop, vaCenter, vaBottom"}
+        Property Integer peVerticalAlign vaCenter
+    End_Procedure
+    
+End_Class

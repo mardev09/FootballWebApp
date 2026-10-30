@@ -1,0 +1,17 @@
+﻿
+
+Struct tWebTreeItem
+    String sId
+    String sParentId
+           
+    String sName
+    String sAltText
+           
+    String sValue
+    String sCSSClass
+    String sIcon
+    Boolean bFolder
+            
+    Boolean bLoadChildren
+    Boolean bExpanded
+End_Struct

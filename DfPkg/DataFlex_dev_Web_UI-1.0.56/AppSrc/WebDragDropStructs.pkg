@@ -1,0 +1,49 @@
+﻿Use tWebRow.pkg
+Use tWebTreeItem.pkg
+
+Struct tWebTreeViewDragData
+    tWebTreeItem data
+End_Struct
+
+Struct tWebTreeViewDropData
+    tWebTreeItem data
+End_Struct
+
+Struct tWebListDragData
+    tWebRow data
+End_Struct
+
+Struct tWebListDropData
+    tWebRow data
+End_Struct
+
+Struct tWebMultiSelectListDragData
+    tWebRow[] data
+End_Struct
+
+Struct tWebMultiSelectListDropData
+    tWebRow data
+End_Struct
+
+Struct tWebTagsFormDragData
+    String data
+End_Struct
+
+Struct tWebTagsFormDropData
+    String data
+End_Struct
+
+Struct tWebControlDropData
+    String data
+End_Struct
+
+Struct tGridCell
+    Integer iRow
+    Integer iCol
+    Integer iRowSpan
+    Integer iColSpan
+End_Struct
+
+Struct tWebWidgetContainerDropData
+    tGridCell data
+End_Struct

@@ -1,0 +1,80 @@
+﻿Use cWebBaseSelectionForm.pkg
+Use sql.pkg
+Use tSuggestion.pkg
+Use cJsonObject.pkg
+
+{ HelpTopic=cWebSelectionForm }
+{ DesignerJSClass=df.WebSelectionForm }
+Class cWebSelectionForm is a cWebBaseSelectionForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+                
+        Set psAutoComplete to "off"                 // Turn off browser autocompletion
+        Set psJSClass to "df.WebSelectionForm"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnSelectSuggestion tSuggestion Suggestion
+        Handle hoServer hoSelectionSource
+        Integer iFile
+        Boolean bSuccess bSourceIsValidationTable
+        RowID rRowId
+        
+        Get Server to hoServer
+        
+        If ((hoServer <> 0)) Begin
+            Get Data_File to iFile     
+            Get phoSelectionSource to hoSelectionSource 
+            Get pbSourceIsValidationTable of hoSelectionSource to bSourceIsValidationTable
+            
+            If (not(bSourceIsValidationTable) and (iFile <> 0)) Begin
+                Move (DeserializeRowID(Suggestion.sRowId)) to rRowId    
+                If (not(IsNullRowID(rRowId))) Begin
+                    Get FindByRowIdEx of hoServer iFile rRowId to bSuccess
+                    // this is very unlikely
+                    If (not (bSuccess)) Begin
+                        Error DFERR_CANT_REFIND_RECORD
+                    End
+                End
+            End
+            Else Begin
+                WebSet psValue to Suggestion.aValues[0]
+                WebSet pbChanged to True
+            End 
+        End
+        Else Begin
+            WebSet psValue to Suggestion.aValues[0]
+            WebSet pbChanged to True
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure OnPostCreate tSelectionItem NewItem
+        tSuggestion Suggestion
+        
+        Move NewItem.sRowId to Suggestion.sRowId
+        Move NewItem.aValues to Suggestion.aValues
+        Send OnSelectSuggestion Suggestion
+    End_Procedure
+    
+    Procedure SelectSuggestion String sSearch
+        tSuggestion[] aData
+        Handle hoJson hoAdvancedSearchView
+        
+        //  Deserialize the sent row
+        Get phoActionJsonData to hoJson
+        Get JsonToDataType of hoJson to aData
+        
+        If (SizeOfArray(aData) = 1) Begin
+            Send OnSelectSuggestion aData[0]
+        End
+    End_Procedure
+        
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure SelectSuggestion
+    End_Procedure
+
+End_Class

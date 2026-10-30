@@ -1,0 +1,5 @@
+Object
+    Set psHtmlBefore to '<table>'
+    Set psHtmlTemplate to '<tr><td>{{oWebColumn1}}</td></tr>'
+    Set psHtmlAfter to '</table>'
+End_Object

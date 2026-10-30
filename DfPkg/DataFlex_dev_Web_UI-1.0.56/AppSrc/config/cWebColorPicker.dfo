@@ -1,0 +1,6 @@
+Object
+    Set piColumnSpan to 0
+    Set pbShowLabel to False
+    Set psValue to "#4da8e8"
+    Set piHeight to 250
+End_Object

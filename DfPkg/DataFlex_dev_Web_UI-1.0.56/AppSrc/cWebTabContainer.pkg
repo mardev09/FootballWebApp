@@ -1,0 +1,18 @@
+﻿Use cWebCardContainer.pkg
+
+{ OverrideProperty=pbShowBorder Visibility=Private }
+{ OverrideProperty=pbShowCaption Visibility=Private }
+{ CompositeClass=cWebTabPage }
+{ HelpTopic=cWebTabContainer }
+{ DesignerJSClass=df.WebTabContainer }
+Class cWebTabContainer is a cWebCardContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set piMinHeight to 80
+        
+        Set psJSClass to "df.WebTabContainer"
+    End_Procedure
+
+End_Class

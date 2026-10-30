@@ -1,0 +1,544 @@
+﻿Use cBaseErrorHandler.pkg
+Use WebUIConstants.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use Datadict.pkg
+
+// Error handler uses this function of cWebApp (but never on cWebAppBasic)
+Register_Function CurrentView Returns Handle
+Register_Function FirstControlWithDataBinding Integer iFile Integer iField Returns Handle
+Register_Function ShowControlError Integer iErrNum String sErrText Returns Boolean
+Register_Procedure ShowError Integer iErrNum Integer iErrLine String sErrText String sCaption Boolean bUserError
+
+Class cWebServerUIErrorHandler is a cBaseErrorHandler
+    Procedure Construct_Object
+        Forward Send Construct_Object
+    
+        // this should not get set to a value until the COM object is created
+        // and is working. When set, the error handler knows it that it can
+        // send error messages to the COM handler.
+        { Visibility=Private }
+        Property Handle  phoInetSession  0
+                
+        //  Currently active web host
+        { Visibility=Private }
+        Property Handle phoWebHost C_WebUnresolvedObject
+        
+        
+        { Visibility=Private }
+        Property Boolean pbInErrorRecording False // set true when inside of an AJAX web-request
+    
+        // We will store Err# in the main error object
+        Object oErrorNumber is an Array
+        End_Object
+        Object oErrorText is an Array
+        End_Object
+        Object oFullErrorText is an Array
+        End_Object
+        Object oFileNr is an Array
+        End_Object
+        Object oFieldNr is an Array
+        End_Object
+        Object oLineNr is an Array
+        End_Object
+    End_Procedure
+    
+    
+    // Determines the current view used to do specialized handling of field errors.
+    { Visibility = Private }
+    Function DetermineCurrentView Returns Handle
+        Handle hoFocus hoView
+        
+        Move C_WebUnresolvedObject to hoView
+
+        If (phoWebHost(Self) <> 0) Begin
+            Get CurrentView of (phoWebHost(Self)) to hoView
+        End
+        
+        Function_Return hoView
+    End_Function
+    
+    { Visibility =Private }
+    Procedure UnhandledErrorDisplay Integer iErrorLine String sMessage
+        String sCaption
+        Get psUnhandledErrorCaption to sCaption
+        Move (Replaces("\n",sMessage,Character(13))) to sMessage
+        Move (Replaces("\"+Character(13), sMessage, "\n")) to sMessage
+        ErrorDisplay iErrorLine sMessage sCaption C_$OK C_$Copy
+    End_Procedure
+    
+    { Visibility =Private }
+    Procedure MessageBoxError String sErrorText Boolean bCritical
+        Integer iIcon iRet
+        Handle hoOldSelf hoFocus
+        Move (If(bCritical,MB_IconHand,MB_IconExclamation)) to iIcon
+        Move Self to hoOldSelf
+        Get Focus of desktop to hoFocus
+        If (hoFocus>desktop) ;
+            Move hoFocus to Self
+        Move (Message_Box(sErrorText, C_$ERROR, MB_Ok, iIcon)) to iRet
+        Move hoOldSelf to Self
+    End_Procedure
+    
+
+    
+    // This is the Error_Report for non AJAX style applications. This could be 
+    // Web Service, HTTP Handler, ASP or old style webapps. We've copied it here
+    // rather than trying to integrate it directly into Error_Report. It gets called by
+    // Error_Report as needed.
+    {Visibility=Private }
+    Procedure BasicErrorReport Integer iError Integer iLine String ErrMsg
+        String sSystemErr sMess sLabel sFile sDtl sFullError
+        String sStack sSystemAndStack
+        Integer iErrFile iErrField
+        Boolean bCritical bQueueErrors bLogAllErrors bLocal bHtmlErrors
+        Handle hoInetSession
+        Boolean bUnhandledSupport
+        Boolean bDebugging bTrapped
+        Integer iSrc iTxtlen
+        String sCaption
+
+        
+        Get phoInetSession to hoInetSession // this may or may not be set yet.
+        
+        Get IsCritical iError to bCritical
+        Get pbUnhandledErrorSupport to bUnhandledSupport
+        Move (IsDebuggerPresent()) to bDebugging
+        
+        // if an operator error this may be a Procedure UserError situation where the
+        // caption is passed in the error text. This handler does not support setting the caption so we just remove it.
+        // The ajax superclass handler will support this
+        If (iError=DFERR_OPERATOR) Begin
+            Move (pos(C_ErrorCaption,ErrMsg)) to iSrc
+            If iSrc Begin
+                Move (length(C_ErrorCaption)) to  iTxtLen
+                Move (remove(ErrMsg, 1, iSrc-1 + iTxtLen )) to sCaption // will not get used here
+                Move (Left(ErrMsg,iSrc-1)) to ErrMsg
+            End
+        End
+        
+        Get Error_Description iError ErrMsg  to sSystemErr
+        
+        // if the error source is identified we can get extended error
+        // text for our error message. This capability is a standard part
+        // of VDF5
+        If ghoErrorSource Begin
+            // These messages were just added to the DD.
+            Get Extended_Error_file   of ghoErrorSource to iErrFile
+            Get Extended_Error_Field  of ghoErrorSource to iErrField
+            // we are making the assumption that ghoErrorSource is a DD object
+            // If it is not, we will have problems.....but it will be!
+            If (iErrFile>0) Begin
+                Get_Attribute DF_FILE_DISPLAY_NAME of iErrFile to sFile
+                If (iErrField>0) Begin
+                    Get File_Field_Label of ghoErrorSource iErrFile iErrField DD_LABEL_LONG to sLabel
+                    Move (SFormat(C_$FieldInDataFile,sLabel, sFile)) to sMess
+                End
+                Else Begin
+                    Move (SFormat(C_$InDataFile,sFile)) to sMess
+                End
+                Append sSystemErr "\n" sMess
+            End
+        End
+        
+        Move (SFormat(C_$VDFErrorInLine, iError, iLine)) to sDtl
+        If (iErrFile  > 0) ;
+            Move (sDtl * DD_FILE_TEXT  * String(iErrFile))  to sDtl
+        If (iErrField > 0) ;
+            Move (sDtl * DD_FIELD_TEXT * String(iErrField)) to sDtl
+        // full error is systemError + Error and line numbers
+        Move (sSystemErr + "\n" + sDtl) to sFullError
+        
+        // If 0, the COM object is not yet ready to be used. If an error occurs in this
+        // condition, we consider this error to always be fatal and will notify WebApp
+        // Server of this error via WebAppFatalError command
+        If (hoInetSession=0) Begin
+            
+            If bDebugging Begin
+                Send UnhandledErrorDisplay iLine sFullError
+            End
+            Else Begin
+                CallStackDump sStack
+                WebAppFatalError (Replaces("\n", (sFullError + "\n\n" + sStack) , character(13)+character(10)))
+                // we only arrive here if WebApp cannot handle the error. All we can
+                // do is abort.
+                //Send MessageBoxError sFullError 1 // might be useful for VDF debugging, but cannot be used on server
+            End
+            Abort
+        End
+        Else Begin
+            
+            Get pbAllErrorstoLocal    of hoInetSession to bLocal
+            Get pbQueueErrors         of hoInetSession to bQueueErrors
+            Get pbAllErrorstoEventLog of hoInetSession to bLogAllErrors
+            Get pbAllErrorsToHtml     of hoInetSession to bHtmlErrors
+            
+            // If error is critical, we cannot go on.
+            If bCritical Begin
+                CallStackDump sStack
+                Move (Replaces(Character(13)+Character(10),sStack, "\n")) to sStack
+                Move (sSystemErr + "\n\n" + sStack) to sSystemAndStack
+                Send ReportCriticalError to hoInetSession iError (If(bUnhandledSupport, sSystemAndStack, sSystemErr)) iLine iErrFile iErrField
+                
+                // also attempt to send message to client (html browser)
+                If bHtmlErrors Begin
+                    // The option to disable stack dumps only makes sense if the developer is using html errors to report unhandled problems
+                    // and for some reason the stack dump will mess up existing applications. This seems very unlikely but we are providing
+                    // a way to disable this if needed via pbUnhandledSupport.
+                    Send ReportError to hoInetSession iError (If(bUnhandledSupport, sSystemAndStack, sSystemErr)) iLine iErrFile iErrField
+                End
+                
+                // if we are passing errors to VDF console, report the error
+                // if we we debugging, thereis no point in doing this
+                If (not(bDebugging) and bLocal) Begin
+                    Send MessageBoxError (sFullError + "\n\n" + sStack) // 1 means critical
+                End
+                
+                // log the critical error to the event log
+                // if debugging, this can be an unhandled error
+                If bDebugging Begin
+                    Send UnhandledErrorDisplay iLine sFullError
+                End
+                Else Begin
+                    Send ReportErrorEvent to hoInetSession iError sSystemAndStack  iLine iErrFile iErrField
+                    Send ReportErrorEvent to hoInetSession iError C_$CriticalErrorProgramHalted iLine 0 0
+                End
+                // and end it all
+                Abort
+            End
+            
+            // if we are passing errors to VDF console, report the error
+            If bLocal Begin
+                Send MessageBoxError sFullError 0 // 0 means non-critical
+            End
+            
+            // we make the following assumptions:
+            // If errors are queue
+            //    We assume the error is expected, and controlled
+            //    Write error to queue
+            //    Ddo not write to Event Log unless we are logging all errors.
+            //
+            // if errors are not queued
+            //    We assume the error is unexpected, and must be controlled
+            //    Display HTML error to browser unless this is disabled
+            //    Send to the event log (under the assumption that the error is unexpected).
+            CallStackDump sStack
+            Move (Replaces(Character(13)+Character(10),sStack, "\n")) to sStack
+            Move (sSystemErr + "\n\n" + sStack) to sSystemAndStack
+                
+            If bQueueErrors Begin
+                Send Set_Error iError sSystemErr sFullError iLine iErrFile iErrField
+                If bLogAllErrors Begin
+                    Send ReportErrorEvent to hoInetSession iError sSystemAndStack iLine iErrFile iErrField
+                End
+            End
+            Else Begin
+                If bHtmlErrors Begin
+                    // The option to disable stack dumps only makes sense if the developer is using html errors to report unhandled problems
+                    // and for some reason the stack dump will mess up existing applications. This seems very unlikely but we are providing
+                    // a way to disable this if needed via pbUnhandledSupport.
+                    Send ReportError to hoInetSession iError (If(bUnhandledSupport, sSystemAndStack, sSystemErr)) iLine iErrFile iErrField
+                End
+                If bDebugging  Begin
+                    Send UnhandledErrorDisplay iLine sFullError
+                End
+                Else Begin
+                    Send ReportErrorEvent to hoInetSession iError sSystemAndStack iLine iErrFile iErrField
+                End
+            End
+        End
+        
+        
+    End_Procedure
+
+    //  Is called by df on errors. It searches additional information and
+    //  saves the error. The main part of this is the error handler for AJAX framework
+    // applications If a basic or a legacy webapp, this Error is "forwarded" to BasicErrorReport.
+    //
+    { MethodType=Event }
+    Procedure HandleError Integer iErrNum Integer iErrLine String sErrText
+        String sSystemErr  sCaption  sExtErr
+        Boolean bUserError bDisplayControl
+        Boolean bOldAllErrorsToHtml bAllErrorstoEventLog bInRecording bTrapped
+        Integer iErrFile iErrField iSrc iTxtlen
+        Handle hoCurrentView hoTargetControl hoInetSession
+        
+                
+        Get phoInetSession to hoInetSession
+        Get pbInErrorRecording to bInRecording
+        
+        // This means is not happening during an AJAX style Request or it means that this is an
+        // old webapp style error. If hoInetSession is 0, it is fatal
+        If (not(bInRecording)) Begin
+            Send BasicErrorReport iErrNum iErrLine sErrText
+        End
+        Else If (hoInetSession=0) Begin
+            // this should not be possible at this point.
+            // If it is, it's fatal and program will abort
+            Send BasicErrorReport iErrNum iErrLine sErrText
+            // will abort
+        End
+        Else Begin
+            
+            // process an error that occurs during an AJAX Server request
+            
+            Move False to bDisplayControl
+            
+            // the caption normally used for handled user errors
+            Get psUserErrorCaption to sCaption
+            // if an operator error this may be a Procedure UserError situation where the
+            // caption is passed in the error text. If so, get the caption
+            If (iErrNum=DFERR_OPERATOR) Begin
+                Move (pos(C_ErrorCaption,sErrText)) to iSrc
+                If iSrc Begin
+                    Move (length(C_ErrorCaption)) to  iTxtLen
+                    Move (remove(sErrText, 1, iSrc-1 + iTxtLen )) to sCaption
+                    Move (Left(sErrText,iSrc-1)) to sErrText
+                End
+            End
+            
+            // Get the message....
+            Get Error_Description iErrNum sErrText to sSystemErr
+            
+            // Get file and field (of data dictionary error) if available
+            // and use this to determine the target control by searching
+            // for the first control with the same data binding....
+            If (ghoErrorSource <> 0) Begin
+                Get Extended_Error_file  of ghoErrorSource to iErrFile
+                Get Extended_Error_Field of ghoErrorSource to iErrField
+                
+                If (iErrFile > 0) Begin
+                    Get DetermineCurrentView to hoCurrentView
+                    Move False to bDisplayControl
+                    If (iErrField > 0 and hoCurrentView <> C_WebUnresolvedObject) Begin
+                        Get FirstControlWithDataBinding of hoCurrentView iErrFile iErrField to hoTargetControl
+                        
+                        If (hoTargetControl <> C_WebUnresolvedObject) Begin
+                            //  Try to display local error balloon
+                            Get ShowControlError of hoTargetControl iErrNum sSystemErr to bDisplayControl
+                        End
+                    End
+                    //  If no control found (or capable of showing errors) then we extend the error message with file and field name
+                    If (not(bDisplayControl)) Begin
+                        Get Extended_Error_Message of ghoErrorSource to sExtErr
+                        Move (sErrText + "\n" + sExtErr) to sErrText
+                        Move (sSystemErr + "\n" + sExtErr) to sSystemErr
+                        Move (Replaces("\n",sSystemErr,"\n\r")) to sSystemErr
+                    End
+                End
+            End
+            
+            // Test if this is a user error or an unhandled error (i.e. "find past end of file")....
+            Get IsUserError iErrNum to bUserError
+            If not bUserError Begin
+                Get psUnhandledErrorCaption to sCaption
+            End
+            
+            //  Forward the error to the webapp object (if not already handled by the contorl)
+            If (phoWebHost(Self) > 0) Begin
+                If (not(bDisplayControl)) Begin
+                    Send ShowError of (phoWebHost(Self)) iErrNum iErrLine sSystemErr sCaption bUserError
+                End
+            End
+            Get pbAllErrorstoEventLog of hoInetSession to bAllErrorstoEventLog
+            If (not(bUserError) or bAllErrorstoEventLog) Begin
+                Send BasicErrorReport iErrNum iErrLine sErrText
+            End
+        End
+    End_Procedure
+    
+    // FinishRecording:
+    
+    // Stops fetching the error by resetting the origional error handler.
+    //
+    // Returns - Array with error structs of occurred errors
+    { Visibility=Private }
+    Procedure FinishRecording
+        Boolean bInErrorRecording
+        Get pbInErrorRecording to bInErrorRecording
+        If bInErrorRecording Begin
+            Set pbInErrorRecording to False
+        End
+    End_Procedure
+    
+    
+    // Starts fetching the errors by setting this object as the error handler
+    // and clearing the error array.
+    { Visibility=Private }
+    Procedure StartRecording Handle hoHost
+        Boolean bInErrorRecording
+        
+        Get pbInErrorRecording to bInErrorRecording
+        If (not(bInErrorRecording)) Begin
+            Set pbInErrorRecording to True
+        End
+        
+        Set phoWebHost to hoHost
+    End_Procedure
+    
+    
+    //
+    // These are all old style WebApp error interfaces that only exist for compatibility purposes
+    //    
+    { Visibility =Private }
+    Procedure ClearErrors
+        Send Delete_data of oErrorNumber
+        Send Delete_Data of oErrorText
+        Send Delete_Data of oFullErrorText
+        Send Delete_Data of oFileNr
+        Send Delete_Data of oFieldNr
+        Send Delete_Data of oLineNr
+    End_Procedure
+    
+    { Visibility =Private }
+    Function ErrorCount Returns Integer
+        Function_Return (Item_Count(oErrorNumber))
+    End_Function
+    
+    // Pass Err Num, Error Msg, Line#, File, Field and error-type
+    { Visibility =Private }
+    Procedure Set_Error Integer iErrNr String sErrMsg String sFullErrMsg Integer iLineNr Integer iFileNr Integer iFieldNr
+        Integer iCount
+        Get ErrorCount to iCount
+        Set Value of oErrorNumber iCount to iErrNr
+        Set Value of oErrorText   iCount to sErrMsg
+        Set Value of oFullErrorText iCount to sFullErrMsg
+        Set Value of oLineNr      iCount to iLineNr
+        Set Value of oFileNr      iCount to iFileNr
+        Set Value of oFieldNr     iCount to iFieldNr
+    End_Procedure
+    
+    { Visibility =Private }
+    Function Error_ErrNr Integer iItem Returns Integer
+        Function_Return (Value(oErrorNumber,iItem))
+    End_Function
+    
+    { Visibility =Private }
+    Function Error_LineNr Integer iItem Returns Integer
+        Function_Return (Value(oLineNr,iItem))
+    End_Function
+    
+    { Visibility =Private }
+    Function Error_FileNr Integer iItem Returns Integer
+        Function_Return (Value(oFileNr,iItem))
+    End_Function
+    
+    { Visibility =Private }
+    Function Error_FieldNr Integer iItem Returns Integer
+        Function_Return (Value(oFieldNr,iItem))
+    End_Function
+    
+    { Visibility =Private }
+    Function Error_ErrMsg Integer iItem Returns String
+        Function_Return (Value(oErrorText,iItem))
+    End_Function
+    
+    { Visibility =Private }
+    Function Error_ErrMsgFull Integer iItem Returns String
+        Function_Return (Value(oFullErrorText,iItem))
+    End_Function
+    
+     
+    //
+    // Enumerate all errors.
+    // For each error send iMsg to hObj passing all required error
+    // information: iErr#, sErrorMsg, iLine, iFile, iField
+    //
+    { Visibility =Private }
+    Procedure EnumerateErrors Integer iMsg Integer hObj
+        Integer iCount i
+        Get ErrorCount to iCount
+        Decrement iCount
+        For i from 0 to iCount
+            Send ErrorReportCallback i iMsg hObj
+        Loop
+    End_Procedure
+    
+    // if item is -1 it is last error
+    { Visibility =Private }
+    Procedure ErrorReportCallback Integer iItem Integer iMsg Integer hObj
+        String  sErrMsg
+        Integer iFileNr iFieldNr iErrNr iLineNr
+        Integer iCount
+        Get ErrorCount to iCount
+        If (iItem=-1) ;
+            Move (iCount-1) to iItem // if -1, use last error
+        If (iItem>=0 and iCount>iItem) Begin
+            Get Error_ErrNr   iItem to iErrNr
+            Get Error_ErrMsg  iItem to sErrMsg
+            Get Error_LineNr  iItem to iLineNr
+            Get Error_FileNr  iItem to iFileNr
+            Get Error_FieldNr iItem to iFieldNr
+            Send iMsg to hObj iErrNr sErrMsg iLineNr iFileNr iFieldNr
+        End
+    End_Procedure
+    
+    // this is used to remove a single error from the queue
+    // if iItem is -1, last error
+    { Visibility =Private }
+    Procedure ClearError Integer iItem
+        Integer iCount
+        Get ErrorCount to iCount
+        If (iItem=-1) ;
+            Move (iCount-1) to iItem // if -1, use last error
+        If (iItem>=0 and iCount>iItem) Begin
+            Send Delete_Item iItem
+            Send Delete_Item to oErrorText iItem
+            Send Delete_Item to oLineNr    iItem
+            Send Delete_Item to oFileNr    iItem
+            Send Delete_Item to oFieldNr   iItem
+        End
+    End_Procedure
+    
+    { Visibility =Private }
+    Function ErrorMessage Integer iItem Returns String
+        String  sErrMsg
+        Integer iCount
+        Get ErrorCount to iCount
+        If (iItem=-1) ;
+            Move (iCount-1) to iItem // if -1, use last error
+        If (iItem>=0 and iCount>iItem) ;
+            Get Error_ErrMsg iItem to sErrMsg
+        Function_Return sErrMsg
+    End_Function
+    
+    { Visibility=Private }
+    Function ErrorMessageDetailed Integer iItem Returns String
+        String  sErrMsg
+        Integer iCount
+        Get ErrorCount to iCount
+        If (iItem=-1) ;
+            Move (iCount-1) to iItem // if -1, use last error
+        If (iItem>=0 and iCount>iItem) ;
+            Get Error_ErrMsgFull iItem to sErrMsg
+        Function_Return sErrMsg
+    End_Function
+    
+    { Visibility=Private }
+    Function ErrorNumber Integer iItem Returns Integer
+        Integer iCount iNumber
+        Get ErrorCount to iCount
+        If (iItem=-1) ;
+            Move (iCount-1) to iItem // if -1, use last error
+        If (iItem>=0 and iCount>iItem) ;
+            Get Error_ErrNr iItem to iNumber
+        Function_Return iNumber
+    End_Function
+    
+    
+    
+    // see if error exists for this file and field. If it does, return the
+    // item number, else return -1.
+    { Visibility =Private }
+    Function FileFieldErrorItem Integer iFile Integer iField Returns Integer
+        Integer iCount i
+        Get ErrorCount to iCount
+        Decrement iCount
+        For i from 0 to iCount
+            If (Error_FileNr(Self,i)=iFile and ;
+                Error_FieldNr(Self,i)=iField) ;
+                Function_Return i
+        Loop
+        Function_Return -1
+    End_Function
+    
+End_Class

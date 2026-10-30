@@ -1,0 +1,22 @@
+﻿Use cWebBaseDEOServer.pkg
+Use cWebBaseContainer_mixin.pkg
+
+// Abstract container class.
+//
+// Adds support for...
+// - panel layout of child panels,
+// - grid layout of child controls.
+{ ClassType=Abstract }
+{ HelpTopic=cWebBaseContainer }
+Class cWebBaseContainer is a cWebBaseDEOServer
+    
+    Import_Class_Protocol cWebBaseContainer_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Send Define_cWebBaseContainer_mixin
+
+    End_Procedure
+
+    
+End_Class

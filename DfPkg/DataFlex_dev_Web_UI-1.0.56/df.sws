@@ -1,0 +1,28 @@
+{
+    "description": "Core of the Web UI Framework.",
+    "df": 26.0,
+    "package": {
+        "df-max": 26.0,
+        "df-min": 26.0,
+        "htmlIncludes": [
+            "WebUI/system.css",
+            "WebUI/df-min.js"
+        ],
+        "icon": "Web UI.svg",
+        "includeFiles": [
+            "${AppHtml}/WebUI_Designer",
+            "CHANGELOG.md"
+        ],
+        "install": [
+            "${AppHtml}/WebUI/df-min.js.map",
+            "${AppHtml}/WebUI/df-debug.js"
+        ],
+        "license": "DocumentRef-DataFlex",
+        "licenseFile": "LICENSE",
+        "version": "1.0.56"
+    },
+    "paths": {
+        "fileList": "DummyFilelist.cfg"
+    },
+    "workspaceName": "Web UI"
+}

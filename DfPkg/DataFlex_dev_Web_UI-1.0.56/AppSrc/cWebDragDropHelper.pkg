@@ -1,0 +1,179 @@
+﻿Use cWebObject.pkg
+Use WebDragDropStructs.pkg
+
+{ Visibility=Private }
+Struct tSourceOrTarget
+    Handle hoObj
+    Integer eAction
+End_Struct
+
+Class cWebDragDropHelper is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {Visibility = Private}
+        Property tSourceOrTarget[] phoaSources
+        {Visibility = Private}
+        Property tSourceOrTarget[] phoaTargets
+        
+        Set psJSClass to "df.WebDragDropHelper"
+    End_Procedure
+    
+    Procedure RegisterDragSource Handle hoObj WebDragAction eAction
+        tSourceOrTarget[] hoaSources
+        String[] aParams
+        Boolean bLoaded bSupported
+        tSourceOrTarget oSource
+        
+        Get CheckDragSource hoObj eAction to bSupported
+        If (not(bSupported)) Begin
+            Error DFERR_PROGRAM "Drop target not allowed. Drop actions not supported by this target."
+        End
+        
+        Get IsLoaded to bLoaded
+        
+        If (bLoaded) Begin
+            //  This is a runtime change so we inform the current client
+            Get WebObjectName of hoObj to aParams[0]
+            Move eAction to aParams[1]
+            
+            Send ClientAction "registerDragSource" aParams
+        End
+        Else Begin
+            //  This is a design time change so we just store it for when a client connects
+            Move hoObj to oSource.hoObj
+            Move eAction to oSource.eAction
+            
+            Get phoaSources to hoaSources
+            Move (InsertInArray(hoaSources, -1, oSource)) to hoaSources
+            
+            Set phoaSources to hoaSources
+        End
+    End_Procedure
+    
+    Procedure RegisterDropTarget Handle hoObj WebDropAction eAction
+        tSourceOrTarget[] hoaTargets
+        Boolean bLoaded bSupported
+        String[] aParams
+        tSourceOrTarget oTarget
+        
+        Get CheckDropTarget hoObj eAction to bSupported
+        If (not(bSupported)) Begin
+            Error DFERR_PROGRAM "Drop target not allowed. Drop actions not supported by this target."
+        End
+        
+        Get IsLoaded to bLoaded
+        
+        If (bLoaded) Begin
+            //  This is a runtime change so we inform the current client
+            Get WebObjectName of hoObj to aParams[0]
+            Move eAction to aParams[1]
+        
+            Send ClientAction "registerDropTarget" aParams
+        End
+        Else Begin
+            //  This is a design time change so we just store it for when a client connects
+            Move hoObj to oTarget.hoObj
+            Move eAction to oTarget.eAction
+            
+            Get phoaTargets to hoaTargets
+            Move (InsertInArray(hoaTargets, -1, oTarget)) to hoaTargets
+
+            Set phoaTargets to hoaTargets
+        End
+    End_Procedure
+    
+    // This is called to trigger the OnDrop event.
+    //
+    // Published!
+    { Visibility=Private }
+    Procedure Drop String sDragSourceName String sDropTargetName Integer eDropPosition
+        Handle hoDragSource hoDropTarget hoJson hoJsonDragData hoJsonDropData
+
+        //  Parse JSON
+        Get phoActionJsonData to hoJson
+        
+        Get Member of hoJson "DragData" to hoJsonDragData
+        Get Member of hoJson "DropData" to hoJsonDropData
+        
+        //  Find and prepare objects
+        Get WebObjectByName sDragSourceName to hoDragSource
+        Get WebObjectByName sDropTargetName to hoDropTarget
+        
+        If (hoDragSource <> C_WebUnresolvedObject) Begin
+            Set phoJsonDragData of hoDragSource to hoJsonDragData
+        End
+        If (hoDropTarget <> C_WebUnresolvedObject) Begin
+            Set phoJsonDropData of hoDropTarget to hoJsonDropData
+        End
+        
+        //  Trigger event
+        Send OnDrop hoDragSource hoDropTarget eDropPosition
+        
+        //  Cleanup
+        If (hoDragSource <> C_WebUnresolvedObject) Begin
+            Set phoJsonDragData of hoDragSource to C_WebUnresolvedObject
+        End
+        If (hoDropTarget <> C_WebUnresolvedObject) Begin
+            Set phoJsonDropData of hoDropTarget to C_WebUnresolvedObject
+        End
+        Send Destroy of hoJsonDragData
+        Send Destroy of hoJsonDropData
+    End_Procedure
+    
+    {MethodType = Event}
+    Procedure OnDrop Handle hoDragSource Handle hoDropTarget WebDropPosition eDropPosition
+    End_Procedure
+    
+    { Visibility=Private }
+    Function CheckDropTarget Handle hoObj Integer eAction Returns Boolean
+        Boolean bSupportsAction
+        
+        Get SupportsDropAction of hoObj eAction to bSupportsAction
+        
+        Function_Return bSupportsAction
+    End_Function
+    
+    { Visibility=Private }
+    Function CheckDragSource Handle hoObj Integer eAction Returns Boolean
+        Boolean bSupportsAction
+        
+        Get SupportsDragAction of hoObj eAction to bSupportsAction
+        
+        Function_Return bSupportsAction
+    End_Function
+    
+    { Visibility=Private }
+    Procedure PostSerializeObject
+        tSourceOrTarget[] ahSources ahTargets
+        Integer i
+        String[] aParams
+        
+        Get phoaTargets to ahTargets
+        For i from 0 to (SizeOfArray(ahTargets) - 1)
+            Get WebObjectName of ahTargets[i].hoObj to aParams[0]
+            Move ahTargets[i].eAction to aParams[1]
+        
+            // Update client
+            Send ClientAction "registerDropTarget" aParams
+        Loop
+        
+        Get phoaSources to ahSources
+        For i from 0 to (SizeOfArray(ahSources) - 1)
+            Get WebObjectName of ahSources[i].hoObj to aParams[0]
+            Move ahSources[i].eAction to aParams[1]
+        
+            // Update client
+            Send ClientAction "registerDragSource" aParams
+        Loop
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnHelperReady
+        WebPublishProcedure Drop
+    End_Procedure
+
+End_Class

@@ -1,0 +1,270 @@
+﻿Use WebUIConstants.pkg
+Use cWebWindow.pkg
+Use tWebForwardPath.pkg
+
+Class cWebNavPathHelper_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebNavPathHelper_mixin
+        { Visibility=Private }
+        Property tWebForwardPath[] paForwardPaths
+        
+        { Visibility=Private }
+        Property Handle[] paRegMsg 
+        { Visibility=Private }
+        Property Handle[] paRegObj
+    End_Procedure
+    
+    // Called by WebRegisterPath to register the generated procedure so it will be called later.
+    { Visibility=Private }
+    Procedure RegRegMsg Handle hMsg Handle hObj
+        Handle[] aMsg aObj
+        
+        Get paRegMsg to aMsg
+        Move hMsg to aMsg[SizeOfArray(aMsg)]
+        Set paRegMsg to aMsg
+        
+        Get paRegObj to aObj
+        Move hObj to aObj[SizeOfArray(aObj)]
+        Set paRegObj to aObj
+    End_Procedure
+    
+    // Triggers the actual registration of navigation paths by calling the generated procedures.
+    { Visibility=Private }
+    Procedure ProcessNavPaths
+        Integer i
+        Handle[] aMsg aObj aEmpty
+        
+        Get paRegMsg to aMsg
+        Get paRegObj to aObj
+        
+        for i from 0 to (SizeOfArray(aMsg) - 1)
+            Send aMsg[i] of aObj[i] Self
+        Loop
+        
+        Set paRegMsg to aEmpty
+        Set paRegObj to aEmpty
+    End_Procedure
+    
+    // Triggers the actual registration of all navigation paths by triggering ProcessNavPaths on
+    // each view. This is done when all web objects are created. 
+    { Visibility=Private }
+    Procedure ProcessAllNavPaths
+        Integer iItem 
+        
+        tWebControlMapItem[] aViews
+        
+        Get paViews to aViews
+        For iItem from 0 to (SizeOfArray(aViews) - 1)
+            Send ProcessNavPaths of aViews[iItem].hoObj
+        Loop
+    End_Procedure
+    
+    // Adds a new navigation path to the administration of navigation paths available for this view or the global scope.
+    { Visibility=Private }
+    Procedure RegisterNavigateForwardPath Integer eNavMode Handle hoView Handle hoInvokingObject String sName
+        tWebForwardPath[] aPaths
+        Integer iIndex iDuplicate
+        tWebForwardPath newPath
+        Boolean bIsWindow bCancel
+        
+        If (eNavMode = ntNavigateBegin and Self <> (Owner(Self))) Begin
+            Error DFERR_PROGRAM "Navigation paths of type NavigateBegin can only be registered from global objects (outside views)"
+            Procedure_Return
+        End
+        
+        If (hoView <= 0) Begin
+            Error DFERR_PROGRAM "Invalid view object passed with WebRegisterPath."
+            Procedure_Return
+        End
+                
+        Get IsObjectOfClass of hoView (RefClass(cWebWindow)) to bIsWindow
+        If (not(bIsWindow)) Begin
+            Error DFERR_PROGRAM "Invalid view object passed with WebRegisterPath."
+            Procedure_Return
+        End
+        
+        Get paForwardPaths to aPaths
+        
+        If (Trim(sName) = "") Begin
+            Get psStateViewName of hoView to sName
+        End
+        
+        //  Determine unique name
+        Move 0 to iDuplicate
+        Move sName to newPath.sKey
+        Move (Lowercase(newPath.sKey)) to newPath.sLCKey
+        Move (BinarySearchArray(newPath, aPaths, False)) to iIndex
+        While (iIndex <> -1)
+            Increment iDuplicate
+            Move (sName + String(iDuplicate)) to newPath.sKey
+            Move (Lowercase(newPath.sKey)) to newPath.sLCKey
+            Move (BinarySearchArray(newPath, aPaths, False)) to iIndex
+        Loop
+        
+        //  BinarySearchArray remembers where the item should have been, so we can insert it there
+        Move (BinarySearchInsertPos()) to iIndex
+        
+        //  Add to the list
+        Move hoView to newPath.hoForwardView
+        Move hoInvokingObject to newPath.hoInvokingObject
+        Move eNavMode to newPath.eNavMode
+        
+        //  Give the owner a chance to cancel (or adjust data)
+        // This will be used by the cWebWidgetContainer to control forward navigations
+        Move False to bCancel
+        Send OwnerNavRegisterPath (&bCancel) (&newPath.eNavMode) (&newPath.hoForwardView) (&newPath.hoInvokingObject) (&newPath.sKey)
+        
+        If (not(bCancel)) Begin
+            Move (Lowercase(newPath.sKey)) to newPath.sLCKey
+            Move (InsertInArray(aPaths, iIndex, newPath)) to aPaths
+            Set paForwardPaths to aPaths
+        End
+        
+    End_Procedure
+    
+    // Determines the state hash key for the current view (self) based on its invoking object.
+    { Visibility=Private }
+    Function StateHashKey Handle hoInvokingObject Returns String
+        String sKey
+        Handle hoInvokingView
+        
+        Get ViewObject of hoInvokingObject to hoInvokingView
+        If (hoInvokingView <> C_WebUnresolvedObject) Begin
+            Get DetermineStateHashKey of hoInvokingView Self hoInvokingObject to sKey
+        End
+        Else Begin
+            Get DetermineStateHashKey of (Host(Self)) Self hoInvokingObject to sKey 
+        End
+        
+        Function_Return sKey
+    End_Function
+    
+    // Determines the key for a specific navigation based on the view and its invoking object.
+    { Visibility=Private }
+    Function DetermineStateHashKey Handle hoForwardView Handle hoInvokingObject Returns String
+        Integer iIndex
+        tWebForwardPath[] aPaths
+        Handle hoOwner
+        
+        Get paForwardPaths to aPaths
+        
+        Get Owner of hoInvokingObject to hoOwner
+        Send OwnerNavTranslateInvoking of hoOwner (&hoInvokingObject)
+        
+        
+        For iIndex from 0 to (SizeOfArray(aPaths) - 1)
+            If (aPaths[iIndex].hoForwardView = hoForwardView and aPaths[iIndex].hoInvokingObject = hoInvokingObject) Begin
+                Function_Return aPaths[iIndex].sKey
+            End
+        Loop
+        
+        Error DFERR_PROGRAM "Unregistered forward navigation path."
+        
+        Function_Return ""
+    End_Function
+    
+    // Performs the navigation specified for the passed invoking object.
+    { Visibility=Private }
+    Procedure PerformNavigateByInvokingObj Handle hoInvokingObject
+        tWebForwardPath[] aPaths
+        Integer iIndex iFound
+        Handle hoOwner hoSearchInvokingObject
+        
+        Get Owner of hoInvokingObject to hoOwner
+        Move hoInvokingObject to hoSearchInvokingObject
+        Send OwnerNavTranslateInvoking of hoOwner (&hoSearchInvokingObject)
+        
+        Move -1 to iFound
+        Get paForwardPaths to aPaths
+        
+        For iIndex from 0 to (SizeOfArray(aPaths) - 1)
+            If (aPaths[iIndex].hoInvokingObject = hoSearchInvokingObject) Begin
+                If (iFound >= 0) Begin
+                    Error DFERR_PROGRAM "Can not perform NavigatePath as multiple navigation paths are defined for the invoking object."
+                    Procedure_Return
+                End
+                
+                Move iIndex to iFound
+            End
+        Loop
+        
+        If (iFound >= 0) Begin
+            If (aPaths[iFound].eNavMode = ntNavigateForward) Begin
+                Send NavigateForward of aPaths[iFound].hoForwardView hoInvokingObject
+                Procedure_Return
+            End
+            Else If (aPaths[iFound].eNavMode = ntNavigateForwardCustom) Begin
+                Send NavigateForwardCustom of aPaths[iFound].hoForwardView hoInvokingObject
+                Procedure_Return
+            End
+            Else If (aPaths[iFound].eNavMode = ntNavigateBegin) Begin
+                Send NavigateBegin of aPaths[iFound].hoForwardView hoInvokingObject False
+                Procedure_Return    
+            End
+        End
+        
+        Error DFERR_PROGRAM "No forward navigation path defined for the invoking object."
+    End_Procedure
+    
+    // Performs the navigation specified for the passed invoking object.
+    { Visibility=Private }
+    Procedure PerformRetrieveNavigateInfo Handle hoInvokingObject tWebForwardPath[] ByRef aNavInfo
+        tWebForwardPath[] aPaths
+        Integer iIndex
+        
+        Get paForwardPaths to aPaths
+        
+        For iIndex from 0 to (SizeOfArray(aPaths) - 1)
+            If (aPaths[iIndex].hoInvokingObject = hoInvokingObject) Begin
+                Move aPaths[iIndex] to aNavInfo[SizeOfArray(aNavInfo)]
+            End
+        Loop
+    End_Function
+    
+    // Finds a navigation path by its key. The details are provided in the ByRef parameters where 
+    // the view to navigate into is returned.
+    { Visibility=Private }
+    Function FindNavPathByKey String sKey Handle ByRef hoInvokingObject Integer ByRef eNavMode Returns Handle
+        Integer iIndex
+        tWebForwardPath[] aPaths
+        tWebForwardPath searchPath
+        
+        Get paForwardPaths to aPaths
+        Move (Lowercase(sKey)) to searchPath.sLCKey
+        Move (BinarySearchArray(searchPath, aPaths, False)) to iIndex
+        If (iIndex >= 0) Begin
+            Move aPaths[iIndex].hoInvokingObject to hoInvokingObject
+            Move aPaths[iIndex].eNavMode to eNavMode
+            Function_Return aPaths[iIndex].hoForwardView
+        End
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // Determines the invoking object for the navigation path specified. If multiple paths are
+    // defined then the last path will be returned, unless one matches the specified prefered invoker.
+    { Visibility=Private }
+    Function FindNavPathInvokingObj Handle hoPreferedInvoker Handle hoForwardView Integer eNavMode Returns Handle
+        tWebForwardPath[] aPaths
+        Handle hoInvoker
+        Integer iIndex
+        
+        Get paForwardPaths to aPaths
+        Move C_WebUnresolvedObject to hoInvoker
+        
+        For iIndex from 0 to (SizeOfArray(aPaths) - 1)
+            If (aPaths[iIndex].hoForwardView = hoForwardView and aPaths[iIndex].eNavMode = eNavMode) Begin
+                If (aPaths[iIndex].hoInvokingObject = hoPreferedInvoker) Begin
+                    Function_Return hoPreferedInvoker
+                End
+                Else Begin
+                    Move aPaths[iIndex].hoInvokingObject to hoInvoker
+                End
+            End
+        Loop
+        
+        Function_Return hoInvoker
+    End_Function
+    
+End_Class

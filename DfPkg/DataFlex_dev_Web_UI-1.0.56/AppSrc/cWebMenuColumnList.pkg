@@ -1,0 +1,14 @@
+Use cWebMenuItem.pkg
+
+Class cWebMenuColumnList is a cWebMenuItem
+    
+    // Should only be used in cWebList-context based ContextMenus!
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        Set psJSClass to "df.WebMenuColumnList"
+        Set psCaption to C_$WebListHeaderMenuSelectorMenuName
+        Set pbServerOnClick to False
+    End_Procedure
+
+End_Class

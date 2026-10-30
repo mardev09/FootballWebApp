@@ -1,0 +1,5 @@
+Object
+    Set piColumnSpan to 0
+    Set psLabel to "Color:"
+    Set psValue to "#4da8e8"    
+End_Object

@@ -1,0 +1,883 @@
+﻿Use cWebDynamicObjectContainer.pkg
+Use cWebWidget.pkg
+Use cWebWidgetConfigurationWizard.pkg
+Use cWebContextMenu.pkg
+
+Struct tContainerDef
+    String sConfigVersionCode // Optional
+    tWidgetDef[] aWidgets
+End_Struct
+
+
+Struct tWidgetRegistration
+    String sName
+    Handle hoStaticInstance
+    Handle hClass
+
+    Integer iRowSpan
+    Integer iColSpan
+    Boolean bFillHeight
+End_Struct
+
+{ OverrideProperty=peLayoutType InitialValue=ltGrid }
+{ OverrideProperty=peLayoutType Visibility=Private }
+{ Visibility=Private }
+Class cWebWidgetContainerInternal is a cWebDynamicObjectContainer
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Property Handle phoWrapperGroup
+                
+        Property tContainerDef ptDefaultContainerDef
+        
+        Set peLayoutType to ltGrid
+        
+        Set psJSClass to "df.WebWidgetContainerInternal"
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure Reload
+        Send LoadConfiguration
+    End_Procedure
+    
+    {Visibility = Private}
+    Function ValidateConfigurationVersion String sConfigVersion Returns Boolean
+        String sRefVersion
+        Boolean bValid
+        
+        Get psConfigVersionCode of (phoWrapperGroup(Self)) to sRefVersion
+        
+        Move (sRefVersion = sConfigVersion) to bValid
+        
+        Send OnValidateConfigurationVersion sConfigVersion sRefVersion (&bValid)
+        
+        Function_Return bValid
+    End_Function
+    
+    {MethodType=Event}
+    Procedure OnValidateConfigurationVersion String sConfigVersion String sRefVersion Boolean ByRef bValid
+        // Augment to set custom validation logic
+    End_Procedure
+    
+    Procedure InvalidateLocalConfiguration
+        String[] aParams
+        
+        Send ClientAction 'invalidateLocalConfiguration' aParams
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure LoadConfiguration
+        tContainerDef ContainerDef
+        String[] aParams
+        Boolean bUseCustomConfigurationStorage bVersionValid
+        
+        Get UseCustomConfigurationStorage to bUseCustomConfigurationStorage
+
+        If (bUseCustomConfigurationStorage) Begin
+            Send OnLoadConfiguration (&ContainerDef)
+            
+            Get ValidateConfigurationVersion ContainerDef.sConfigVersionCode to bVersionValid
+            
+            If (bVersionValid) Begin            
+                Send LoadConfigurationEx ContainerDef
+            End
+            Else Begin
+                Send InvalidateLocalConfiguration
+                Send LoadDefaultConfig
+            End
+        End
+        Else Begin
+            // Send a clientaction to retrieve local configuration, LoadConfigurationFromLocalStorage is then sent from client - triggering LoadConfigurationEx
+            Send ClientAction "loadConfigurationFromLocalStorage" aParams
+        End    
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure LoadConfigurationFromLocalStorage Boolean bValidConfigFound
+        tContainerDef ContainerDef
+        Handle hoJson
+        Boolean bVersionValid
+        
+        If (bValidConfigFound) Begin
+            Get phoActionJsonData to hoJson
+            Set pbRequireAllMembers of hoJson to False
+            Get JsonToDataType of hoJson to ContainerDef
+            
+            Get ValidateConfigurationVersion ContainerDef.sConfigVersionCode to bVersionValid
+            
+            If (bVersionValid) Begin                
+                Send LoadConfigurationEx ContainerDef
+            End
+            Else Begin
+                Send InvalidateLocalConfiguration
+                Send LoadDefaultConfig
+            End
+        End
+        Else Begin
+            Send LoadDefaultConfig 
+        End
+    End_Procedure
+    
+    Procedure LoadDefaultConfig
+        tContainerDef ContainerDef
+        String sRefVersion
+        
+        Get psConfigVersionCode of (phoWrapperGroup(Self)) to sRefVersion
+        Get ptDefaultContainerDef to ContainerDef
+        
+        Move sRefVersion to ContainerDef.sConfigVersionCode
+                
+        Send LoadConfigurationEx ContainerDef
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure LoadConfigurationEx tContainerDef ContainerDef
+        tWidgetDef CurWidget
+        Integer iWidgetCount i p iProps iRowCount iColCount iPropRules
+        Handle hWidgetClass hoWidget hoChildObj
+        Boolean bIsWidget bConfigPropExists bConfigurable bAllowed
+        String sChildId sDefaultColWidth sDefaultRowHeight
+        tWidgetRegistration widgetDefault
+        tWidgetConfigProp[] aProps
+        
+        // Clear container
+        Send ResetContainer
+        
+        // Configure Grid        
+        WebGet piRowCount            of (phoWrapperGroup(Self)) to iRowCount
+        WebGet piColumnCount         of (phoWrapperGroup(Self)) to iColCount
+        WebGet psDefaultRowHeight    of (phoWrapperGroup(Self)) to sDefaultRowHeight
+        WebGet psDefaultColumnWidth  of (phoWrapperGroup(Self)) to sDefaultColWidth
+        
+        WebSet piRowCount            to iRowCount
+        WebSet piColumnCount         to iColCount
+        WebSet psDefaultRowHeight    to sDefaultRowHeight
+        WebSet psDefaultColumnWidth  to sDefaultColWidth
+        
+        // Use widget def to create dynamic objects and configure them
+        Move ((SizeOfArray(ContainerDef.aWidgets)) -1) to iWidgetCount
+        
+        For i from 0 to iWidgetCount
+            Move ContainerDef.aWidgets[i] to CurWidget
+            
+            Get WidgetRegistrationByName CurWidget.sName to widgetDefault
+            Move widgetDefault.hClass to hWidgetClass
+            Get IsClassOfClass hWidgetClass (RefClass(cWebWidget)) to bIsWidget
+            Get IsClassOfClass hWidgetClass (RefClass(cWebWidget)) to bIsWidget
+            
+            If (hWidgetClass <> 0 and bIsWidget) Begin
+                
+                Get CreateDynamicObject hWidgetClass CurWidget.sDynId '' to hoWidget
+                
+                If (hoWidget <> 0) Begin
+                    Get AllowViewAccess of (Host(Self)) hoWidget to bAllowed
+                
+                    If (bAllowed) Begin 
+                        Send InitDynamicProp of hoWidget 'psDynamicWidgetId'    CurWidget.sDynId
+                        Send InitDynamicProp of hoWidget 'piRowIndex'       CurWidget.iRowIndex
+                        Send InitDynamicProp of hoWidget 'piColumnIndex'    CurWidget.iColIndex
+                        Send InitDynamicProp of hoWidget 'piRowSpan'        CurWidget.iRowSpan
+                        Send InitDynamicProp of hoWidget 'piColumnSpan'     CurWidget.iColSpan
+                        Send InitDynamicProp of hoWidget 'pbFillHeight'     CurWidget.bFillHeight
+                        
+                        Move ((SizeOfArray(CurWidget.aConfig))) to iProps
+                        
+                        If (iProps > 0) Begin
+                            Get GetConfigurableProps of hoWidget to aProps
+                            
+                            For p from 0 to (iProps - 1)
+                                Send InitConfigurableProp hoWidget aProps CurWidget.aConfig[p].sObjName CurWidget.aConfig[p].sPropName CurWidget.aConfig[p].sValue
+                            Loop
+                        End
+                        
+                        // Responsive rules
+                        Move ((SizeOfArray(CurWidget.aResponsivePropRules)) - 1) to iPropRules
+                        
+                        For p from 0 to iPropRules
+                            Send SetWidgetPropertyRules hoWidget CurWidget.aResponsivePropRules[p]
+                        Loop
+                        
+                        Send InitWidget of hoWidget
+                    End
+                End
+            End
+        Loop
+        
+        Send Activate
+    End_Procedure
+    
+    Procedure SetWidgetPropertyRules Handle hoWidget tWebPropRule PropRule
+        tWebPropMetaData PropMeta
+        Integer i iRules
+        
+        Get FindWebPropertyMetaByName of hoWidget PropRule.sName to PropMeta
+        
+        Move (SizeOfArray(PropRule.aModeRules) - 1) to iRules
+        
+        For i from 0 to iRules
+            // Handle hmGetter String sPropName Integer eMode Variant vValue
+            Send SetPropertyRuleEx of hoWidget PropMeta.hmSetter PropMeta.sName PropRule.aModeRules[i].eMode PropRule.aModeRules[i].vValue
+        Loop
+        
+    End_Procedure
+    
+    Procedure InitConfigurableProp Handle hoWidget tWidgetConfigProp[] aProps String sObjName String sPropName String sPropVal
+        Handle hoObj
+        Boolean bConfigPropExists
+        tWebPropMetaData PropMeta
+        tWidgetConfigProp CurProp
+        
+        Get TruncateName sObjName to sObjName
+        If (sObjName <> '') Begin
+            Get DynamicObject sObjName to hoObj // Should be in memory as it's just created
+        End
+        Else Begin
+            Move hoWidget to hoObj
+        End
+        
+        If (hoObj <> 0) Begin
+            Move sObjName  to CurProp.sObjName
+            Move sPropName to CurProp.sPropName
+            Get ConfigurablePropExistsEx of hoWidget aProps CurProp to bConfigPropExists
+            
+            If (bConfigPropExists) Begin
+                Get FindWebPropertyMetaByName of hoObj sPropName to PropMeta
+                If (PropMeta.hmGetter <> 0) Begin
+                    Send InitDynamicProp of hoObj sPropName sPropVal 
+                End
+            End
+        End
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure SaveConfiguration Boolean bToggleEditMode
+        String[] aParams
+     
+        If (num_arguments > 0) Begin
+            Move bToggleEditMode to aParams[-1]
+        End
+        
+        Send ClientAction "saveConfiguration" aParams
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure ServerOnSaveConfiguration
+        tContainerDef ContainerDef ContainerConfig
+        tWidgetConfigPropValue[] aPropValues
+        Handle hoJson
+        Integer i iWidgets
+        String sWidgetId
+        Handle hoWidget
+        Boolean bUseCustomConfigurationStorage
+        
+        Get phoActionJsonData to hoJson
+        Set pbRequireAllMembers of hoJson to False
+        Get JsonToDataType of hoJson to ContainerConfig
+        
+        // Translate to def
+        Move ContainerConfig.sConfigVersionCode to ContainerDef.sConfigVersionCode
+        
+        // Get configurable widget props
+        Move ((SizeOfArray(ContainerConfig.aWidgets)) - 1) to iWidgets
+        
+        For i from 0 to iWidgets
+            Move ContainerConfig.aWidgets[i].sDynId to sWidgetId
+            Get DynamicObject sWidgetId to hoWidget
+            Get GetConfigurablePropValues of hoWidget to aPropValues
+            
+            Move ContainerConfig.aWidgets[i] to ContainerDef.aWidgets[i]
+            Move aPropValues to ContainerDef.aWidgets[i].aConfig
+        Loop
+        
+        Get UseCustomConfigurationStorage to bUseCustomConfigurationStorage
+        
+        If (bUseCustomConfigurationStorage) Begin
+            Send OnSaveCustomConfiguration ContainerDef
+        End
+        Else Begin
+            // Local storage save
+            Send SaveConfigurationToLocalStorage ContainerDef
+        End
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure SaveConfigurationToLocalStorage tContainerDef ContainerDef
+        String[] aParams
+        Handle hoJsonContainerDef
+        
+        Get Create (RefClass(cJsonObject)) to hoJsonContainerDef
+        
+        Send DataTypeToJson of hoJsonContainerDef ContainerDef
+        
+        Send ClientActionEx 'saveConfigurationToLocalStorage' aParams hoJsonContainerDef
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure DoResetConfiguration
+        Boolean bUseCustomConfigurationStorage
+        
+        Get UseCustomConfigurationStorage to bUseCustomConfigurationStorage
+        If (bUseCustomConfigurationStorage) Begin
+            Send OnResetConfiguration
+        End
+        Else Begin
+            // Local storage reset
+            Send ResetLocalConfiguration
+        End
+        
+        // Call reload to reload configuration using the default
+        Send Reload
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure ResetConfigurationEx Integer eConfirmMode
+        If (eConfirmMode = cmYes) Begin
+            Send DoResetConfiguration
+        End
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure ResetConfiguration
+        Send ShowYesNo Self (RefProc(ResetConfigurationEx)) C_$WebWidgetConResetConfirm C_$Confirm
+    End_Procedure   
+    
+    {Visibility = Private}
+    Procedure ResetLocalConfiguration
+        Send ClientActionEx 'resetLocalConfiguration'
+    End_Procedure
+    
+    {Visibility = Private}
+    Function GenerateUniqueID Returns String
+        String[] sWidgets
+        String sId sRand
+        Integer i iWidgets
+        
+        Get DynamicChildren "" to sWidgets
+        Get GenRandomString 10 to sRand
+        
+        Move ('Widget-' + sRand) to sId
+
+        Get DynamicChildren "" to sWidgets
+        
+        // Check if ID already exists (astronomically small chance, but still), if so; try again
+        Move (SizeOfArray(sWidgets) - 1) to iWidgets
+        For i from 0 to iWidgets
+            If (sWidgets[i] = sId) Begin
+                Get GenerateUniqueID to sId
+                Function_Return sId
+            End
+        Loop
+        
+        Function_Return sId
+    End_Function
+    
+    {Visibility = Private}
+    Function GenRandomString Integer iLen Returns String
+        String sRet
+        Integer i iBase
+        
+        Move (Ascii("a")) to iBase
+        
+        For i from 1 to iLen
+            Add (Character(Random(26) + iBase)) to sRet
+        Loop
+        
+        Function_Return sRet
+    End_Function
+    
+    
+    {Visibility = Private}
+    Procedure AddWidget tWidgetDef WidgetDef
+        Handle hWidgetClass hoWidget
+        Boolean bIsWidget bSuccess bAllowed
+        String sObj
+        String[] aParams asObjIds
+        tWebDynamicObject[] aObjs
+        tWidgetRegistration widgetDefault
+        
+        Get WidgetRegistrationByName WidgetDef.sName to widgetDefault
+        Move widgetDefault.hClass to hWidgetClass
+        Get IsClassOfClass hWidgetClass (RefClass(cWebWidget)) to bIsWidget
+        
+        If (hWidgetClass <> 0 and bIsWidget) Begin
+            Get OnBeforeAddWidget (&WidgetDef) (&hWidgetClass) to bSuccess
+            
+            If (bSuccess) Begin
+                If (WidgetDef.sDynId = "") ;
+                    Get GenerateUniqueId to WidgetDef.sDynId
+                
+                Get DynamicChildren "" to asObjIds
+               
+                Get CreateDynamicObject hWidgetClass WidgetDef.sDynId '' to hoWidget
+                
+                If (hoWidget = 0) Begin
+                    Procedure_Return
+                End
+                
+                Get AllowViewAccess of (Host(Self)) hoWidget to bAllowed
+                
+                If (not(bAllowed)) Begin
+                    Procedure_Return
+                End
+                
+                Send InitDynamicProp of hoWidget 'psDynamicWidgetId'    WidgetDef.sDynId
+                Send InitDynamicProp of hoWidget 'piRowIndex'           WidgetDef.iRowIndex
+                Send InitDynamicProp of hoWidget 'piColumnIndex'        WidgetDef.iColIndex
+                Send InitDynamicProp of hoWidget 'piRowSpan'            WidgetDef.iRowSpan
+                Send InitDynamicProp of hoWidget 'piColumnSpan'         WidgetDef.iColSpan
+                Send InitDynamicProp of hoWidget 'pbFillHeight'         True
+                
+                Send InitWidget of hoWidget
+                
+                If ((SizeOfArray(asObjIds)) > 0) Begin
+                   Send AppendDynamicObject WidgetDef.sDynId 
+                End
+                Else Begin
+                    Send Activate
+                End
+                
+                Send AddWidgetLocal WidgetDef hoWidget
+                
+                Send OnWidgetAdded WidgetDef hWidgetClass
+                
+                Send RefreshOverlay
+            End
+        End
+    End_Procedure
+    
+    // Called through the wrapper API
+    // Sends the WidgetDef to the client (only needs sWidgetName, iRowSpan & iColSpan)
+    // The client then finds a suitable spot for the widget and places the first possible location in the WidgetDef struct
+    // The client then calls AppendWidgetEx with the updated WidgetDef struct, which adds the at the determined location
+    {Visibility = Private}
+    Procedure AppendWidget tWidgetDef WidgetDef
+        Handle hoJsonData
+        String[] aParams
+        
+        Get Create (RefClass(cJsonObject)) to hoJsonData
+        Send DataTypeToJson of hoJsonData WidgetDef
+        
+        Send ClientActionEx 'findSpotForWidget' aParams hoJsonData
+        
+        Send Destroy of hoJsonData
+    End_Procedure
+    
+    // Called by from the client after the AppendWidget instruction
+    // The client finds a suitable spot for the widget and sends the first possible location in the updated WidgetDef struct
+    {Visibility = Private}
+    Procedure AppendWidgetEx
+        tWidgetDef WidgetDef
+        Handle hoJson
+        
+        Get phoActionJsonData to hoJson
+        Set pbRequireAllMembers of hoJson to False
+        Get JsonToDataType of hoJson to WidgetDef
+        
+        Send AddWidget WidgetDef
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure AddWidgetLocal tWidgetDef WidgetDef Handle hoWidget
+        Handle hoJsonData
+        String[] aParams
+        
+        Get Create (RefClass(cJsonObject)) to hoJsonData
+        Send DataTypeToJson of hoJsonData WidgetDef
+        
+        Get WebObjectName of hoWidget to aParams[0]
+        
+        Send ClientActionEx 'registerWidget' aParams hoJsonData
+        
+        Send Destroy of hoJsonData
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure RefreshOverlay
+        Send ClientAction "refreshOverlay" 
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure RequestConfigWizard String sObjName Boolean bOptNoError
+        Handle hoWizard
+        Handle hoWidget
+        String sWidgetId
+        
+        Get TruncateName sObjName to sWidgetId
+        Get DynamicObject sWidgetId to hoWidget
+        
+        If (hoWidget <> 0) Begin
+            Get phoConfigWizard of hoWidget to hoWizard
+            If (hoWizard = C_WebUnresolvedObject) Begin
+                If (num_arguments < 2 or not(bOptNoError)) ;
+                    Error DFERR_PROGRAM "No config wizard has been set for this Widget"
+                Procedure_Return
+            End
+            
+            Send InitWizard of hoWizard (Self) sWidgetId
+        End
+    End_Procedure
+    
+    // This is called when the Config Wizard is closed
+    {Visibility = Private}
+    Procedure OnCloseModalDialog Handle hoModalDialog
+        tWidgetConfigPropValue[] aPropValues
+        String sWidgetId
+        Handle hoWidget hoWrapper
+        Boolean bIsConfigWizard bEditMode
+        
+        Forward Send OnCloseModalDialog hoModalDialog
+        
+        Get IsObjectOfClass of hoModalDialog (RefClass(cWebWidgetConfigurationWizard)) to bIsConfigWizard
+        
+        If (bIsConfigWizard) Begin
+            Get GetConfigValues of hoModalDialog to aPropValues
+            
+            WebGet psCurrentWidgetDynID of hoModalDialog to sWidgetId
+            Get DynamicObject sWidgetId to hoWidget
+            
+            If (hoWidget <> 0) Begin
+                // Apply values to corresponding widget controls
+                Send ApplyWidgetProps hoWidget sWidgetId aPropValues
+                
+                Get phoWrapperGroup to hoWrapper
+                WebGet pbEditMode of hoWrapper to bEditMode 
+
+                // When configuring outside edit mode we should trigger a save.
+                If (not(bEditMode)) Begin
+                    Send SaveConfiguration
+                End
+            End
+        End
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure ApplyWidgetProps Handle hoWidget String sWidgetId tWidgetConfigPropValue[] aPropValues
+        Handle hoObj
+        Boolean bValid
+        Variant vValue
+        Integer i j iProps iVals
+        String[] asPropId
+        String sObjName sPropName sPropVal
+        tWebPropMetaData PropMeta
+        tWidgetConfigProp[] aProps
+        
+        // First Verify
+        Get GetConfigurableProps of hoWidget to aProps
+        Move ((SizeOfArray(aProps) - 1)) to iProps
+        Move ((SizeOfArray(aPropValues) - 1)) to iVals
+        Move True to bValid
+        
+        For i from 0 to iProps
+            For j from 0 to iVals
+                If ((aPropValues[j].sObjName = aProps[i].sObjName) and (aPropValues[j].sPropName = aProps[i].sPropName)) Begin
+                    Get VerifyConfigurablePropValue of hoWidget aProps[i] aPropValues[j].sValue to bValid
+                    If (not(bValid)) Begin
+                        Send ClientLog "Invalid prop value detected"
+                        Procedure_Return
+                    End
+                End
+            Loop
+        Loop
+        
+        // A single invalid value will prevent application of all props. This prevents tampering through various avenues
+        // All good? Then apply        
+        for i from 0 to iVals
+            Move aPropValues[i].sObjName to sObjName
+            Move aPropValues[i].sPropName to sPropName
+            Move aPropValues[i].sValue to sPropVal
+            
+            // Assume Object is either this widget or a child
+            If (sObjName <> '') Begin
+                Get DynamicObject (sWidgetId + '.' + sObjName) to hoObj
+            End
+            Else Begin
+                Move hoWidget to hoObj
+            End
+            
+            If (hoObj <> 0) Begin
+                // perform WebSet based on asPropId[1]
+                Get FindWebPropertyMetaByName of hoObj sPropName to PropMeta
+                If (PropMeta.hmGetter <> 0) Begin
+                    Send SetSyncProp of hoObj hoObj PropMeta.hmSetter sPropName sPropVal
+                End
+            End
+        Loop
+        
+        Send OnWidgetPropsChanged of hoWidget   
+    End_Procedure
+    
+    // Server-Action
+    Procedure RemoveWidget String sName
+        tWidgetDef WidgetDef
+        Handle hoActionJson
+        
+        Get phoActionJsonData to hoActionJson
+        Set pbRequireAllMembers of hoActionJson to False
+        Get JsonToDataType of hoActionJson to WidgetDef
+        
+        Send DestroyDynamicObject WidgetDef.sDynId
+        Send OnWidgetRemoved WidgetDef
+        
+    End_Procedure
+    
+    // --- (Web)Get methods to offload to parent
+    Function UseCustomConfigurationStorage Returns Boolean
+        Handle hoWrapper
+        Boolean bRet
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        WebGet pbUseCustomConfigurationStorage of hoWrapper to bRet
+        
+        Function_Return bRet
+    End_Function
+    
+    Procedure ClientTriggerSave
+        Send ClientAction 'saveConfiguration'
+    End_Procedure
+    
+    // --- Events
+    // These are all forwarded to the wrapper for easy API access for the developer
+    
+    {MethodType=Event}
+    {Visibility = Private}
+    Procedure OnLoadConfiguration tContainerDef ByRef ContainerDef
+        Handle hoWrapper
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnLoadConfiguration of hoWrapper (&ContainerDef)
+    End_Procedure
+    
+        
+    {MethodType = Event}
+    {Visibility = Private}
+    Procedure OnSaveCustomConfiguration tContainerDef ContainerDef
+        Handle hoWrapper
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnSaveCustomConfiguration of hoWrapper (&ContainerDef)
+    End_Procedure
+    
+    {MethodType = Event}
+    {Visibility = Private}
+    Procedure OnResetConfiguration
+        Handle hoWrapper
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnResetConfiguration of hoWrapper
+    End_Procedure
+    
+    // Sent before adding a widget
+    // Can be used to cancel add action
+    {MethodType=Event}
+    {Visibility = Private}
+    Function OnBeforeAddWidget tWidgetDef ByRef WidgetDef Handle ByRef hWidgetClass Returns Boolean
+        Handle hoWrapper
+        Boolean bRet
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Get OnBeforeAddWidget of hoWrapper (&WidgetDef) (&hWidgetClass) to bRet
+        
+        Function_Return bRet 
+    End_Function
+    
+    // Sent when a widget has been added
+    {MethodType=Event}
+    {Visibility = Private}
+    Procedure OnWidgetAdded tWidgetDef WidgetDef Handle hWidgetClass
+        Handle hoWrapper
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnWidgetAdded of hoWrapper WidgetDef hWidgetClass
+    End_Procedure
+    
+    // Called when a widget has been resized
+    // WidgetDef contains the updated widget (with new spans)
+    {MethodType=Event}
+    {Visibility = Private}
+    Procedure OnWidgetResized String sWidgetDef
+        tWidgetDef WidgetDef
+        Handle hoJson hoWrapper
+        Boolean bSuccess
+        
+        Get Create (RefClass(cJsonObject)) to hoJson
+        Set pbRequireAllMembers of hoJson to False
+        Get ParseString of hoJson sWidgetDef to bSuccess
+        If (bSuccess) Begin
+            Get JsonToDataType of hoJson to WidgetDef
+        End
+        
+        Send Destroy of hoJson
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnWidgetResized of hoWrapper WidgetDef
+    End_Procedure
+    
+    // Called when a widget has been moved
+    // WidgetDef contains the updated widget (with new spans)
+    {MethodType=Event}
+    {Visibility = Private}
+    Procedure OnWidgetMoved String sWidgetDef
+        tWidgetDef WidgetDef
+        Handle hoJson hoWrapper
+        Boolean bSuccess
+        
+        Get Create (RefClass(cJsonObject)) to hoJson
+        Set pbRequireAllMembers of hoJson to False
+        Get ParseString of hoJson sWidgetDef to bSuccess
+        If (bSuccess) Begin
+            Get JsonToDataType of hoJson to WidgetDef
+        End
+        
+        Send Destroy of hoJson
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnWidgetMoved of hoWrapper WidgetDef
+    End_Procedure
+    
+    // Sent when toggling edit mode for this container
+    {MethodType=Event}
+    {Visibility = Private}
+    Procedure OnToggleEditMode Boolean bEdit
+        Handle hoWrapper
+        
+        Get phoWrapperGroup to hoWrapper
+        
+        Send OnToggleEditMode of hoWrapper bEdit
+    End_Procedure
+    
+    // Drag Drop
+    Function DropData Returns Variant
+        tWebWidgetContainerDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    
+    // --- Data binding for widgets
+    
+    // Attempt to Sync DDO's for widget
+    // Checks if caller is allowed access to this widget
+    // 0 : Default response (usually means object is not a cWebWidget) - Code will continue as normal, but no sync is performed
+    // -1: Access denied - Will destroy the associated widget
+    // 1 : Access granted - triggers sync
+    { Visibility=Private }
+    Function SyncDynamicDDOs Handle hoDynamicObj Returns Integer
+        Boolean bIsWidget bAllowed
+        
+        Get IsObjectOfClass of hoDynamicObj (RefClass(cWebWidget)) to bIsWidget
+        
+        If (bIsWidget) Begin
+            Get AllowViewAccess of (Host(Self)) hoDynamicObj to bAllowed
+            If (bAllowed) Begin
+                Send Call_PreSync of hoDynamicObj
+                Function_Return 1
+            End
+            Else Begin
+                Function_Return -1
+            End
+        End
+        
+        Function_Return 0
+    End_Function
+    
+    { Visibility=Private }
+    Procedure StoreDynamicDDOs Handle hoDynamicObj
+        Boolean bIsWidget
+        
+        Get IsObjectOfClass of hoDynamicObj (RefClass(cWebWidget)) to bIsWidget
+        
+        If (bIsWidget) Begin
+            Send Call_PostSync of hoDynamicObj
+        End
+    End_Procedure
+    
+    // Cancel WebRegisterPath without error, path is registered from the static widget instance
+    { Visibility=Private }
+    Procedure OwnerNavRegisterPath Boolean ByRef bCancel Integer ByRef eNavMode Handle ByRef hoView Handle ByRef hoInvokingObject String ByRef sName
+        Move True to bCancel
+    End_Procedure
+    
+    // Called when searching for a navigation path, this is where we replace the dynamic handle with a static handle.
+    { Visibility=Private }
+    Procedure OwnerNavTranslateInvoking Handle ByRef hoInvokingObject
+        String sInvokingName sWidgetName sStaticWidgetName sStaticInvokingName
+        Handle hoWidget hWidgetClass
+        tWidgetRegistration widgetReg
+        
+        Get GetParentWidget of hoInvokingObject to hoWidget
+        If (hoWidget = C_WebUnresolvedObject) ;
+            Procedure_Return
+            
+        Get WebObjectName of hoInvokingObject to sInvokingName
+        Get WebObjectName of hoWidget to sWidgetName
+        
+        Get ObjectClass of hoWidget to hWidgetClass
+        Get WidgetRegistrationByClass hWidgetClass to widgetReg
+        Get WebObjectName of widgetReg.hoStaticInstance to sStaticWidgetName
+        
+        If (hoInvokingObject = hoWidget) Begin
+            Move widgetReg.hoStaticInstance to hoInvokingObject
+        End
+        Else Begin
+            //  Find the invoking object on the default instance
+            Move (sStaticWidgetName + '.' + Right(sInvokingName, Length(sInvokingName) - Length(sWidgetName) - 1)) to sStaticInvokingName
+            Get WebObjectByName sStaticInvokingName True to hoInvokingObject
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure ClientRegisterWidgetDefaultSizes
+        tWidgetRegistration[] aWidgets
+        String[] aParams
+        Handle hoJsonData
+        
+        Get paRegisteredWidgets of (phoWrapperGroup(Self)) to aWidgets
+        
+        Get Create (RefClass(cJsonObject)) to hoJsonData
+        Send DataTypeToJson of hoJsonData aWidgets
+        
+        Send ClientActionEx 'registerWidgetDefaultSizes' aParams hoJsonData
+        
+        Send Destroy of hoJsonData
+    End_Procedure
+    
+    Procedure OnLoad
+        Forward Send OnLoad
+        
+        Send ClientRegisterWidgetDefaultSizes
+    End_Procedure
+    
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+        WebPublishProcedure Reload
+        WebPublishProcedure LoadConfigurationFromLocalStorage
+        WebPublishProcedure ServerOnSaveConfiguration
+        WebPublishProcedure ResetConfiguration
+        WebPublishProcedure ResetConfigurationEx
+        WebPublishProcedure OnToggleEditMode
+        WebPublishProcedure OnWidgetMoved
+        WebPublishProcedure OnWidgetResized
+        WebPublishProcedure RemoveWidget
+        WebPublishProcedure RequestConfigWizard
+        WebPublishProcedure AppendWidgetEx
+    End_Procedure
+
+End_Class

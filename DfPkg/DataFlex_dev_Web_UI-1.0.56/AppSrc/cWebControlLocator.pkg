@@ -1,0 +1,118 @@
+﻿Use UI
+Use WebUIConstants.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use cWebObject.pkg
+Use cWebObjectOwner_mixin.pkg
+Use tWebControlMapItem.pkg
+
+
+// Singleton object that implements a library of methods that can be used for 
+// returning target cWebView, cWebControl or cWebApp handles from an object name
+// string.
+//
+// Only controls that implement the cWebControl_mixin interface can be located
+// with this object
+{ Visibility=Private }
+{ ClassLibrary=WebApp }
+Class cWebControlLocator is a cObject
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Object Reference Arrays
+        
+        // These two arrays have synchronized members. This means that paWebControlNames
+        // can be searched to lookup the corresponding object handle.
+        Property tWebControlMapItem[] paWebControls
+        
+        Property Handle phoWebHost C_WebUnresolvedObject //    Handle to the host (cWebApp / cLocalWebControlHost)
+    End_Procedure
+
+    
+    // Analyses a partial object name of a cWebObject and returns the corresponding object handle.
+    // - The object name must be in the long name format, e.g. oCustomerView.oSaveButton
+    // - The object name must be a child of the global cWebApp object (note, this might also
+    //   be a child of a cWebView that is itself a child of the cWebApp).
+    // - The name of the cWebApp object is ommitted from the passed object name,
+    //   e.g. a reference "oCustomerView.oSaveButton" indicates a reference to oSaveButton
+    //   that is a child of oCustomerView that is a child of the object referenced by ghoWebApp.
+    // - If an empty string is passed as the object name, then that is considered a reference
+    //   to ghoWebApp.
+    // - Only objects that understand the cWebControl_mixin interface can be found.
+    // - If the object name cannot be resolved then this function returns C_WebUnresolvedObject.
+    Function FindWebObject String sObjectLongName Boolean bOptErr Returns Handle
+        String sContainer sDynamicObjectId
+        Integer iIndex
+        Handle hoControl hoContainer
+        tWebControlMapItem[] aItems
+        tWebControlMapItem searchItem
+        
+        // First test for the global cWebApp object
+        If (sObjectLongName = "") Begin
+            Function_Return (phoWebHost(Self))
+        End
+        
+        // Dynamic objects use a $ character to display the separation
+        // between the "static" container and its dynamic content.
+        If (sObjectLongName contains "$") Begin
+            Move (Pos("$", sObjectLongName)) to iIndex
+            Move (Left(sObjectLongName, iIndex - 1)) to sContainer
+            Move (Right(sObjectLongName, (Length(sObjectLongName) - iIndex))) to sDynamicObjectId
+            
+            // Find the container of the dynamic object
+            If (num_arguments > 1) ;
+                Get FindWebObject sContainer bOptErr to hoContainer
+            Else ;
+                Get FindWebObject sContainer to hoContainer
+            
+            // Redirect query to container      
+            Get OwnerFindWebObject of hoContainer sDynamicObjectId to hoControl
+
+            Function_Return hoControl
+        End
+        
+        Get paWebControls to aItems
+        Move sObjectLongName to searchItem.sName
+        Move (BinarySearchArray(searchItem, aItems, False)) to iIndex
+        
+        If (iIndex = -1) Begin
+            Function_Return C_WebUnresolvedObject
+        End
+        Else Begin
+            Function_Return (aItems[iIndex].hoObj)
+        End
+    End_Function
+    
+    
+    //  Searches the requested webobject and checks if it is a valid webapp View.
+    //  Note: Self is also considered a valid target.
+    //
+    //  Returns:
+    //      Handle to the webapp view (C_WebUnresolvedObject if not a valid Ajax view)
+    //
+    Function GetAjaxWebAppView String sView Returns Handle
+        Function_Return (FindWebObject(Self, sView))
+    End_Function
+
+    // Sent by each cWebControl object. Stores the control's name & object handle a global arrays
+    // for fast lookup of cWebControl object names.
+    Procedure RegisterWebControl Handle hoWebControl
+        tWebControlMapItem[] aItems
+        tWebControlMapItem newItem
+        Integer iPos
+        
+        Move hoWebControl to newItem.hoObj
+        Get WebObjectName of hoWebControl to newItem.sName
+        Get paWebControls to aItems
+        
+        Move (BinarySearchArray(newItem, aItems, False)) to iPos
+        
+        If (iPos <> -1) Begin
+            Error DFERR_PROGRAM (SFormat("Web object with name '%1' already exists!", newItem.sName))
+        End
+        Else Begin
+            Move (InsertInArray(aItems, BinarySearchInsertPos(), newItem)) to aItems
+            Set paWebControls to aItems
+        End
+    End_Procedure
+
+End_Class

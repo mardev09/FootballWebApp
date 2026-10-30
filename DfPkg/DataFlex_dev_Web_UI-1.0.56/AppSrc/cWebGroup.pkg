@@ -1,0 +1,74 @@
+﻿Use cWebBaseControl.pkg
+Use cWebBaseContainer_mixin.pkg
+Use cWebDDOHost_Mixin.pkg
+
+{ OverrideProperty=piColumnSpan InitialValue=0 }
+{ OverrideProperty=pbShowLabel InitialValue=False }
+{ OverrideProperty=piWidth Visibility=Private }
+{ HelpTopic=cWebGroup }
+{ DesignerJSClass=df.WebGroup }
+{ DDOHost=True }
+Class cWebGroup is a cWebBaseControl
+    Import_Class_Protocol cWebBaseContainer_mixin
+    Import_Class_Protocol cWebDDOHost_Mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Send Define_cWebBaseContainer_mixin
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowBorder True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowCaption True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbCollapsible False
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbExpanded True
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnExpand False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnExpand ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnCollapse False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnCollapse ""
+        
+        Send Define_cWebDDOHost_Mixin
+        
+        Set piColumnSpan to 0
+        Set pbShowLabel to False
+        
+        Set psJSClass to "df.WebGroup"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnExpand
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnCollapse
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send End_Construct_cWebDDOHost_Mixin
+        
+        WebPublishProcedure OnExpand
+        WebPublishProcedure OnCollapse
+    End_Procedure
+    
+End_Class

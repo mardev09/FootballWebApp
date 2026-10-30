@@ -1,0 +1,49 @@
+﻿Use cWebBaseControl.pkg
+
+{ OverrideProperty=piColumnSpan InitialValue=0 }
+{ OverrideProperty=pbShowLabel InitialValue=False }
+{ HelpTopic=cWebProgressBar }
+{ DesignerJSClass=df.WebProgressBar }
+Class cWebProgressBar is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psJSClass to "df.WebProgressBar"
+                
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMaxValue 100
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piValue 0
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowPercentage True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piDecimals 0
+        
+        Set piColumnSpan to 0
+        Set pbShowLabel to False
+    End_Procedure
+
+    Procedure Progress 
+        // Increment the progess of the progressbar.
+        Integer iProgressBarValue iProgressBarMaxValue
+        WebGet piValue to iProgressBarValue
+        Move (iProgressBarValue + 1) to iProgressBarValue
+        WebGet piMaxValue to iProgressBarMaxValue
+        
+        If (iProgressBarValue > iProgressBarMaxValue) Begin
+            Move iProgressBarMaxValue to iProgressBarValue
+        End
+        
+        WebSet piValue to iProgressBarValue        
+    End_Procedure
+
+
+End_Class

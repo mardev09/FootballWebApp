@@ -1,0 +1,7 @@
+Object 
+    Set piColumnSpan to 0
+    Set psLabel to "Selection:"
+    
+    Object oSelectionSource is a cSelectionSource
+    End_Object
+End_Object

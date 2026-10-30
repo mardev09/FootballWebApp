@@ -1,0 +1,4 @@
+Object
+//    Set peRegion to prRight //prLeft //prCenter// prTop // prBottom
+    Set piColumnCount to 12
+End_Object

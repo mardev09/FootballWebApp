@@ -1,0 +1,13 @@
+﻿Use cWebMenuItem.pkg
+
+Class cWebMenuGroupingSelector is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psJSClass to "df.WebMenuGroupingSelector"
+        Set pbBeginGroup to True
+        Set psCaption to "Group columns"
+    End_Procedure
+
+End_Class

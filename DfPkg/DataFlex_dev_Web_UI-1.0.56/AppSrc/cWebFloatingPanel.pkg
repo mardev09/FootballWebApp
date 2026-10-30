@@ -1,0 +1,120 @@
+﻿Use cWebBaseContainer.pkg
+
+Enum_List 
+    Define fpFloatByControl for 1
+    Define fpFloatLeftSqueezeWebApp
+    Define fpFloatLeftPushWebApp
+    Define fpFloatFixed
+End_Enum_List
+
+{ DesignerJSClass=df.WebFloatingPanel }
+Class cWebFloatingPanel is a cWebBaseContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piWidth -1
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piHeight -1
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piTop -1
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piLeft -1
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piBottom -1
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piRight -1
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piContentWidth 0   //  Determines fixed content width when using fpFloatLeft.. position mode
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbNaturalWidth False // If set to true and the width is 0 it will let browser figure out the width, note that this is an advanced feature and the results depend on the floating panel content.
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbShrinkIfNoSpace False
+        
+        Property Handle phoFloatByControl 0
+        { DesignTime=False }
+        { WebProperty=Client } 
+        Property String psFloatByControl ""
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        { EnumList="fpFloatByControl, fpFloatLeftSqueezeWebApp, fpFloatLeftPushWebApp, fpFloatFixed" }
+        Property Integer pePosition fpFloatByControl
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbHideOnBlur False
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbHideOnEscape False
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbFocusOnShow False
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnHide False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnHide ""
+        
+        Set pbVisible to False
+        Set pbScroll to True
+        Set psJSClass to "df.WebFloatingPanel"
+    End_Procedure
+    
+    Procedure Show
+        Handle hoFloatBy
+        String sName
+        
+        Get phoFloatByControl to hoFloatBy
+        
+        If (hoFloatBy > 0) Begin
+            Get WebObjectName of hoFloatBy to sName
+            WebSet psFloatByControl to sName
+        End
+        
+        WebSet pbVisible to True
+    End_Procedure
+    
+    Procedure Hide
+        WebSet pbVisible to False
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnHide
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Handle hoFloatBy
+        String sName
+        
+        Get phoFloatByControl to hoFloatBy
+        
+        If (hoFloatBy > 0) Begin
+            Get WebObjectName of hoFloatBy to sName
+            Set psFloatByControl to sName
+        End
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnHide
+    End_Procedure
+End_Class

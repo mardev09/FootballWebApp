@@ -1,0 +1,27 @@
+﻿Use cWebColumnButton.pkg
+Use cWebColumn_mixin.pkg
+
+Class cWebColumnDeleteButton is a cWebColumnButton
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set piWidth to 10
+        Set peAlign to alignRight
+        Set pbDynamic to True
+    End_Procedure
+    
+    Procedure OnClick String sButton String sRowId
+        Integer eResult
+        Get DeleteSelectedRow to eResult
+    End_Procedure
+
+    Procedure OnDefineButtons String sRowId
+        Boolean bReadOnly bHasRecord
+        Handle hServer
+        Get IsViewReadOnly to bReadOnly
+        Get Server to hServer
+        Get HasRecord of hServer to bHasRecord
+        If (not(bReadOnly) and bHasRecord) Begin
+            Send AddButton "D" "" "WebButtonIcon WebIcon_Delete"
+        End
+    End_Procedure
+End_Class

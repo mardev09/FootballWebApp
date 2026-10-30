@@ -1,0 +1,261 @@
+﻿Use cWebCombo.pkg
+
+{ OverrideProperty=pbCapslock Visibility=Private }
+Class cWebParentCombo is a cWebCombo
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Property Integer piIndex 0  //  Optionally override the index being used (0 defaults to the default index for the field)
+        
+        Set pbCapslock to False //  Explicitly set pbCapslock to false as it will change the casing of RowID's which causes issues
+    End_Procedure
+    
+    //  Override the FillFromDDO and add an entry item for each parent record.
+    { NoDoc=True }
+    Procedure FillFromDDO
+        Handle hoServer hoDD
+        Integer iFile iField iIndex
+        String sRowId sDescription sEmptyItemDescription
+        Boolean bOldRelate bNeedsRelate
+        tWebComboItem[] atEmpty
+        Boolean bAddEmptyItem
+        
+        Get Server to hoServer
+        Get Data_Field to iField
+        Get Data_File to iFile
+        Get piIndex to iIndex
+        
+        Set paComboItems to atEmpty
+        
+        If (hoServer > 0 and iFile > 0) Begin
+            //  Do security check
+            If (not(FillDEOAllowed(Self))) Begin
+                Procedure_Return
+            End
+            
+            Get Data_Set of hoServer iFile to hoDD
+            
+            If (hoDD > 0) Begin
+                Get pbAddEmptyItem to bAddEmptyItem
+                If (bAddEmptyItem) Begin
+                    Get psEmptyItemDescription to sEmptyItemDescription
+                    Send AddComboItem (SerializeRowID(NullRowID())) sEmptyItemDescription
+                End
+                
+                //  Use the field its prefered index
+                If (iIndex <= 0) Begin
+                    Get_Attribute DF_FIELD_INDEX of iFile iField to iIndex
+                End
+                
+                //  If the field is not indexed we use the table its primary index
+                If (iIndex <= 0) Begin
+                    Get_Attribute DF_FILE_PRIMARY_INDEX of iFile to iIndex
+                End
+                                 
+                // optimize relates. Only do it if needed
+                Get No_Relate_State of hoDD to bOldRelate
+                Get DDOConstraintNeedsRelate of hoDD iIndex to bNeedsRelate
+                Set No_Relate_State of hoDD to (not(bNeedsRelate))
+                Send Request_Read of hoDD FIRST_RECORD iFile iIndex
+                
+                While (Found)
+                    Get_Field_Value iFile iField to sDescription
+                    Send OnDefineDescription (&sDescription)
+                    Move (SerializeRowID(GetRowID(iFile))) to sRowId
+                    Send AddComboItem sRowId (Trim(sDescription))
+                    
+                    Send Locate_Next of hoDD
+                Loop
+                Set No_Relate_State of hoDD to bOldRelate
+           End
+        End
+    End_Procedure
+    
+    // Hook to customize a combo item's description.
+    { MethodType=Event }
+    Procedure OnDefineDescription String ByRef sDescription
+    End_Procedure
+    
+    //  Override the Refresh procedure and instead of setting the value we use the rowid.
+    { NoDoc=True }
+    Procedure Refresh Integer eMode
+        Handle hoServer hoDD
+        Integer iFile iField
+        String sRowId
+        RowID riRowId
+        Boolean bAllowFind
+        
+        If (not(AppSynching(Host(Self)))) Begin
+            Get Server to hoServer
+            Get Data_File to iFile
+            Get Data_Field to iField
+            
+            If (hoServer > 0 and iFile > 0) Begin
+                //  Do security check
+                If (not(FillDEOAllowed(Self))) Begin
+                    Procedure_Return
+                End
+                
+                Get Data_Set of hoServer iFile to hoDD
+                
+                //  Update value with the current rowid
+                If (hoDD > 0) Begin
+                    Get CurrentRowId of hoDD to riRowId
+                    Move (SerializeRowID(riRowId)) to sRowId
+                    
+                    WebSet psValue to sRowId
+                End
+                
+                //  Handle dynamic switching of the enabled state
+                If (pbEnabled(Self)) Begin
+                    Send SetDynamicEnabled
+                End                
+            End
+        End
+    End_Procedure
+    
+    
+    //  The default implementation of the OnChange will perform the find operation so if 
+    //  pbServerOnChange is enabled changing the combo will immediately update other fields from 
+    //  the parent that might be displayed.
+    { NoDoc=True }
+    Procedure OnChange String sNewValue String sOldValue
+        Integer iFile
+        RowID riNewRow
+        Handle hoDD hoServer
+        Boolean bAllowFind
+        
+        Forward Send OnChange sNewValue sOldValue
+        
+        Get Server to hoServer
+        Get Data_File to iFile
+        
+        If (hoServer > 0 and iFile > 0) Begin
+            //  Do security check
+            If (not(FillDEOAllowed(Self))) Begin
+                Procedure_Return
+            End
+            
+            Get Data_Set of hoServer iFile to hoDD
+            
+            If (hoDD > 0) Begin
+                Get AllowParentFind of hoDD to bAllowFind
+                
+                If (bAllowFind) Begin
+                    Move (DeserializeRowID(sNewValue)) to riNewRow
+                    
+                    If (not(IsNullRowID(riNewRow))) Begin
+                        Send FindByRowId of hoDD (Main_File(hoDD)) riNewRow
+                    End
+                    Else Begin
+                        Send Clear of hoDD  
+                    End
+                End
+            End
+        End
+    End_Procedure
+    
+    //  Override the UpdateDataBinding and instead of setting the field its changed-value it 
+    //  performs a find to select the right parent.
+    Procedure UpdateDataBinding
+        Integer iFile
+        String sRowId
+        RowID riNewRow
+        Handle hoDD hoServer
+        Boolean bAllowFind
+        
+        WebGet psValue to sRowId
+        Get Server to hoServer
+        Get Data_File to iFile
+        
+        If (hoServer > 0 and iFile > 0) Begin        
+            //  Do security check
+            If (not(UpdateDDAllowed(Self))) Begin
+                Procedure_Return
+            End
+            
+            Get Data_Set of hoServer iFile to hoDD
+            
+            If (hoDD > 0) Begin
+                Get AllowParentFind of hoDD to bAllowFind
+                
+                If (bAllowFind) Begin
+                    Move (DeserializeRowID(sRowId)) to riNewRow
+                    
+                    If (not(IsSameRowID(CurrentRowId(hoDD), riNewRow))) Begin
+                        If (not(IsNullRowID(riNewRow))) Begin
+                            Send FindByRowId of hoDD (Main_File(hoDD)) riNewRow
+                        End
+                        Else Begin
+                            Send Clear of hoDD  
+                        End
+                    End
+                End
+            End 
+        End
+    End_Procedure
+    
+    //  We don't look at the field options as the parent combo only alters the relationship and not the field itself,
+    //  we Do check if the parent find would be allowed
+    Procedure SetDynamicEnabledDesktopStyle
+        Handle hoServer hoDDO
+        Integer iFile
+        Boolean bAllowFind
+        
+        Get Server to hoServer
+        Get Data_File to iFile        
+        If (not(hoServer) or not (iFile)) Begin
+            Procedure_Return
+        End
+        
+        Get Data_Set of hoServer iFile to hoDDO
+        If hoDDO Begin
+            Get AllowParentFind of hoDDO to bAllowFind
+            WebSet pbEnabled to bAllowFind
+        End
+    End_Procedure
+
+    // this is just like desktop style except we also check for a ReadOnly View and we
+    // check for a drilldown constrained parent nofind
+    Procedure SetDynamicEnabledDrilldownStyle
+        Boolean bIsReadOnly bNoFind
+        Handle hoServer hoDDO
+        Integer iFile
+    
+        Get IsViewReadOnly to bIsReadOnly
+        
+        If not bIsReadOnly Begin
+            // test for drilldown parent constrained nofind
+            Get IsViewNoFindOnConstrainedParent to bNoFind
+            If bNoFind Begin
+                Get Server to hoServer
+                Get Data_File to iFile        
+                If (hoServer and iFile) Begin
+                    Get Data_Set of hoServer iFile to hoDDO
+                    Get IsConstrainingParent hoDDO to bIsReadOnly
+                End
+            End
+        End
+        
+        If bIsReadOnly Begin
+            WebSet pbEnabled to False
+        End
+        Else Begin
+            Send SetDynamicEnabledDesktopStyle
+        End
+    End_Procedure
+    
+    // By temporarily setting pbEnabledStatic to True, we will stop the attach from
+    // setting pbEnabled when this is a noput field (such as an unlikely foreign field w/ no index)
+    { NoDoc=True }
+    Procedure Attach_Deo_To_Server
+        Boolean bOldStatic
+        Get pbEnabledStatic to bOldStatic
+        Set pbEnabledStatic to True
+        Forward Send Attach_Deo_To_Server
+        Set pbEnabledStatic to bOldStatic
+    End_Procedure           
+
+    
+
+End_Class

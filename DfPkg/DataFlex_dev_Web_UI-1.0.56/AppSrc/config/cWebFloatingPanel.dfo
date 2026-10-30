@@ -1,0 +1,8 @@
+Object
+    Set piColumnCount to 12
+    Set pePosition to fpFloatFixed
+    Set piWidth to 200
+    Set piTop to 20
+    Set piLeft to 20
+    Set psCssClass to "Shadow"
+End_Object

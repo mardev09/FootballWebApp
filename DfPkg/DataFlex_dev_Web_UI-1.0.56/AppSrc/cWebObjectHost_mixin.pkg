@@ -1,0 +1,882 @@
+﻿Use UI
+Use cWebCallHandler_mixin.pkg
+Use cWebControlLocator.pkg
+Use cWebBaseDEO.pkg
+
+// Main logic for hosting web controls. Implements the main ServerAction and ClientAction logic
+// including the handling of attachments. Implements various parts of the server call handling
+// hooks triggered by cWebCallHandler_mixin.
+Class cWebObjectHost_mixin is a Mixin
+    
+    { Visibility=Private }    
+    Procedure Define_cWebObjectHost_mixin
+        // This is set to true while the application's Web Objects are being created.
+        // When true there may be certain things you don't want to do. This is system maintained.
+        // Usually, you will using Get AppSynching instead of this property.
+        { Visibility=Private }
+        Property Boolean pbInitWebApp True
+        
+        { Visibility=Private }
+        Property String private_psFocus ""             // String name of the currently focussed object on the client
+        
+        //  Keeps client actions that will be added to the response
+        { Visibility=Private }
+        Property tWebClientAction[] paClientActions    
+        
+        { Visibility=Private }
+        Property Handle phoResourceProxy C_WebUnresolvedObject  // Proxy object handling file uploads
+        
+        { Visibility=Private }
+        Property Handle phoViewStack C_WebUnresolvedObject // Handle to the view stack object
+        
+        { Visibility=Private }
+        Property Handle phoResourceManager C_WebUnresolvedObject // Handle to the resource manager object.
+        
+        { Visibility=Private }
+        Property Handle phoSessionManager C_WebUnresolvedObject // Handle to the session manager object
+        
+        { Visibility=Private }
+        Property Handle phoServerPropStore C_WebUnresolvedObject // Handle to the server prop store object
+        
+        { Visibility=Private }
+        Property Handle phoServiceDispatcher C_WebUnresolvedObject // Handle to the service dispatcher object
+        
+        //  Handles for the cJsonObject attachment arrays
+        { Visibility=Private }
+        Property Handle phoRequestAttachments C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoResponseAttachments C_WebUnresolvedObject
+        
+        //  Web control locator for this web object host
+        { Visibility=Private }
+        Property Handle phoWebControlLocator C_WebUnresolvedObject
+        Send InitWebControlLocator        
+    End_Procedure
+    
+    //  Initializes the web control locator object responsible for mapping web object names to handles.
+    { Visibility=Private }
+    Procedure InitWebControlLocator
+        Handle hoLocator
+        
+        Get CreateNamed (RefClass(cWebControlLocator)) "oWebControlLocator" to hoLocator
+        Set phoWebHost of hoLocator to Self 
+        Set phoWebControlLocator to hoLocator
+    End_Procedure
+    
+    // Send by cWebCallHandler_mixin as part of the call handling proces to clear any data that
+    // might have been left behind by previous requests / sessions.
+    { Visibility=Private }
+    Procedure Call_ClearWebObjectHost
+        tWebClientAction[] aEmptyCA
+        
+        Set paClientActions to aEmptyCA
+        
+        If (phoRequestAttachments(Self) <> C_WebUnresolvedObject) Begin
+            Send Destroy of (phoRequestAttachments(Self))
+            Set phoRequestAttachments to C_WebUnresolvedObject
+        End
+        
+        If (phoResponseAttachments(Self) <> C_WebUnresolvedObject) Begin
+            Send Destroy of (phoResponseAttachments(Self))
+            Set phoResponseAttachments to C_WebUnresolvedObject
+        End
+        
+        Set private_psFocus to ""
+    End_Procedure
+    
+    // Send by cWebCallHandler_mixin as part of the call handling proces to initialize the
+    // attachment data. 
+    { Visibility=Private }
+    Procedure Call_PreAttachments tWebCallContext ByRef cctx
+        Handle hoRequestAttachments hoResponseAttachments
+        
+        //  Get request attachments
+        If (cctx.hoJsonRequest <> C_WebUnresolvedObject) Begin
+            Get Member of cctx.hoJsonRequest "a" to hoRequestAttachments
+            Set phoRequestAttachments to hoRequestAttachments
+        End
+    End_Procedure
+    
+    // Send by cWebCallHandler_mixin as part of the call handling proces to perform the actual
+    // actions specified in the request.
+    { Visibility=Private }
+    Procedure Call_Action tWebCallContext ByRef cctx
+        Integer i icAction
+        Handle hoAttachment hoTarget
+        
+        Set private_psFocus to cctx.request.Header.sFocus
+        
+        Move (SizeOfArray(cctx.request.aActions)) to icAction
+        
+        For i from 0 to (icAction - 1)
+            Get WebObjectByName cctx.request.aActions[i].sTarget to hoTarget
+            
+            If (hoTarget <> C_WebUnresolvedObject) Begin
+                // Make the method call....
+                Move C_WebUnresolvedObject to hoAttachment
+                If (cctx.request.aActions[i].iAttached > 0) Begin
+                    Get RequestAttachment cctx.request.aActions[i].iAttached to hoAttachment
+                End
+                Get HandleAction of hoTarget cctx.request.aActions[i].sAction cctx.request.aActions[i].aParams hoAttachment to cctx.response.asReturnValues[i]
+                
+                If (hoAttachment <> C_WebUnresolvedObject) Begin
+                    Send Destroy of hoAttachment
+                End
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound, cctx.request.aActions[i].sTarget))
+            End
+        Loop
+    End_Procedure
+
+    // Send by cWebCallHandler_mixin as part of the call handling proces to gather response
+    // attachments that might have been sent with client actions.
+    { Visibility=Private }
+    Procedure Call_PostAttachments tWebCallContext ByRef cctx
+        Handle hoResponseAttachments hoRequestAttachments
+        
+        //  Add attachments to response
+        Get phoResponseAttachments to hoResponseAttachments
+        If (hoResponseAttachments <> C_WebUnresolvedObject) Begin
+            Send SetMember of cctx.hoJsonResponse "a" hoResponseAttachments
+            
+            //  Cleanup handles
+            Send Destroy of hoResponseAttachments
+            Set phoResponseAttachments to C_WebUnresolvedObject
+        End
+        
+        Get phoRequestAttachments to hoRequestAttachments
+        If (hoRequestAttachments <> C_WebUnresolvedObject) Begin
+            Send Destroy of (phoRequestAttachments(Self))
+            Set phoRequestAttachments to C_WebUnresolvedObject
+        End
+    End_Procedure
+    
+    // Send by cWebCallHandler_mixin as part of the call handling proces to gather client actions.
+    { Visibility=Private }
+    Procedure Call_PostClientAction tWebCallContext ByRef cctx
+        tWebClientAction[] aEmpty
+        
+        Get paClientActions to cctx.response.Header.aActions
+        Set paClientActions to aEmpty
+    End_Procedure
+    
+    // Send by the cWebCallHandler_mixin when request processing is cancelled. In this case we 
+    // only want to send error client actions back to the client.
+    { Visibility=Private }
+    Procedure Call_PostErrorOnlyClientActions tWebCallContext ByRef cctx
+        tWebClientAction[] aEmpty aActions
+        Integer iAction iActionTo
+        
+        Get paClientActions to aActions
+        Move (SizeOfArray(aActions) - 1) to iActionTo
+        For iAction from 0 to iActionTo
+            If (aActions[iAction].sName = "showError") ;
+                Move aActions[iAction] to cctx.response.Header.aActions[iAction]
+        Loop
+        
+        Set paClientActions to aEmpty
+    End_Procedure
+    
+    // Retrieves an attachment from the request based on its index.
+    //
+    // Params:
+    //  iIndex  Attachment index (1 based).
+    // Returns:
+    //  JSON Object handle.
+    Function RequestAttachment Integer iIndex Returns Handle
+        Handle hoAttachments
+        
+        Get phoRequestAttachments to hoAttachments
+        If (hoAttachments <> C_WebUnresolvedObject) Begin
+            If (IsOfJsonType(hoAttachments, jsonTypeArray)) Begin
+                If (MemberCount(hoAttachments) > (iIndex - 1)) Begin
+                    Function_Return (MemberByIndex(hoAttachments, (iIndex - 1)))
+                End
+                Else Begin
+                    Error DFERR_PROGRAM "Request attachment index out of bounds."
+                End
+            End
+            Else Begin
+                Error DFERR_PROGRAM "No request attachments available."
+            End 
+        End
+        Else Begin
+            Error DFERR_PROGRAM "No request attachments available."
+        End
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    
+    // Adds an attachment to the response and returns the integer id.
+    //
+    // Params:
+    //  hoJsonObject    cJsonObject handle representing the attachment.
+    // Returns:
+    //  The attachment index (1 based).
+    Function AddResponseAttachment Handle hoJsonObject Returns Integer
+        Handle hoAttachments
+        Integer iIndex
+        Move -1 to iIndex
+        
+        Get phoResponseAttachments to hoAttachments
+        If (hoAttachments = C_WebUnresolvedObject) Begin
+            Get Create (RefClass(cJsonObject)) to hoAttachments
+            Send InitializeJsonType of hoAttachments jsonTypeArray
+            Set phoResponseAttachments to hoAttachments
+        End
+        Get MemberCount of hoAttachments to iIndex
+        Increment iIndex
+        Send AddMember of hoAttachments hoJsonObject
+        
+        Function_Return iIndex
+    End_Function
+    
+    // Determines the current action state for client actions.
+    { Visibility=Private }
+    Function OwnerActionState Handle hoWO Returns Integer
+        Function_Return ctExecDefault
+    End_Function
+    
+    // Adds a ClientAction to be executed during the next response.
+    // tClientAction    - Is the action to be executed
+    { Visibility=Private }
+    Procedure AddClientAction tWebClientAction tClientAction
+        tWebClientAction[] aClientActions
+        
+        Get paClientActions to aClientActions
+        Move tClientAction to aClientActions[SizeOfArray(aClientActions)]
+        Set paClientActions to aClientActions
+    End_Procedure    
+    
+    
+    // Cancels a client action that was scheduled.
+    // tClientAction    - Is the action to be executed
+    { Visibility=Private }
+    Procedure OwnerCancelClientAction Handle hoWO String sName
+        tWebClientAction[] aClientActions
+        Integer iCur
+        String sTarget
+        Handle hoAttachments
+        
+        Get WebObjectName of hoWO to sTarget
+        Get paClientActions to aClientActions
+        
+        For iCur from 0 to (SizeOfArray(aClientActions) - 1)
+            If (aClientActions[iCur].sTarget = sTarget and aClientActions[iCur].sName = sName) Begin
+                //  Clear attachment
+                If (aClientActions[iCur].iAttached <> 0) Begin
+                    Get phoResponseAttachments to hoAttachments
+                    Send SetMemberValue of hoAttachments (aClientActions[iCur].iAttached - 1) jsonTypeNull 0        
+                End
+                
+                Move (RemoveFromArray(aClientActions, iCur)) to aClientActions
+                
+                Decrement iCur
+            End
+        Loop
+        
+        Set paClientActions to aClientActions
+    End_Procedure
+    
+
+    //  This function searches the object handle of a web object using its public name. The object 
+    //  name can be obtained by calling the WebObjectName Function on a web Object. If it can't 
+    //  find the Object it will cause an Error and return C_WebUnresolvedObject (0).
+    //      sObjectName - Name of the web object.
+    Function FindWebObject String sObjectName Boolean bOptErr Returns Handle
+        Handle hoObj
+        Boolean bErr
+        
+        Move True to bErr
+        If (num_arguments > 1) ;
+            Move bOptErr to bErr
+        
+        Get FindWebObject of (phoWebControlLocator(Self)) sObjectName bErr to hoObj
+        
+        If (hoObj = C_WebUnresolvedObject and bErr) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound, sObjectName))
+        End
+        
+        Function_Return hoObj
+    End_Function
+    
+    //  This function searches the object handle of a web object using its public name. The object 
+    //  name can be obtained by calling the WebObjectName Function on a web Object. If it can't 
+    //  find the Object it will return C_WebUnresolvedObject (0).
+    //      sObjectName - Name of the web object.
+    Function FindWebObjectSilent String sObjectName Returns Handle
+        Handle hoObj
+        
+        Get FindWebObject of (phoWebControlLocator(Self)) sObjectName False to hoObj
+        
+        Function_Return hoObj
+    End_Function
+
+    // Returns a handle to this object. This can be sent to any child object to retrieve the object handle
+    // of the web neighborhood object delegation.
+    { Visibility=Private }
+    Function WebNeighborhood Returns Handle
+        Function_Return Self
+    End_Function
+    
+    { Visibility=Private }
+    Procedure OwnerRegisterWebObject Handle hoWO
+        Send RegisterWebControl of (phoWebControlLocator(Self)) hoWO
+    End_Procedure
+    
+    // For hosts without view logic objects are always in scope.
+    { Visibility=Private }
+    Function OwnerIsInCallActionScope Handle hoWO Returns Boolean
+        Function_Return True
+    End_Function
+    
+    // Overriden to do nothing. This is object is a web control container. It does
+    // not need to be registered with a parent object. Called by cWebObject base
+    // class on initialization.
+    { Visibility=Private }
+    Procedure RegisterThisWebObject
+        Set phoWebNeighborhood to Self
+    End_Procedure
+    
+    //  Host for a web object (cWebApp, cLocalWebControlHost)
+    Function Host Returns Handle
+        Function_Return Self
+    End_Function
+    
+    // Used to find the host with delegation.
+    { Visibility=Private }
+    Function FindHost Returns Handle
+        Function_Return Self
+    End_Function
+    
+    //  Override as delegation alwas ends up here. Always accessible.
+    { Visibility=Private }
+    Function GetAccessible Returns Integer
+        Function_Return C_UIA_All
+    End_Function
+    
+    // Determines if the current session has access to the specified view. Overridden by
+    // cWebSessionHost_mixin to communicate with the session manager.
+    //
+    // Returns:
+    //  True if the current session has access to the view.
+    { Visibility=Private }
+    Function AllowViewAccess Handle hoView Returns Boolean
+        Function_Return True
+    End_Function
+
+    // AppSycnhing is used to check if this process is in a create
+    // or client synching state. When True, the application is in an
+    // initialization state and there may be some things (such as DD events)
+    // that you don't want to process
+    Function AppSynching Returns Boolean
+        Boolean bInitWebApp bSynchronizing
+        Get pbInitWebApp to bInitWebApp
+        Get pbSynchronizing to bSynchronizing
+        Function_Return (bInitWebApp or bSynchronizing)
+    End_Function
+    
+    // Is used to check if this proces is in a create state. If this is true there are some things 
+    // (like DD events) that you don't want to process. Note that in most cases you'd want to look 
+    // at AppSynching.
+    Function Initializing Returns Boolean
+        Function_Return (pbInitWebApp(Self))
+    End_Function
+
+    // This returns the VDF object handle of the server-side object that represents the current
+    // focused object on the client. If Focus = C_WebUnresolvedObject then there is no focus object.
+    // The return value is set by CallAction and remains in scope during execution of CallAction.
+    Function FocusObject Returns Handle
+        Handle hoFocus
+        String sFocus
+        
+        Get private_psFocus to sFocus
+        Get WebObjectByName sFocus to hoFocus
+        
+        Function_Return hoFocus
+    End_Function
+
+    // returns focus handle if it is a bindable DEO control, else 0
+    Function DEOControlFocusObject Returns Handle
+        Handle hoFocus
+        Boolean bIsOk
+        Get DEOFocusObject to hoFocus
+        If (hoFocus) Begin
+           Get DEO_Control_Object of hoFocus to bIsOk
+           If not (bIsOk) Begin
+               Move 0 to hoFocus
+           End
+        End
+        Function_Return hoFocus
+    End_Function
+
+    // returns focus handle if it is a bindable DEO control, else 0
+    Function DEOFocusObject Returns Handle
+        Handle hoFocus
+        Boolean bIsOk
+        Get FocusObject to hoFocus
+        If (hoFocus) Begin
+           Get DEO_Object of hoFocus to bIsOk
+           If not (bIsOk) Begin
+               Move 0 to hoFocus
+           End
+        End
+        Function_Return hoFocus
+    End_Function
+
+    // Server-Action
+    //
+    // Server action that is called by the JavaScript engine opun initialization. It makes sure 
+    // that the object definitions of the global object and the initial view (phoLoginView or 
+    // phoDefaultView) including its DDO state. Also makes sure that translations are sent to the 
+    // client.
+    //
+    // Params:
+    //  bLoadInitial     If true (or not passed) the default (or login) view is loaded immediately 
+    //          and sent to the client. If displayView is used on the client this will be false.
+    // Returns:
+    //      The name of the initial view or dialog.
+    { Visibility=Private }
+    Function LoadWebApp Boolean bLoadInitial Returns String
+        String[] asBrowserLanguages asParams
+        Integer eAppStyle iBrowserTimezoneOffset iWidth iHeight
+        Boolean bIsLoggedIn bAllowAccess bOverrideState bOnResize
+        Handle hoView hoDefaultView hjObjectDef hjTranslations
+        tWebNameValue[] aTranslations
+        
+        //  Trigger event allowing application to initialize things based on the client locales
+        WebGet pasBrowserLanguages to asBrowserLanguages
+        WebGet piBrowserTimezoneOffset to iBrowserTimezoneOffset
+        
+        Send OnInitializeLocales (If(SizeOfArray(asBrowserLanguages) > 0, asBrowserLanguages[0], "")) iBrowserTimezoneOffset
+        
+        //  Load translations (mark as 'early' client action so it executes before anything else)
+        Get ClientTranslations to aTranslations
+        Get Create (RefClass(cJsonObject)) to hjTranslations
+        Send DataTypeToJson of hjTranslations aTranslations 
+        Send ClientActionEarly "initTranslations" asParams hjTranslations
+        Send Destroy of hjTranslations
+        
+        //  Trigger resize event
+        Get pbServerOnResizeWindow to bOnResize
+        If (bOnResize) Begin
+            WebGet piWindowWidth to iWidth
+            WebGet piWindowHeight to iHeight
+            
+            Send OnResizeWindow iWidth iHeight
+        End
+        
+        //  Serialize Global Objects
+        Get SerializeObject to hjObjectDef
+        Send ClientActionEarly "createWebApp" asParams hjObjectDef 
+        Send Destroy of hjObjectDef
+        
+        WebSet pbIsLoaded to True
+        
+        If (bLoadInitial) Begin
+            Send Load_InitialView
+        End
+         
+        Function_Return ""
+    End_Function
+    
+    //  Empty stub, called from loadWebApp, implemented in cWebViewHost_mixin
+    { Visibility=Private }
+    Procedure Load_InitialView
+        
+    End_Procedure
+    
+    //  Empty stub, implemented in cWebSessionHost_mixin
+    Function ValidLogin Returns Boolean
+        Function_Return True        
+    End_Function
+    
+    // Determines if web objects in this scope have been loaded to the client.
+    Function IsLoaded Returns Boolean
+        Boolean bLoaded
+        
+        WebGet pbIsLoaded to bLoaded
+        
+        Function_Return bLoaded
+    End_Function
+    
+
+    // Client Actions: Sends an error to the client so it can be displayed.
+    { Visibility=Private }
+    Procedure ShowError Integer iErrNum Integer iErrLine String sErrText String sCaption Boolean bUserError
+        String[] aParams
+        
+        Move iErrNum    to aParams[0]
+        Move iErrLine   to aParams[1]
+        Move sErrText   to aParams[2]
+        Move sCaption   to aParams[3]
+        Move bUserError to aParams[4]
+        
+        Send ClientAction "showError" aParams
+    End_Procedure    
+
+    // Returns the translations in an array of name value structs. The translations are currently 
+    // coming from the symbols which means that they are replaced at compile time. Augment this 
+    // method to add additional translations.
+    Function ClientTranslations Returns tWebNameValue[]
+        tWebNameValue[] aTranslations
+        tWebNameValue Trans
+        
+        //  Generic                 
+        Move "ok"                   to Trans.sN
+        Move C_$OK                  to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "cancel"               to Trans.sN
+        Move C_$Cancel              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "yes"                  to Trans.sN
+        Move C_$Yes                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "no"                   to Trans.sN
+        Move C_$No                  to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "search"               to Trans.sN
+        Move C_$Search              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "loading"              to Trans.sN
+        Move C_$Loading             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "back"                 to Trans.sN
+        Move C_$Back                to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        //  Calendar                
+        Move "todayIs"              to Trans.sN
+        Move C_$TodayIs             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "wk"                   to Trans.sN
+        Move C_$Wk                  to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        //  Months short            
+        Move "jan"                  to Trans.sN
+        Move C_$Jan                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "feb"                  to Trans.sN
+        Move C_$Feb                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "mar"                  to Trans.sN
+        Move C_$Mar                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "apr"                  to Trans.sN
+        Move C_$Apr                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        //  May is not shorter than May
+        Move "mayShort"             to Trans.sN   
+        Move C_$MayShort            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "jun"                  to Trans.sN
+        Move C_$Jun                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "jul"                  to Trans.sN
+        Move C_$Jul                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "aug"                  to Trans.sN
+        Move C_$Aug                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "sep"                  to Trans.sN
+        Move C_$Sep                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "oct"                  to Trans.sN
+        Move C_$Oct                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "nov"                  to Trans.sN
+        Move C_$Nov                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "dec"                  to Trans.sN
+        Move C_$Dec                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        //  Months long
+        Move "january"              to Trans.sN
+        Move C_$January             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "february"             to Trans.sN
+        Move C_$February            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "march"                to Trans.sN
+        Move C_$March               to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "april"                to Trans.sN
+        Move C_$April               to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "may"                  to Trans.sN
+        Move C_$MayShort            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "june"                 to Trans.sN
+        Move C_$June                to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "july"                 to Trans.sN
+        Move C_$July                to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "august"               to Trans.sN
+        Move C_$August              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "september"            to Trans.sN
+        Move C_$September           to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "october"              to Trans.sN
+        Move C_$October             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "november"             to Trans.sN
+        Move C_$November            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "december"             to Trans.sN
+        Move C_$December            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        //  Days short
+        Move "sun"                  to Trans.sN
+        Move C_$Sun                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "mon"                  to Trans.sN
+        Move C_$Mon                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "tue"                  to Trans.sN
+        Move C_$Tue                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                                    
+        Move "wed"                  to Trans.sN
+        Move C_$Wed                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "thu"                  to Trans.sN
+        Move C_$Thu                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                
+        Move "fri"                  to Trans.sN
+        Move C_$Fri                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "sat"                  to Trans.sN
+        Move C_$Sat                 to Trans.sV
+        Move Trans                  to aTranslations[-1]
+
+        //  Days long
+        Move "sunday"               to Trans.sN
+        Move C_$Sunday              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "monday"               to Trans.sN
+        Move C_$Monday              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "tuesday"              to Trans.sN
+        Move C_$Tuesday             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "wednesday"            to Trans.sN
+        Move C_$Wednesday           to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "thursday"             to Trans.sN
+        Move C_$Thursday            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+                
+        Move "friday"               to Trans.sN
+        Move C_$Friday              to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "saturday"             to Trans.sN
+        Move C_$Saturday            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+
+        Move "error_title_server"   to Trans.sN
+        Move C_$UnhandledProgramError to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "error_title_client"   to Trans.sN
+        Move C_$UnhandledClientProgramError to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "err_entry_required"   to Trans.sN
+        If (ghoErrorHandler > 0) ;
+            Get Error_Description of ghoErrorHandler DFERR_ENTRY_REQUIRED "" to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "err_enter_valid_date"   to Trans.sN
+        If (ghoErrorHandler > 0) ;
+            Get Error_Description of ghoErrorHandler DFERR_ENTER_VALID_DATE "" to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "no_file_selected"     to Trans.sN
+        Move C_$NoFileSelected      to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "file_drop"            to Trans.sN
+        Move C_$FileDrop            to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "file_cap_uploading"   to Trans.sN
+        Move C_$FileUploading       to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "file_remain"          to Trans.sN
+        Move C_$FileRemaining       to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "files"                to Trans.sN
+        Move C_$Files               to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "file"                 to Trans.sN
+        Move C_$FileLabel           to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "confirm"              to Trans.sN
+        Move C_$Confirm             to Trans.sV
+        Move Trans                  to aTranslations[-1]
+        
+        Move "weblist_HeaderMenuRestoreMenuName"    to Trans.sN
+        Move C_$WebListHeaderMenuRestoreMenuName    to Trans.sV
+        Move Trans                                  to aTranslations[-1]
+        
+        Move "weblist_HeaderMenuSelectorMenuName"   to Trans.sN
+        Move C_$WebListHeaderMenuSelectorMenuName   to Trans.sV
+        Move Trans                                  to aTranslations[-1]
+        
+        Move "rows"                                 to Trans.sN
+        Move C_$WebMultiSelectListRows              to Trans.sV
+        Move Trans                                  to aTranslations[-1]
+        
+        Move "weblist_GroupColumns"         to Trans.sN
+        Move C_$WebListGrpTitle             to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_AddGroup"             to Trans.sN
+        Move C_$WebListGrpAdd               to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_AddSubGroup"          to Trans.sN
+        Move C_$WebListGrpAddSub            to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_SelectGroupColumn"    to Trans.sN
+        Move C_$WebListGrpGroupSelect       to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_DragRearrange"        to Trans.sN
+        Move C_$WebListGrpDragRearrange     to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_SwitchSort"           to Trans.sN
+        Move C_$WebListGrpSwitchSort        to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "weblist_RemoveGroup"          to Trans.sN
+        Move C_$WebListGrpRemove            to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        //  WebWidgetContainer
+        Move "webwidgetcon_ToggleEdit"      to Trans.sN
+        Move C_$WebWidgetConToggleEdit      to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "webwidgetcon_ResetConfig"     to Trans.sN
+        Move C_$WebWidgetConResetConfig     to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "webwidgetcon_SaveEdits"       to Trans.sN
+        Move C_$WebWidgetConSaveEdits       to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "webwidgetcon_CancelEdits"     to Trans.sN
+        Move C_$WebWidgetConCancelEdits     to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        //  WebWidget 
+        Move "webwidget_Drag"               to Trans.sN
+        Move C_$WebWidget_Drag              to Trans.sV
+        Move Trans                          to aTranslations[-1]
+             
+        Move "webwidget_Config"             to Trans.sN
+        Move C_$WebWidget_Config            to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "webwidget_Remove"             to Trans.sN
+        Move C_$WebWidget_Remove            to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        Move "webwidget_Resize"             to Trans.sN
+        Move C_$WebWidget_Resize            to Trans.sV
+        Move Trans                          to aTranslations[-1]
+        
+        
+        Function_Return aTranslations       
+    End_Function
+
+    // Called as part of the initialization process before OnLoad is triggered. Gives the 
+    // application a chance to store the locales of the client and use them later.
+    //
+    // Params:
+    //      sBrowserLanguage             Language as reported by the browser (like "en-US" or "nl-NL").
+    //      iBrowserTimezoneOffsetMins   Timezone offset in minutes as reported by the browser. Usually 
+    //                                  considers daylight saving time.
+    { MethodType=Event }
+    Procedure OnInitializeLocales String sBrowserLanguage Integer iBrowserTimezoneOffsetMins
+    End_Procedure
+    
+    // Called as the last step of the initialization of the webapp just before pbInitWebApp becomes
+    // false. At this point the web property system should be initialized and configuration options
+    // (like pbLocking of phoServerPropStore) can be set here.
+    { MethodType=Event }
+    Procedure OnPostInitialize
+    End_Procedure
+    
+    // Called during the creation of the webapp object. For FlexTron this is called later to 
+    // synchronize better with windows controls. Note that Attach_Deo_To_Server should be broadcasted
+    // before this method is called.
+    { Visibility=Private }
+    Procedure FinishWebObjectInitialize
+        Broadcast Recursive Send AfterAttachDDO         // Received by all data-bound DEOs after DDO properties are applied (or not).
+        
+        Send OnPostInitialize
+        
+        // Indicate that we are finished initializing the WebApp. This comes
+        // after Forward Send End_Construct_Object to make sure we are fully
+        // protected.
+        Set pbInitWebApp to False
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebObjectHost_mixin
+        WebPublishFunction LoadWebApp
+    End_Procedure   
+End_Class

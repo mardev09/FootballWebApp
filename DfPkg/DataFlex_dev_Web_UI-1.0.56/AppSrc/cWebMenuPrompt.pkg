@@ -1,0 +1,23 @@
+﻿Use cWebMenuItem.pkg
+
+// Menu items for WebApp Prompt
+{ HelpTopic=cWebMenuPrompt }
+Class cWebMenuPrompt is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set psCaption to C_$CaptionPrompt
+        Set psToolTip to C_$ToolTipPrompt
+        Set psCSSClass to "WebPromptMenuItem"
+    End_Procedure
+
+    Procedure OnClick
+        Handle hoFocus
+        Get DEOControlFocusObject to hoFocus
+        If hoFocus Begin
+            Send Prompt of hoFocus
+        End
+    End_Procedure
+         
+End_Class 
+

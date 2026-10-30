@@ -1,0 +1,14 @@
+﻿
+// Used to cache a view's information for each view in the view stack.
+
+Struct tWebViewInfo
+    String sViewName       // web object name. Used to retrieve the view handle.
+    String sCaption        // caption representing the view (typically by a breadcrumb object). By default it is the same as the view's psCaption property
+    String sHeaderCaption  // caption used to represent the view in a heading (typically by a breadcrumb object when it is only displaying a heading caption). By default it is the same as the view's psCaption property
+    Integer eViewType      // the view type of this view (see peViewType)
+    Integer eNavigateType  // the navigate from type. This is set by the calling view, e.g. ftFromParent, ftFromChild
+    Integer iMainTable     // Table number of the Main_DD - 0 if there is no main DD
+//    String sMainTableRowID // row id of the current record of iMainTable when the view is closed
+    RowID riMainTable      // row id of the current record of iMainTable when the view is closed
+    Boolean bShouldSave    // True if the main DD's should save state is True
+End_Struct

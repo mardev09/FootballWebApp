@@ -1,0 +1,46 @@
+Object
+
+    Set piColumnSpan to 12
+    Set pbFillHeight to True
+    Set piDrawingWidth to 500
+    Set piDrawingHeight to 500
+
+    Procedure CreateDrawing
+        tWebPoint centerPosition toPosition throughPoint toPoint
+
+        Send CreateGroup "smiley"
+        Send StrokeColor "smiley" "green"
+
+        Get XYPoint 250 250 to centerPosition
+        Send CreateCircle "face" centerPosition 50
+        Send StrokeColor "face" "#000000"
+        Send StrokeWidth "face" 5
+
+        Get XYPoint 230 230 to centerPosition
+        Send CreateCircle "left-eye" centerPosition 10
+        Send FillColor "left-eye" "#000000"
+
+        Get XYPoint 270 230 to centerPosition
+        Send CreateCircle "right-eye" centerPosition 10
+        Send FillColor "right-eye" "#000000"
+
+        Send CreatePath "mouth"
+        Get XYPoint 230 270 to toPosition
+        Send MoveTo "mouth" toPosition
+        Get XYPoint 250 300 to throughPoint
+        Get XYPoint 270 270 to toPoint
+        Send QuadraticCurveTo "mouth" throughPoint toPoint
+        Send StrokeColor "mouth" "#000000"
+        Send StrokeWidth "mouth" 1
+
+        Send AddTooltip "smiley" "This is a smiley!"
+
+        Send EndCreateGroup "smiley"
+
+        Send UpdateDrawing
+    End_Procedure
+
+    Procedure OnLoad
+        Send CreateDrawing
+    End_Procedure
+End_Object

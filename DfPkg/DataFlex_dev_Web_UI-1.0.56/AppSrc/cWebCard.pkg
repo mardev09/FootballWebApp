@@ -1,0 +1,68 @@
+﻿Use cWebBaseContainer.pkg
+Use cWebDDOHost_Mixin.pkg
+
+// Adds support for...
+{ OverrideProperty=psTextColor Visibility=Private }
+{ OverrideProperty=piWidth Visibility=Private }
+{ OverrideProperty=piMinWidth Visibility=Private }
+{ HelpTopic=cWebCard }
+{ DesignerJSClass=df.WebCard }
+{ DDOHost=True }
+Class cWebCard is a cWebBaseContainer
+    Import_Class_Protocol cWebDDOHost_Mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published properties....   
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption "Card"
+        
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnShow False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnShow ""
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnHide False
+        { Category="Client Events" }
+        { WebProperty=Client } 
+        Property String psClientOnHide ""
+        
+        Send Define_cWebDDOHost_Mixin
+        
+        Set psJSClass to "df.WebCard"
+    End_Procedure
+    
+    
+    //
+    //  Sends a ClientAction that will make this tab-page the current tab.
+    //
+    Procedure Show
+        Send ClientAction "show"
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnShow
+        //  Stub event method called when the tab page is shown
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnHide
+        //  Stub event method called when the tab page is hidden
+    End_Procedure
+    
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send End_Construct_cWebDDOHost_Mixin
+        
+        WebPublishProcedure OnShow
+        WebPublishProcedure OnHide
+    End_Procedure
+End_Class

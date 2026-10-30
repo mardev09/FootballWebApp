@@ -1,0 +1,118 @@
+﻿Use VdfBase.pkg
+Use cWebObject.pkg
+Use cWebHostAPI_mixin.pkg
+
+Class cWebBaseUIObject_mixin is a mixin
+    { Visibility=Private }
+    Procedure Define_cWebBaseUIObject_mixin
+        // Published Properties
+        { WebProperty=ClientProtected } 
+        { Category="Appearance" }
+        Property Boolean pbEnabled True          // If False, the control cannot get the focus.
+        { WebProperty=ClientProtected } 
+        { Category="Appearance" }
+        Property Boolean pbRender True           // If False, the control's elements are removed from the HTML (see also pbVisible)
+        { WebProperty=ClientProtected } 
+        { Category="Appearance" }
+        Property Boolean pbVisible True          // If False, the control's elements are hidden (but still present) (see also pbRender)
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer piTabIndex 0            // Determines the control's position in the page tab order
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psBackgroundColor ""     // CSS Inline Style - Color of the control's background
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCSSClass ""            // CSS Class
+        { WebProperty=Client } 
+        { Category="Access" }
+        Property String psHtmlId ""              // HTML Element ID
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psTextColor ""           // CSS Inline Style - Color of control's text
+        
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnRender ""      // Can be set to a JavaScript Event Handler that will be triggered immediately after rendering the control.
+        
+        { Category="Security" }
+        Property Boolean pbNoAccessibilityCheck False   //  Use this property to disable the accessibility check (to allow JavaScript to show/enable controls)
+        
+        { Visibility=Private }
+        Property Integer piAccessibilityCacheCall 0 //  giWebAccCacheCtx value indicating if cached value is valid
+        { Visibility=Private }
+        Property Integer piAccessibilityCache 0     //  Cached value of the accessibility number
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnCloseModalDialog Handle hoModalDialog
+    End_Procedure
+    
+    //  Gives the focus to the control. If the control can't take the focus nothing will happen. If 
+    //  sent to a container the focus will go to the first focusable control in that container.
+    Procedure Focus
+        Send ClientAction "svrFocus"        
+    End_Procedure
+
+    // Apply focus to object within this view but only do it with
+    // non mobile clients.
+    Procedure ConditionalFocus
+        Boolean bIsMobile
+        WebGet pbIsMobile of (Host(Self)) to bIsMobile
+        If not bIsMobile Begin
+            Send Focus
+        End
+    End_Procedure
+    
+
+    
+    Procedure AddKeyHandler Handle hMsg Integer iKeyCode Boolean bShift Boolean bAlt Boolean bCtrl
+        String[] aParams
+        String sMsg
+        
+        Get WebMethodName hMsg to sMsg
+        
+        If (sMsg <> "") Begin
+            Move sMsg       to aParams[0]
+            Move iKeyCode   to aParams[1]
+            Move bShift     to aParams[2]
+            Move bAlt       to aParams[3]
+            Move bCtrl      to aParams[4]
+            
+            Send ClientAction "addKeyHandler" aParams
+        End
+    End_Procedure
+    
+    Procedure RemoveKeyHandler Handle hMsg Integer iKeyCode Boolean bShift Boolean bAlt Boolean bCtrl
+        String[] aParams
+        String sMsg
+        
+        Get WebMethodName hMsg to sMsg
+        
+        If (sMsg <> "") Begin
+            Move sMsg       to aParams[0]
+            Move iKeyCode   to aParams[1]
+            Move bShift     to aParams[2]
+            Move bAlt       to aParams[3]
+            Move bCtrl      to aParams[4]
+            
+            Send ClientAction "removeKeyHandler" aParams
+        End
+    End_Procedure
+    
+    
+    // Will attempt to scroll this UI object into the view. So parent containers will scroll if
+    // nessecary to make this element visible.
+    Procedure ScrollIntoView Boolean bAlignToTop
+        String[] aParams
+        
+        Move bAlignToTop to aParams[0]
+        
+        Send ClientAction "scrollIntoView" aParams
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebBaseUIObject_mixin
+        WebPublishProcedure OnCloseModalDialog
+    End_Procedure
+End_Class

@@ -1,0 +1,8 @@
+﻿// this should only be used by cWebApp and cWebServiceDispatcher must already be Used.
+// We do this so the Studio will see this as a component and create the needed .wso file
+Use cWebServiceDispatcher.pkg
+
+Object oWebServiceDispatcher is a cWebServiceDispatcher
+End_Object
+
+

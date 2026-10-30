@@ -1,0 +1,5 @@
+Object
+    Set psCaption to "column"
+    Set psImageUrl to "Images/Order.png"
+    Set piWidth to 50
+End_Object

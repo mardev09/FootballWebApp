@@ -1,0 +1,111 @@
+﻿Use VdfBase.pkg
+Use cWebRadio.pkg
+Use tWebRadioGroup.pkg
+
+/*
+Defines the API used by radio's to register themselves to their container. Used by cWebWindow and 
+cLocalWebControlHost.  
+*/
+{ Visibility=Private }
+Class cWebRadioContainer_mixin is a Mixin
+      
+    Procedure Define_cWebRadioContainer_mixin
+        { Visibility=Private }
+        Property tWebRadioGroup[] paRadioGroups   // collection of radio button groups in this View\Dialog 
+        { Visibility=Private }
+        Property String[] paRadioGroupNames       // searchable array of group names that are stored in paRagioGroups. One member of paRadioGroups exists for each paRadioGroupNames
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure AddRadio Handle hoRadio
+        // Radio Button Helper:
+        //
+        // Registers the passed cWebRadio object. The object's group is determined and the radio
+        // is registered with the rest of the objects in that group. If this is the first radio
+        // object in the group then it will become the "master" radio object for that group.
+        String sGroupName
+        Integer iGroup icGroup icRadio
+        String[] aRadioGroupNames
+        tWebRadioGroup[] aRadioGroups
+        
+        Get psGroupName of hoRadio to sGroupName
+        Get paRadioGroups to aRadioGroups
+        Get paRadioGroupNames to aRadioGroupNames
+        
+        // Is this a new group?....
+        Move (SearchArray(sGroupName, aRadioGroupNames, Desktop, RefFunc(DFSTRICMP))) to iGroup   // case insensitive search
+        
+        If (iGroup = -1) Begin
+            // Create a new group amd make this radio button the master....
+            Move (SizeOfArray(aRadioGroups)) to icGroup
+            Move hoRadio    to aRadioGroups[icGroup].hoMaster
+            Move hoRadio    to aRadioGroups[icGroup].aRadioButtons[0]
+            Move sGroupName to aRadioGroups[icGroup].sGroupName
+            Move sGroupName to aRadioGroupNames[icGroup]
+            
+            // Save the changes....
+            Set paRadioGroups to aRadioGroups
+            Set paRadioGroupNames to aRadioGroupNames
+        End
+        Else Begin
+            // Add this radio to the existing group....
+            Move (SizeOfArray(aRadioGroups[iGroup].aRadioButtons)) to icRadio
+            Move hoRadio to aRadioGroups[iGroup].aRadioButtons[icRadio]
+            
+            // Save the changes....
+            Set paRadioGroups to aRadioGroups
+        End
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure ConnectRadioButtons
+        // Radio button Helper:
+        //
+        // Iterate all of the registered radio groups and connect the cWebRadio objects to their master
+        // radio buttons.
+        String sValue sTemp sMaster
+        Handle hoRadio
+        Integer iGroup icGroup 
+        Integer iRadio icRadio
+        tWebRadioGroup[] aRadioGroups
+        
+        Get paRadioGroups to aRadioGroups
+        Move (SizeOfArray(aRadioGroups)) to icGroup
+        
+        For iGroup from 0 to (icGroup-1)
+            Move (SizeOfArray(aRadioGroups[iGroup].aRadioButtons)) to icRadio
+            Move "" to sValue
+            Get WebObjectName of aRadioGroups[iGroup].hoMaster to sMaster 
+            
+            For iRadio from 0 to (icRadio-1)
+                // Set the master radio....
+                Move aRadioGroups[iGroup].aRadioButtons[iRadio] to hoRadio
+                Set phoMasterRadio of hoRadio to aRadioGroups[iGroup].hoMaster
+                If (hoRadio <> aRadioGroups[iGroup].hoMaster) Begin
+                    Set psMasterName of hoRadio to sMaster
+                End
+                
+                // Get the last non-null psValue setting....
+                Get psValue of hoRadio to sTemp
+                If (sTemp <> "") Begin
+                    Move sTemp to sValue
+                End
+            Loop
+            
+            // If there is no psValue setting then set it to the psRadioValue value of the master radio....
+            If (sValue = "") Begin
+                Get psRadioValue of aRadioGroups[iGroup].hoMaster to sValue
+            End
+            
+            // Synchronize all radios in this group to the same psValue...
+            If (sValue <> "") Begin
+                For iRadio from 0 to (icRadio-1)
+                    Move aRadioGroups[iGroup].aRadioButtons[iRadio] to hoRadio
+                    Set psValue of hoRadio to sValue
+                Loop
+            End
+        Loop
+    End_Procedure
+End_Class

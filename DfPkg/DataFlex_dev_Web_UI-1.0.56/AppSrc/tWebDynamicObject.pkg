@@ -1,0 +1,51 @@
+﻿// This file contains the structs the dynamic objects framework requires
+// to function.
+
+// Struct containing information about an object currently in memory.
+Struct tObjectInMemory
+    String sDynamicObjectId
+    Handle hoObj
+End_Struct
+
+// Contains a property that is queued to be applied after dynamic objects
+// have been sent to the client.
+Struct tQueuedSyncProp
+    String sO           // Name of the object
+    String sP           // Name of the property
+    Boolean bA          // True if advanced property, false otherwise
+    String sV           // Property value (if regular property)
+    tWebValueTree tVT   // Property value (if adv. property)
+End_Struct
+
+Struct tWebDynamicServerAction
+	String sTarget          // Target object path: "oMyView.oMyControl" or "oMenubar.oFindMenu.oFindNext"
+    String sAction          // Action to perform on the target object: "onClick"
+    String[] aParams        // Parameters (if any) passed to the action method
+     
+End_Struct
+
+// Struct containing a dynamic object definition.
+Struct tWebDynamicObject
+    String   sId          // Unique ID
+    Integer  iClassId     // Class ID of this object   
+    String   sParentId    // Dynamic ID of parent object
+    String[] aChildren    // Contains 
+    Boolean  bRendered    // Indicates if this object is currently rendered
+    
+    tWebNameValue[]   aProps          // Contains regular properties and their values
+    tWebAdvSyncProp[] aAdvProps       // Contains advanced properties and their values
+End_Struct
+
+// Struct containing a wrapper for the paSyncProps array, such that it can contain
+// information about an upcoming container reset.
+Struct tWebSyncPropsWrapper
+    Boolean bReset                  // Indicates whether a container reset is incoming
+    tWebSyncProps[] aSyncProps      // Holds the actual property values
+End_Struct
+
+// Struct containing a wrapper for the paAdvSyncProps array, such that it can contain
+// information about an upcoming container reset.
+Struct tWebAdvSyncPropsWrapper
+    Boolean bReset                      // Indicates whether a container reset is incoming
+    tWebAdvSyncProp[] aAdvSyncProps    // Holds the actual advanced property values
+End_Struct

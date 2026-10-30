@@ -1,0 +1,45 @@
+﻿Use cWebBaseControl.pkg
+
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ HelpTopic=cWebIFrame }
+{ DesignerJSClass=df.WebIFrame }
+Class cWebIFrame is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psUrl ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowBorder True
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnLocationChange False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnLocationChange ""
+        
+        Set pbShowLabel to False
+        Set piColumnSpan to 0 
+        Set psJSClass to "df.WebIFrame"
+    End_Procedure
+    
+    // Event that is triggered when the location (url) in the iframe changes. Only works when the 
+    // page in the iframe is loaded from the same URL.
+    { MethodType=Event }
+    Procedure OnLocationChange String sUrl
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        WebPublishProcedure OnLocationChange
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

@@ -1,0 +1,17 @@
+﻿// Structs used for WebSetResponsive commands in cWebObject.
+
+// These are both private
+
+// stores a single mode rule for a web property. Used in cWebOject
+Struct tWebModeRule
+    Integer eMode    // responsive mode category (e.g. ModeTablet or ModeMobile)
+    Variant vValue   // Property's value at this mode 
+End_Struct
+
+// stores the set of mode rules for a given web property. Used in cWebObject.
+Struct tWebPropRule
+    String sName                // the property's name
+    tWebModeRule[] aModeRules
+End_Struct
+
+

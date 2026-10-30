@@ -1,0 +1,5 @@
+//  Used for storing and searching object handles by their name in the cWebControlLocator and various other places.
+Struct tWebControlMapItem 
+    String sName
+    Handle hoObj
+End_Struct

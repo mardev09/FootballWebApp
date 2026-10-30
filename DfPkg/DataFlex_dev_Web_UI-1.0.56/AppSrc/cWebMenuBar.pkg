@@ -1,0 +1,47 @@
+﻿Use cWebBaseUIObject.pkg
+Use cWebBaseMenu_mixin.pkg
+Use cWebBaseControl.pkg
+
+// Menubar container object. Menu items are created using cWebMenuItem objects. A cWebMenuBar must
+// be hosted inside a cWebCommandBar object. The commandbar object is used to position the toolbar.
+//
+// Adds support for...
+{ DesignerClass=cDTCWebMenuBar }
+{ DesignerJSClass=df.WebMenuBar }
+{ HelpTopic=cWebMenuBar }
+Class cWebMenuBar is a cWebBaseControl
+    Import_Class_Protocol cWebBaseMenu_mixin
+    
+    Procedure Construct_Object
+        Handle hoWebNeighborhood
+        Forward Send Construct_Object        
+        
+        Send Define_cWebBaseMenu_Mixin
+            
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowOnHover False
+        
+        Get phoWebNeighborHood to hoWebNeighborhood
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbFocusable (hoWebNeighborhood <> Owner(Self))
+        
+        Set pbShowLabel to False    
+        Set psJSClass to "df.WebMenuBar" 
+    End_Procedure
+    
+    Procedure Destroy_Object
+        Send Destroy_Object_cWebBaseMenu_mixin
+        
+        Forward Send Destroy_Object
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Send End_Define_cWebBaseMenu_mixin
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+    
+End_Class

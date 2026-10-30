@@ -1,0 +1,158 @@
+﻿Use Datadict.pkg
+Use cWebBaseDEO.pkg
+Use tWebComboItem.pkg
+Use WebUIConstants.pkg
+
+
+// Models a client-side combo control with label support
+
+{ OverrideProperty=peAlign WebProperty=False Visibility=Private }
+{ OverrideProperty=peDataType Visibility=Private }
+{ OverrideProperty=psMask Visibility=Private }
+{ HelpTopic=cWebCombo }
+{ DesignerJSClass=df.WebCombo }
+Class cWebCombo is a cWebBaseDEO
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        { EnumList="csUnsorted, csDescription, csValue" }
+        Property Integer peSortItems csUnsorted     // Determines the sort order of the combo items. Note that changes to this property value at runtime only apply when refilling the combo.
+
+        { Visibility=Private }
+        Property RowID[] private_paRowIDs
+        { Visibility=Private }
+        Property tWebComboItem[] paComboItems
+        
+        { Category="Appearance" }
+        Property Boolean pbAddEmptyItem True
+        { Category="Appearance" }
+        Property String psEmptyItemDescription ""
+        
+        Set psJSClass to "df.WebCombo"
+    End_Procedure
+    
+    
+    // Adds a new combo item to the combo list. Use this in the OnFill event.
+    //
+    // Note: If you are adding many combo items then it is more efficient/faster to
+    // manually populate the combo items array directly in OnFill.
+    Procedure AddComboItem String sValue String sDescription
+        Integer iCount
+        tWebComboItem[] aComboItems
+        
+        Get paComboItems to aComboItems
+        Move (SizeOfArray(aComboItems)) to iCount
+        Move sValue to aComboItems[iCount].sValue
+        Move sDescription to aComboItems[iCount].sDescription
+        Set paComboItems to aComboItems
+    End_Procedure
+
+
+    // Private: Sent by DDO when populating the combo list.
+    { Visibility=Private }
+    Procedure ComboFillItem Integer iItem String sValue String sDescription Integer iFile RowID riId
+        Integer iCount
+        RowID[] aRowIDs
+        // Review: This technique is called for every member of the combo list. This causes an array resize for two array properties for each combo item added! It would be better to add all of the combo items in a single loop
+        If (sDescription = '') Begin
+            Move sValue to sDescription
+        End
+        Send AddComboItem sValue sDescription
+        
+        // Add the row IDs....
+        Get private_paRowIDs to aRowIDs
+        Move (SizeOfArray(aRowIDs)) to iCount
+        Move riId to aRowIDs[iCount]
+        Set private_paRowIDs to aRowIDs
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure FillFromDDO
+        // Fills the combo list according to the data dictionary settings of the data binding. Normally sent during Attach_To_DDO
+        // but can be sent at other times
+        Integer iFile iField
+        Handle hoServer
+        Boolean bAddEmptyItem
+        tWebComboItem[] atEmpty
+        String sEmptyItemDescription
+        
+        Get pbAddEmptyItem to bAddEmptyItem
+
+        Set paComboItems to atEmpty
+        Set private_paRowIDs to (ResizeArray(private_paRowIDs(Self),0))    // zero the row IDs array
+
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField
+
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            //  Do security check
+            If (not(FillDEOAllowed(Self))) Begin
+                Procedure_Return
+            End
+            
+            // if your DD does not have a default value you need to include an empty value. Even if you have a default
+            // it is fine to allow a blank line, which will probably fail upon validation (unless the DD allows blanks)
+            If (bAddEmptyItem) Begin
+                Get psEmptyItemDescription to sEmptyItemDescription
+                Send ComboFillItem 0 "" sEmptyItemDescription 0 (NullRowID()) 
+            End
+            
+            Send File_Field_Fill_List to hoServer iFile iField Self msg_ComboFillItem
+        End
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnFill
+        // OnFill event stub. Fired whenever the combo list is to be filled.
+    End_Procedure
+    
+    
+    // Send this to trigger OnFill event to populate the combo list.
+    // Note: we wanted to call this method "Fill" but this symbol is already used in FMAC
+    //       which means we cannot register it using WebPublishMethod
+    Procedure Refill
+        String[] aParams
+        tWebComboItem[] aEmptyItems aItems
+        
+        Send FillFromDDO
+        Send OnFill                // trigger user event to populate paComboItems
+        
+        // Send paComboItems to the client....
+        Get ComboData to aItems
+        Send ClientAction "fill" aParams aItems       
+    End_Procedure
+    
+    
+    // Returns the combo list as an array of tWebRow structs where the first value is the value and 
+    // the second is the description.
+    { Visibility=Private }
+    Function ComboData Returns tWebComboItem[]
+        tWebComboItem[] aComboItems
+        
+        // Iterate the combo items....
+        Get paComboItems to aComboItems
+        
+        Function_Return aComboItems
+    End_Function
+    
+    //  Augmented to fixate psMask
+    { Visibility=Private }
+    Procedure AfterAttachDDO
+        Forward Send AfterAttachDDO
+        
+        //  No masking should be done on a cWebCombo
+        Set psMask to ""
+    End_Procedure
+
+    // Augmented to trigger a Refill of the combo list.
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Send Refill
+    End_Procedure
+    
+End_Class

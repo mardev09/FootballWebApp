@@ -1,0 +1,2766 @@
+﻿Use cWebWindow.pkg
+Use cWebBaseDEO.pkg
+Use tWebRequest.pkg
+Use tWebResponse.pkg
+Use tWebNavigateData.pkg
+Use tWebViewInfo.pkg
+Use WebUIConstants.pkg
+Use cWebNavPathHelper_mixin.pkg
+Use cWebOnCallEndHandler_mixin.pkg
+Use NameValuePairFunctions.pkg
+Use cWebObjectHost_mixin.pkg
+Use cWebDDOSync_mixin.pkg
+Use cWebViewStack.pkg
+Use cWebList.pkg
+
+Register_Function peApplicationStyle Returns Integer
+
+Enum_List
+    Define initStateDefault
+    Define initStateReinitialize
+    Define initStateReinitializeTopView
+End_Enum_List
+
+
+//  Register webapp functions that are used (circular dependency..)
+Register_Function AppSynching Returns Boolean
+Register_Function phoLoadView Returns Handle
+Register_Function phoCurrentShowView Returns Handle
+Register_Function peApplicationStateMode Returns Integer
+Register_Function pbUpdateApplicationTitle Returns Boolean
+Register_Function pbStateHashInvalidError Returns Boolean
+
+
+// Models a data entry view panel. This is a container for...
+// - A DDO structure
+// - Panel layout
+// - Child DEO and non-DEO controls.
+//
+// Adds support for...
+// - DDO Container,
+// - DDO request interface
+{ ClassLibrary=WebApp }
+{ DDOHost=True }
+{ ComponentType=WebVWClass }
+{ HelpTopic=cWebView }
+{ DesignerJSClass=df.WebView }
+Class cWebView is a cWebWindow
+    
+    Procedure Construct_Object
+        Integer eStyle 
+        String sName
+        
+        Forward Send Construct_Object
+        
+        
+        
+        // this determines if request_save should validate all items or stop at the first error. The default
+        // for web applicaitions is to validate all.
+        // For now this is private, as this may never be needed.  
+        { Visibility=Private }
+        Property Boolean pbRequesteValidateAll True
+
+        // This is set to true during SyncDDOs, specifically while trying to re-establish the DDO's Field_Defaults.
+        // Typically the flag is used to protect DEO's during this process so that the Field_Default is re-established
+        // only in the actual DDO (where it is needed) and not in the DEO (where the value may have changed already).        
+        { Visibility=Private }
+        Property Boolean pbSynchingFieldDefaults False
+        
+        { Category="Behavior" } 
+        Property Boolean pbFindKeys True
+        { Category="Behavior" } 
+        Property Boolean pbClearKeys True
+        { Category="Behavior" } 
+        Property Boolean pbDeleteKeys True
+        { Category="Behavior" } 
+        Property Boolean pbSaveKeys True
+        
+        // set true if constrain_file change in data dictionaries for each client instance
+        // This is only applied with drilldown style views
+        { Category="Data" }
+        Property Boolean pbDrillDownDynamicConstraints True 
+        
+        
+        
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnSubmit False    // Set to true to trigger server OnSubmit event
+        { WebProperty=Client } 
+        { Category="Client Events" } 
+        Property String psClientOnSubmit ""        // Name of client side OnSubmit event handler
+        
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnResizeWindow False
+        { WebProperty=Client } 
+        { Category="Client Events" } 
+        Property String psClientOnResizeWindow ""
+         
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbFillHeight False
+        
+        // this gets set during object construction by looking at the cWebApp's application type.  
+        { DesignTime=False } 
+        { EnumList = "wvsDesktop, wvsDrillDown" }
+        Property Integer peWebViewStyle wvsDesktop
+
+        { Category="Behavior" } 
+        { EnumList = "vtUndefined, vtZoom, vtSelect" }
+        Property Integer peViewType vtUndefined   // General purpose of this view: i.e. vtZoom or vtSelect
+        
+        // if drillDown should Request_Save attempt to save a new unchanged record?
+        // with drill down this makes the most sense. With Desktop style this is ignored.
+        // Currently marked private. Might be exposed if it turns out to be needed
+        { Visibility=Private}
+        Property Boolean pbAlwaysSaveWhenNewDrillDown True
+
+        // what to do when closing a changed view. This is called by
+        // GetChangedViewExitAction, which can be augmented to handle more dynamic actions
+        { Category="Behavior" } 
+        { EnumList = "cveConfirmSaveClearCancel, cveConfirmAbandonChanges, cveSave, cveAbandonChanges" }
+        Property Integer peChangedViewExitAction cveConfirmSaveClearCancel
+        
+        { DesignTime=False }
+        Property Handle Verify_SaveClearCancel_msg (RefProc(SaveClearCancelConfirmation))
+
+        { WebProperty=Server }
+        { Visibility=Private }
+        Property String psNavigateDataCallbackObj ""   // Private: Used by NavigateClose_Callback. Stores the callback object to populate the navigate data when navigating back. This is usually the object that invoked NavigateBack
+        
+        { DesignTime=False }
+        { WebProperty=Server }
+        { Visibility=Private } // use GetNavigateData / SetNavigateData
+        Property tWebNavigateData pNavigateData
+
+        { Visibility=Private }
+        { WebProperty=Server }
+        Property String psNavigateBackView
+
+        { WebProperty=Server } 
+        { Visibility=Private }
+        Property String psInvokingObject ""        
+        
+        { WebProperty=Server Visibility=Private }
+        Property String psInvokingStateHash ""          //  Used to store the state hash of the invoking view for drill-down
+        { Visibility=Private }
+        Property Boolean pbNavReinitError False         //  Used to communicate issues back to NavigateInitialize
+        { Visibility=Private }
+        Property Boolean pbNavigating False           //  True while inside navigation messages
+        { Visibility=Private }
+        Property Boolean pbInitForShow False         //  True while inside initforshow
+        
+        { Category="Behavior" } 
+        Property Boolean pbStateRestoreRecord True      //  If true record ids will be part of the state hash for desktop-style
+        { Category="Behavior" } 
+        Property Boolean pbStateReplace False           //  If true the current view will not add a new history item but replace the current item in history
+        { Category="Behavior" } 
+        { EnumList="vsmDefault, vsmOff, vsmRecord, vsmCustom" }
+        Property Integer peStateMode vsmDefault         //  Configures how the state hash for this view built
+        { Category="Behavior" } 
+        Property String psStateNewRecordId ""           //  Configures how new records will be represented in the state hash
+
+        
+        /*
+        A view is preloaded using delayloadview, this basically puts the view 'in sync' but it 
+        loads the view details later. This is an optimization added for history management where it 
+        has to rebuild the entire view stack for drill down applications. It now only fully loads 
+        the visible view and the others are loaded in the background using delayloadview, but it 
+        does need to refind records so InitForShow is already executed and should not be executed 
+        again. pbPreLoaded indicates that it should skip InitForShow.        
+        */
+        { Visibility=Private }
+        { WebProperty=Server }
+        Property Boolean pbPreLoaded False
+                
+        Get Object_Label to sName
+        { InitialValue="" }
+        { Category="Behavior" } 
+        Property String psStateViewName sName
+               
+        // the constructor will set the style based on the application setting of this.
+        // this can be changed during object construction but most not be changed
+        // after the object is created (i.e., after end_construct_object)
+        Get peApplicationStyle of (Host(Self)) to eStyle
+        Set peWebViewStyle to eStyle
+        Set pbScroll to True
+
+        Set psJSClass to "df.WebView"
+        
+        Send Define_cWebNavPathHelper_mixin
+        Send Define_cWebOnCallEndHandler_mixin
+        Send Define_cWebDDOSync_mixin
+    End_Procedure
+
+        
+    Import_Class_Protocol cWebNavPathHelper_mixin
+    Import_Class_Protocol cWebOnCallEndHandler_mixin
+    Import_Class_Protocol cWebDDOSync_mixin
+
+
+    
+    
+ 
+    { Visibility=Private }
+    Procedure NotifySyncWebApp
+        Send OnSyncView
+    End_Procedure
+   
+    { MethodType=Event }
+    Procedure OnSubmit
+        // Event stub that is called when enter is used within the view.
+    End_Procedure
+    
+    
+    // Event that is fired when the size of the browser window changes. This event can be used to 
+    // make the web application layout responsive to the browser size. It gets the new dimensions
+    // of the browser window passed as parameters.
+    //
+    // Params:
+    //  iWindowWidth    Width of the browser window in pixels.
+    //  iWindowHeight   Height of the browser window in pixels.
+    { MethodType=Event }
+    Procedure OnResizeWindow Integer iWindowWidth Integer iWindowHeight
+    End_Procedure    
+
+    // Generic request find method for handling Request_Find
+    // Currently this will get delegated here by objects that do not understand Requset_Find. In the
+    // future we could use DEO_Find_Object to not send these messages at all.
+    // eFindMode - Can be one of... lt, le, eq, ge, gt, or it may be either Next_Record, First_Record, or Last_Record
+    { Visibility=Private }
+    Procedure Request_Find Integer eFindMode
+        // Do nothing. Ignore this message in this class.
+    End_Procedure
+
+
+    //  Performs the initialization of the view when it is loaded to the client. It is called by 
+    //  cWebApp at the right moment (pbOverrideStateOnShow influences this). Clears the DDO 
+    //  structures, adds key handlers and sends OnResizeWindow.
+    //    
+    { Visibility=Private }
+    Procedure InitForShow
+        Integer i iCount iWidth iHeight
+        Handle hoMainDD
+        Handle[] aAdditionalDDOStructures 
+        tNameHandlePair[] aDDOs
+        Boolean bOnResize bPreLoaded bDynamicConstraints
+        tDDRemembered[] aEmptyRemembered
+        
+        //  If this is a preloaded view we skip initforshow
+        WebGet pbPreLoaded to bPreLoaded
+        If (bPreLoaded) Begin
+            WebSet pbPreLoaded to False
+            Procedure_Return
+        End
+        
+        Get Main_DD to hoMainDD
+        If (hoMainDD <> 0) Begin
+            // Clear dynamic constraints that might have been left from previous show
+            Get IsDynamicConstraints to bDynamicConstraints
+            If (bDynamicConstraints) Begin
+                Send ClearConstrainFiles hoMainDD
+                Send Rebuild_Constraints of hoMainDD
+            End
+        End
+        
+        Set pbInitForShow to True
+        
+        // Clear remember values
+        Get paDDOIndex to aDDOs
+        Move (SizeOfArray(aDDOs) - 1) to iCount
+        For i from 0 to iCount
+            Set pDDDefaults of aDDOs[i].hValue to aEmptyRemembered
+        Loop
+        
+        // Clear the main DDO structure
+        If (hoMainDD <> 0) Begin
+            Send Clear_All of hoMainDD
+        End
+        
+        // Now clear the main dd of any 'additional' DDO structures
+        Get paAdditionalDDOStructures to aAdditionalDDOStructures
+        Move (SizeOfArray(aAdditionalDDOStructures)) to iCount
+        
+        For i from 0 to (iCount - 1)
+            If (aAdditionalDDOStructures[i] <> 0) Begin
+                Send Clear_All of aAdditionalDDOStructures[i]
+            End
+        Loop
+        
+        //  Rebuild constraints
+        Send RebuildDDConstraints
+        
+        //  Trigger resize event
+        Get pbServerOnResizeWindow to bOnResize
+        If (bOnResize) Begin
+            WebGet piWindowWidth of (Host(Self)) to iWidth
+            WebGet piWindowHeight of (Host(Self)) to iHeight
+            
+            Send OnResizeWindow iWidth iHeight
+        End
+        
+        Set pbInitForShow to False
+    End_Procedure
+    
+    
+    //  Called always when the view is shown.
+    //  
+    { Visibility=Private }
+    Procedure DoShow
+        Boolean bOnShow
+        Integer eViewStyle
+        String sPrevHash sView sHashView
+        
+        //  Fire OnShow (optimization, used to be fired from JavaScript)
+        Send OnBeforeShow
+        
+        Get peWebViewStyle to eViewStyle
+        If (eViewStyle = wvsDesktop) Begin
+            
+            If (peStateMode(Self) <> vsmOff) Begin 
+                //  Replace state if the hash no location url
+                Get psStateViewName to sView
+                Get StateHash of (Host(Self)) to sPrevHash
+                Send ParseViewStateHash sPrevHash (&sHashView)
+                
+                If (Lowercase(sHashView) <> Lowercase(sView)) Begin
+                    Send UpdateStateHash ((Trim(sPrevHash) = "") or pbStateReplace(Self))            
+                End
+            End
+            Send UpdatePageTitle
+        End
+        
+    End_Procedure
+    
+    
+    Procedure HandleFindKey Integer iKey Boolean bShift Boolean bAlt Boolean bCtrl
+        Handle hoFocus
+        
+        If (pbFindKeys(Self)) Begin
+            Get DEOControlFocusObject to hoFocus
+            If (hoFocus) Begin
+                Case Begin
+                    Case (iKey = 119)
+                        Send Request_Find of hoFocus  GT
+                        Case Break
+                    Case (iKey = 118)
+                        Send Request_Find of hoFocus  LT
+                        Case Break
+                    Case (iKey = 120)
+                        Send Request_Find of hoFocus  GE
+                        Case Break
+                    Case (iKey = 36 and bCtrl)
+                        Send Request_Find of hoFocus  FIRST_RECORD
+                        Case Break
+                    Case (iKey = 35 and bCtrl)
+                        Send Request_Find of hoFocus  LAST_RECORD
+                        Case Break
+                Case End
+                
+            End
+        End
+    End_Procedure
+    
+    Procedure HandleClearKey Integer iKey Boolean bShift Boolean bAlt Boolean bCtrl
+        Handle hoFocus
+        
+        If (pbClearKeys(Self) and iKey = 116) Begin 
+            Get DEOControlFocusObject to hoFocus
+            
+            If (hoFocus) Begin
+                If (bCtrl) Begin
+                    Send Request_Clear_All of hoFocus
+                End
+                Else Begin
+                    Send Request_Clear of hoFocus
+                End
+            End
+        End
+    End_Procedure
+    
+    Procedure HandleDeleteKey Integer iKey Boolean bShift Boolean bAlt Boolean bCtrl
+        Handle hoFocus
+        
+        If (pbDeleteKeys(Self) and iKey = 113 and bShift) Begin
+            Get DEOFocusObject to hoFocus
+            If hoFocus Begin
+                Send Request_Delete of hoFocus
+            End
+        End
+    End_Procedure
+    
+    Procedure HandleSaveKey Integer iKey Boolean bShift Boolean bAlt Boolean bCtrl
+        Handle hoFocus
+        
+        If (pbSaveKeys(Self) and iKey = 113 and not(bShift)) Begin
+            Get DEOFocusObject to hoFocus
+            If hoFocus Begin
+                Send Request_Save of hoFocus
+            End
+        End
+    End_Procedure
+    
+    
+    
+    Procedure DefaultKeyHandlers
+        If (pbFindKeys(Self)) Begin
+            Send AddKeyHandler (RefProc(HandleFindKey)) 119 False False False   //  F8
+            Send AddKeyHandler (RefProc(HandleFindKey)) 118 False False False   //  F7
+            Send AddKeyHandler (RefProc(HandleFindKey)) 120 False False False   //  F9
+            
+            Send AddKeyHandler (RefProc(HandleFindKey)) 36 False False True     //  Ctrl - home
+            Send AddKeyHandler (RefProc(HandleFindKey)) 35 False False True     //  Ctrl - end
+        End
+        
+        If (pbClearKeys(Self)) Begin
+            Send AddKeyHandler (RefProc(HandleClearKey)) 116 False False False  //  F5
+            Send AddKeyHandler (RefProc(HandleClearKey)) 116 False False True   //  Ctrl - F5
+        End
+        
+        If (pbDeleteKeys(Self)) Begin
+            Send AddKeyHandler (RefProc(HandleDeleteKey)) 113 True False False  //  Shift - F2
+        End
+        
+        If (pbSaveKeys(Self)) Begin
+            Send AddKeyHandler (RefProc(HandleSaveKey)) 113 False False False   //  F2
+        End
+        
+    End_Procedure
+    
+    // Show an unhandled refind error for this DDO.
+    { Visibility=Private }   
+    Procedure CannotRefindRecordUnhandledError Handle hoDDO
+        Integer iFile
+        String sExtMess sFile sView
+        Get WebObjectName to sView
+        Get Main_File of hoDDO to iFile
+        Get ErrorMessageTableName of hoDDO iFile to sFile
+        Move ("View:" * sView - "." * DD_FILE_TEXT * String(iFile) * "-" * sFile) to sExtMess
+        Error DFERR_REC_NOT_FOUND sExtMess
+    End_Procedure
+
+    
+    // Sent when a NavigateForward fails. 
+    // By default call standard OnRefindRecordError and a NavigateCancel. This allows for customization
+    // eReason can be retCannotRereadMain or retCannotRereadConstrainingParent
+    { MethodType=Event }
+    Procedure OnNavigateForwardRefindError Handle hoDD Integer eReason
+        Send OnRefindRecordError hoDD reoNavigateForward eReason
+        // we will cancel this navigation forward
+        Send NavigateCancel
+    End_Procedure
+
+    // Sent when a Navigate Back fails. 
+    // By default call standard OnRefindRecordError. This allows for customization
+    // eReason can be retCannotRereadMain or retCannotRereadConstrainingParent
+    { MethodType=Event }
+    Procedure OnNavigateBackRefindError Handle hoDD Integer eReason
+        Send OnRefindRecordError hoDD reoNavigateBack eReason
+    End_Procedure
+
+    
+    
+
+    // these are used for setting dynamic enabled controls
+     
+    // returns true if this view should not allow finds on main-dd DEOs
+    // You want no finds with drilldowns that don't come from a main (select to zoom for same DDO)
+    { Visibility=Private }
+    Function IsViewNoFindOnMain Returns Boolean
+        tWebNavigateData NData
+        Integer eWebViewStyle
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // typically if you navigated from main (from select) you
+            // will not want to allow finds or prompts on main field indexes
+            Get GetNavigateData to NData
+            Function_Return (NData.eNavigateType = nfFromMain)
+        End
+        Else Begin
+            Function_Return False
+        End
+    End_Function
+    
+    // this this view have a No finding on a constrained parent? 
+    // Normally drilldowns do not want finding on the constrained parent
+    { Visibility=Private }
+    Function IsViewNoFindOnConstrainedParent Returns Boolean
+        Integer eWebViewStyle
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // typically with drill down views you don't allow finds on the
+            // constraining child, because that's what you drilled in from
+            Function_Return True
+        End
+        Else Begin
+            Function_Return False
+        End
+    End_Function
+    
+    // Is this a read-only. With drilldown this is set true
+    // when the NavigateData.bReadOnly is True.
+    Function IsViewReadOnly Returns Boolean
+        Integer eWebViewStyle
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // if this was called as read only, it's read only
+            tWebNavigateData NData
+            Get GetNavigateData to NData
+            Function_Return (NData.bReadOnly)
+        End
+        Else Begin
+            Function_Return False
+        End
+    End_Function
+    
+    // this just sets the view readonly property
+    // With drilldown style, this is set in tWebNavigateData
+    // With non-drilldown, it is not set and you'd have to do this yourself
+    { Visibility=Private }
+    Procedure SetViewReadOnly Boolean bReadOnly
+        tWebNavigateData NData
+        Integer eWebViewStyle
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // set edit mode in NavigateData
+            Get GetNavigateData to NData
+            Move bReadOnly to NData.bReadOnly
+            Send SetNavigateData NData
+        End
+    End_Procedure
+
+    // performs a refind and refresh based on the main view's DD record
+    // If the record cannot be found a handled error is raised
+    Procedure RefreshRecord
+        Handle hoDD
+        Integer iFile
+        RowID RID
+        Boolean bSuccess
+        Get Server to hoDD
+        If hoDD Begin
+            Get Main_File of hoDD to iFile
+            Get CurrentRowId of hoDD to RID
+            Get FindByRowIdEx of hoDD iFile RID to bSuccess
+            If not bSuccess Begin
+                Send OnRefreshRecordError hoDD
+            End
+        End
+    End_Procedure
+    
+    // Sets the edit mode
+    // refinds records and resets the DEOs as needed 
+    Procedure ChangeEditMode Boolean bEdit
+        Send SetViewReadOnly (not(bEdit))
+        // for a refind which will change enabled/disabled
+        Send RefreshRecord
+    End_Procedure
+
+
+    // called when after any save in this view. 
+    // bChanged is true if should_save was set and a save
+    // was actually attempted.
+    { MethodType=Event }
+    Procedure OnViewSaved Handle hoDDO Boolean bChanged
+    End_Procedure
+    
+    // called when after any delete in this view. 
+    { MethodType=Event }
+    Procedure OnViewDeleted Handle hoDDO 
+    End_Procedure
+
+    // called when after a clear in this view. 
+    { MethodType=Event }
+    Procedure OnViewCleared Handle hoDDO 
+    End_Procedure
+
+    // Is the view changed? 
+    // Currently we just look at should_save of the main ddo. We
+    // might want to expand this to look for changed children 
+    Function IsViewChanged Returns Boolean
+        Handle hoMain
+        Boolean bShouldSave
+        Get Main_DD to hoMain
+        
+        If (hoMain) Begin
+            Get Should_Save of hoMain to bShouldSave
+        End
+        Function_Return bShouldSave
+    End_Function
+
+    // returns true if this should use dynamic constraints. By default
+    // desktop views never use this and probably never should.
+    // Drilldown views do use this but there may be times you'd want to stop this
+    // in which case you's set pbDrillDownDynamicConstraints to true. 
+    { Visibility=Private }
+    Function IsDynamicConstraints Returns Boolean
+        Integer eWebViewStyle
+        Boolean bDynamicConstraints
+        Get peWebViewStyle to eWebViewStyle
+        Get pbDrillDownDynamicConstraints to bDynamicConstraints
+        Function_Return (eWebViewStyle = wvsDrillDown and bDynamicConstraints)
+    End_Function
+    
+
+
+    
+
+
+    // We provide this because NavigateData is an important web property and these
+    // two messages can be accessed via delegation (which WebGet|WebSet pNavigateData cannot).
+    Function GetNavigateData Returns tWebNavigateData
+        tWebNavigateData NavigateData
+        WebGet pNavigateData to NavigateData
+        Function_Return NavigateData
+    End_Function
+
+    Procedure SetNavigateData tWebNavigateData NavigateData
+        WebSet pNavigateData to NavigateData
+    End_Procedure    
+
+    // helper for ClearConstrainFiles
+    { Visibility=Private }
+    Procedure ClearConstrainFile2 Handle hoDD
+        Handle hoDDNext
+        Integer iCount iMax
+        Set Visited_State of hoDD to True
+        // First process all server DDs
+        Get Data_Set_Server_Count of hoDD to iMax
+        For iCount from 0 to (iMax-1)
+            Get Data_Set_Server of hoDD iCount to hoDDNext
+            If not (Visited_state(hoDDNext)) Begin
+                Send ClearConstrainFile2 hoDDNext
+            End
+        Loop
+        Set Constrain_File of hoDD to 0
+    End_Procedure
+
+    // clear all constrain files from the passed main DD on up.
+    { Visibility=Private }
+    Procedure ClearConstrainFiles Handle hoMainDD
+        If hoMainDD Begin
+            Send Initialize_Visited to hoMainDD False False // False=don't clear Column marks
+            Send ClearConstrainFile2 hoMainDD
+        End
+    End_Procedure
+
+    // Returns the invokingobject when used in a drilldown
+    // NavigateFoward context. This should be an object within an invoking
+    // view or the invoking view. Often this would be the focus object when
+    // a prompt action is called.
+    { Visibility=Private } 
+    Function GetInvokingObject Returns Handle 
+        Handle hoInvoker
+        String sInvoker
+        
+        Move C_WebUnresolvedObject to hoInvoker
+        
+        WebGet psInvokingObject to sInvoker
+        If (sInvoker <> "[NULL]") Begin
+            Get WebObjectByName sInvoker to hoInvoker
+        End
+        
+        Function_Return hoInvoker        
+    End_Function
+
+    // Sets the invoking object for this view to hoInvokingObject.
+    { Visibility=Private }
+    Procedure SetInvokingObject Handle hoInvokingObject
+        Handle hoView
+        String sInvoker
+        
+        If (hoInvokingObject <> C_WebUnresolvedObject) Begin
+            Get WebObjectName of hoInvokingObject to sInvoker
+        End
+        Else Begin
+            Move "[NULL]" to sInvoker
+        End
+        
+        WebSet psInvokingObject to sInvoker
+    End_Procedure
+    
+    // Unconditionally navigate back to this view.
+    // We assume any data-loss checking has been done (if not, it's too late)
+    // If bCancel is true this is a Cancel operation (NavigateCancel), else a Close operation (NavigateClose)
+    // If a Close a callback, can and should be passed to update the NavigateData data before processing the close.
+    // This can be called when this view is not synched, in which case you should not trust the
+    // data or the web properties.
+    { Visibility=Private }  
+    Procedure NavigateBackToHere Boolean bCancel Handle hoCallback
+        Handle hoTopView hoInvokingView
+        tWebValueTree tVT
+        tWebNavigateData NavigateData
+        String[] aParams
+        
+        Get TopViewHandle of (ViewStack(Self)) to hoTopView   // handle to the current top of view
+        Get InvokingViewHandle of (ViewStack(Self)) to hoInvokingView // 2nd to top
+        
+        
+        If (not(bCancel) and hoCallback <> 0) Begin
+            // Get NavigateData from the view that is being closed
+            // start with the NavigateData from the view being closed
+            Get GetNavigateData of hoTopView to NavigateData
+            // if we are not going back to the invoking view this means you are jumping back several 
+            // breadcrumb items. The navigate type is always undefined and it is up to the developer to
+            // decide what to do with the returned data in OnNavigateBack
+            If (Self <> hoInvokingView) Begin
+                Move nfUndefined to NavigateData.eNavigateType
+            End
+            Send GetNavigateBackData to hoCallback Self (&NavigateData)
+        End
+        
+        // if we are the invoking object, both the top object and invoking are synched and we can proceed directly
+        // or if we are performing a cancel the extra round trip would have no real meaning
+        If (bCancel or Self = hoInvokingView) Begin
+            Send NavigateBackToHereExec (&NavigateData) bCancel hoCallback
+        End
+        Else Begin
+            //  Navigating back multiple levels means that we need another round trip as the view we are navigating towards is nto synchronized
+                        
+            Move bCancel to aParams[0]
+            
+            //  Because "" indicates the WebApp object we have an extra boolean indicating if there actually is a callback object
+            If (hoCallback > 0) Begin
+                Move True to aParams[1]
+                Get WebObjectName of hoCallback to aParams[2]
+            End
+            Else Begin
+                Move False to aParams[1]
+                Move "" to aParams[2]
+            End
+            
+            ValueTreeSerializeParameter NavigateData to tVT
+            
+            //  Perform client action that will call NavigateBackToHere_Callback
+            Send ClientAction "navigateBackToHere" aParams tVT
+        End
+        
+    End_Procedure
+
+    //  Actually performs the navigateBackToHere operation, either called directly or asynchronously
+    //  by NavigateBackToHere_Callback.
+    { Visibility=Private }
+    Procedure NavigateBackToHereExec tWebNavigateData ByRef NavigateData Boolean bCancel Handle hoCallback
+        Handle hoTopView 
+        Handle hoDD hoMainDD hoTarget hoInvokingObject hoInvokingObjectDD hoInvokingView hoNextView
+        String psInvoker sTitle sStateHash
+        Integer eViewType eTopViewStyle eViewStyle
+        RowID ri
+        Boolean bParentLookup bOverrideViewState
+        Integer iConstrainingFile eRefindError
+        Handle hoConstrainingParent hoRefindError
+        RowID riConstrainingParent
+        Boolean bSuccess
+        
+        //  Indicate that we are navigating
+        Set pbNavigating to True
+        
+        Get TopViewHandle of (ViewStack(Self)) to hoTopView   // handle to the current top of view
+        Get InvokingViewHandle of (ViewStack(Self)) to hoInvokingView // 2nd to top
+        
+        If (hoTopView = Self) Begin
+            Error DFERR_PROGRAM "NavigateBackToHere is already the top of the stack"
+        End
+        
+        Get NextViewHandleByView of (ViewStack(Self)) Self to hoNextView
+        Get GetInvokingObject of hoNextView to hoInvokingObject 
+        
+        Get peWebViewStyle to eViewStyle
+        Get peWebViewStyle of hoTopView to eTopViewStyle       
+        
+        // send ShowView directly (this shows the view without clearing the 
+        // entire viewstack)
+        Get pbOverrideStateOnShow to bOverrideViewState
+        Set pbOverrideStateOnShow to False
+        // if we navigate from a regular drill down view to a dialog we need to perform some more logic
+        If (eTopViewStyle = wvsDrillDown and eViewStyle = wvsDialog) Begin
+            Send RestoreDialog
+        End
+        Else Begin
+            Send ShowView to (Host(Self)) Self 
+        End
+        
+        Set pbOverrideStateOnShow to bOverrideViewState
+        // pop all unwanted views off the stack...
+        Send PopDownToView of (ViewStack(Self)) Self
+        Send UpdateInvokingViewDrillDownStyle
+
+        
+        // In this case we need to consider what to do with the data that
+        // is passed back from the previous top view.
+        Get peViewType to eViewType
+        Get Main_DD to hoMainDD  
+        
+        If hoMainDD Begin
+            Send Refind_Records of hoMainDD
+        End
+
+        // if a close / update 
+        If (not(bCancel) and hoCallback <> 0) Begin
+
+            // if navigate from was relational (child, parent or main) we can do refinding
+            If (NavigateData.eNavigateType = nfFromChild or NavigateData.eNavigateType = nfFromMain or NavigateData.eNavigateType = nfFromParent) Begin
+                Get FindDDOForTable NavigateData.iTable to hoDD
+                If hoDD Begin
+                    Move (DeserializeRowID(NavigateData.sRowID)) to ri
+                    
+                    If (eViewType = vtZoom) Begin
+                        // This will force constrained parents to update if appropriate
+                        
+                        // Use the DD of the invoking object as our starting point 
+                        If hoInvokingObject Begin
+                            Get Server of hoInvokingObject to hoInvokingObjectDD
+                        End
+                        // if no server (unlikely) use the view's main dd 
+                        If not (hoInvokingObjectDD) Begin
+                            Get Main_DD to hoInvokingObjectDD        
+                        End
+                        If (hoInvokingObjectDD) Begin
+                            // assume a parent DD is a parent lookup. If so, we don't update
+                            // the rest of the view. If not a lookup, do a clear_all so the
+                            // findbyrowid updates all deos 
+                            // which_data_Set only searches up.
+                            Get Which_Data_Set of hoInvokingObjectDD NavigateData.iTable to hoTarget
+                            Move (hoTarget and hoTarget<>hoInvokingObjectDD) to bParentLookup
+                            If not bParentLookup Begin
+                                // if constrained we will need to constraining parent
+                                // DD and row in case this is a null child RowId
+                                Get Constrain_File of hoDD to iConstrainingFile
+                                If (iConstrainingFile) Begin
+                                    Get Which_Data_Set of hoDD iConstrainingFile to hoConstrainingParent
+                                    If hoConstrainingParent Begin
+                                        Get CurrentRowId of hoConstrainingParent to riConstrainingParent
+                                    End
+                                End
+                                Send Clear_All of hoDD
+                                If (IsNullRowID(ri) and hoConstrainingParent) Begin
+                                    Get FindByRowIdEx of hoConstrainingParent iConstrainingFile riConstrainingParent to bSuccess
+                                    If not bSuccess Begin
+                                        // this is quite unlikely
+                                        // This is kind of complex because it means that the constraining parent cannot be
+                                        // reloaded. In such a case you probably should not be in the view at all and
+                                        // should navigate back
+                                        Move hoDD to hoRefindError
+                                        Move retCannotRereadConstrainingParent to eRefindError
+                                    End
+                                End
+                            End
+                        End
+                        If (hoRefindError=0) Begin
+                            If (IsNullRowID(ri)) Begin
+                                // Assume Create New Record
+                                Send Clear to hoDD
+                            End
+                            Else Begin
+                                // Load up the selected rowID
+                                Get FindByRowIdEx of hoDD NavigateData.iTable ri to bSuccess
+                                If not bSuccess Begin
+                                    // this is quite unlikely
+                                    Send Clear of hoDD // this will leave the zoom cleared
+                                    Move hoDD to hoRefindError
+                                    Move retCannotRereadMain to eRefindError
+                                End
+                            End
+                        End
+                    End
+                    // else... if vtSelect the test below will catch this for any non cancel
+                    //         vtSelect. That way we catch hoDD=0 cases and nfundefined.
+                End
+            End
+
+            // This handles all select and weblist closes.        
+            // We do this for all view types because a zoom might contain a list
+            // If there is a missing hoDD or ri is null it will do a refresh of whatever
+            // is in the DD. If there is a rowid, it will refind around that.
+            Broadcast Recursive Send RefreshListForBackNavigation bCancel hoDD ri
+            
+        End
+        // cancel
+        Else Begin
+            
+            // case of a cancel going back one level
+            If (Self = hoInvokingView) Begin
+                // This handles all select and weblist cancels.        
+                // We do this for all view types because a zoom might contain a list
+                Broadcast Recursive Send RefreshListForBackNavigation bCancel 0 (NullRowID())
+            End
+            // if going back multiple levels, we don't do an update on the list because the list is not in scope. 
+            // Currently we are choosing not to  incur the overhead of extra roundtrip for a multi-level cancel.
+        End
+            
+        
+        If hoInvokingObject Begin
+            Send ConditionalFocus of hoInvokingObject
+        End            
+
+        //  Update the URL      
+        Send UpdateStateHash False
+        Send UpdatePageTitle
+        
+        //  We are done navigating now
+        Set pbNavigating to False
+
+        If (hoRefindError) Begin
+            // last thing that happens, you can do whatever
+            Send OnNavigateBackRefindError hoConstrainingParent eRefindError
+        End
+        Else If (not(bCancel)) Begin
+        
+            // this is the object within the invoking view that called this
+            If (hoInvokingObject and hoCallback) Begin
+                // We are now the focus. You can use this to customize the update
+                // of to do another navigation 
+                Send OnNavigateBack of hoInvokingObject hoCallback NavigateData
+            End
+        End
+    End_Procedure
+    
+    //  Published procedure called by the client when it gets the navigateToClient client-action. 
+    //  This is done when navigating back multiple levels and the view we are navigating too was 
+    //  not synchronized. When this procedure is called the current view and the top view are both
+    //  being synchronized.
+    { Visibility=Private }
+    Procedure NavigateBackToHere_Callback Boolean bCancel Boolean bCallback String sCallback
+        tWebValueTree VT
+        tWebNavigateData NavigateData
+        Handle hoCallback
+        
+        Get ptActionData to VT
+        ValueTreeDeserializeParameter VT to NavigateData
+        
+        If (bCallback) Begin
+            Get WebObjectByName sCallback to hoCallback
+        End
+        
+        Send NavigateBackToHereExec NavigateData bCancel hoCallback
+        
+    End_Procedure
+    
+    // determine the navigateFrom type based on the view being activated (self) and the
+    // invoking view and object (passed)
+    { Visibility=Private }
+    Function DetermineNavigateFromType Handle hoInvokingView Handle hoInvokingObject Handle ByRef iNavigateFile Returns Integer
+        Handle hoInvokingDD hoMainDD hoDDO
+        Integer iInvokingFile iMainFile
+        Integer iServers iServer iServerFile
+        Boolean bDataBindable
+        Move 0 to iNavigateFile
+        
+        If (hoInvokingView) Begin
+            
+            If (hoInvokingObject) Begin
+                Get Server of hoInvokingObject to hoInvokingDD
+            End
+            Else Begin
+                Get Server of hoInvokingView to hoInvokingDD
+            End
+            
+            Get Server to hoMainDD
+            
+            If (hoInvokingDD and hoMainDD) Begin
+                Get Main_File of hoInvokingDD to iInvokingFile
+                Get Main_File of hoMainDD to iMainFile
+                
+                If (iInvokingFile = iMainFile) Begin
+                    Move iMainFile to iNavigateFile
+                    Function_Return nfFromMain
+                End
+                Else If ( Which_Data_Set(hoInvokingDD, iMainFile)) Begin
+                    Move iMainFile to iNavigateFile
+                    Function_Return nfFromChild
+                End
+                Else Begin
+                    Get Data_Set_Server_Count of hoMainDD to iServers
+                    For iServer from 0 to (iServers-1)
+                        Get Data_Set_Server of hoMainDD iServer to hoDDO
+                        Get Main_File of hoDDO to iServerFile
+                        If (iInvokingFile = iServerFile) Begin
+                            Move iInvokingFile to iNavigateFile
+                            Function_Return nfFromParent
+                        End
+                    Loop
+                End
+            End
+        End
+        Function_Return nfUndefined
+    End_Function
+    
+    // Send this to navigate to the target view and add it to the view stack.
+    //
+    // eNavigateType - The Navigate From Type (i.e. nfFromMain, nfFromParent, etc)
+    // hoInvokingObject - This is the control in the "from view" that will populate the Navigate Data.
+    //                    The navigate data describes the role this view will play. Typically you will
+    //                    pass the object handle of the control that called NavigateForward.
+    //                    This control must understand the GetNavigateForwardData callback message.
+    Procedure NavigateForward Handle hoInvokingObject
+        Handle hoInvokingView hoTestInvokingObject
+        tWebNavigateData NavigateData
+        Integer iExpectedTable eNavigateType// eAppStateMode eTestNavType iTestTable
+        
+        // temporary for conversion. This will raise an error for older style NavigateFoward
+        // which passed two arguments. 
+        If (num_arguments<>1) Begin
+            Error DFERR_PROGRAM "NavigateForward has wrong number of parameters. Probably old style call"
+            Procedure_Return
+        End
+        
+        Get NamedValueAdd NavigateData.NamedValues "Init_Mode" initStateDefault to NavigateData.NamedValues
+        
+        Send NavigateForward2 hoInvokingObject NavigateData ntNavigateForward
+    End_Procedure
+
+    // Just like NavigateForward but it always makes this an nfUndefined navigation. This provides a way
+    // for developers to perform a custom forward navigation (nfUndefined) when the natural navigation would be
+    // some other navigation. When doing a custom navigation, the only option is nfUndefined because allowing a 
+    // developer to assign any other navigate-from type when it is not what is expected will probably not work.
+    // Note that the NavigateData data can be further customized in OnGetNavigateForwardData
+    // this is for advanced use - normally NavigateForward is used.
+    Procedure NavigateForwardCustom Handle hoInvokingObject
+        tWebNavigateData NavigateData
+        
+        Get NamedValueAdd NavigateData.NamedValues "Init_Mode" initStateDefault to NavigateData.NamedValues
+        
+        Send NavigateForward2 hoInvokingObject NavigateData ntNavigateForwardCustom
+    End_Procedure
+    
+    
+    // Navigates into this view when restoring a state. This means that most likely the view will 
+    // not be shown but is just initialzed to correct the view stack. The view will be loaded to 
+    // the client asynchronously to optimize performance.
+    //
+    // Params:
+    //      bTopView    If true this is the topmost view that will be displayed.
+    //      sMainId     Record ID of the main DD (from the state hash).
+    //      sStateHash  The full state hash for this view.
+    // Returns:
+    //      False if the main ID is not a valid record.
+    { Visibility=Private }
+    Function NavigateInitialize Handle hoInvokingObject Boolean bTopView String sStateHash Integer eNavMode Returns Boolean
+        tWebNavigateData NavigateData
+        Handle hoInvokingView hoMainDD
+        RowID rRowId
+        Boolean bFound bSuccess bIsDynamic
+        
+        
+        // Add extra properties used during initialization
+        Get NamedValueAdd NavigateData.NamedValues "Init_Mode" (If(bTopView, initStateReinitializeTopView, initStateReinitialize)) to NavigateData.NamedValues
+        Get NamedValueAdd NavigateData.NamedValues "Init_StateHash" sStateHash to NavigateData.NamedValues
+        
+        // Get into the standard initialization
+        Set pbNavReinitError to False
+        Send NavigateForward2 hoInvokingObject NavigateData eNavMode
+        Get pbNavReinitError to bSuccess
+        Move (not(bSuccess)) to bSuccess
+        
+        Function_Return bSuccess
+    End_Function
+    
+    // Reads the record id from the statehash and puts it in the NavigateData struct, this is called during 
+    // the forward navigation (only for NavigateInitialize).
+    //
+    // Params:
+    //      NavigateData    Byreference navigationdata struct (so it can be altered).
+    { Visibility=Private }
+    Procedure NavigateInitializeUpdateRowId tWebNavigateData ByRef NavigateData
+        String sHash sMainId sView sCustom
+        Integer eStateMode iTable
+        Handle hoMainDD
+        RowID rRowID
+        Boolean bSuccess
+        
+        Get peStateMode to eStateMode
+        Get Main_DD to hoMainDD
+        
+        Get NamedValueGet NavigateData.NamedValues "Init_StateHash" to sHash
+        Send ParseViewStateHash of (Host(Self)) sHash (&sView) (&sMainId) (&sCustom)
+        
+        // Set rowid from the state hash
+        If ((peViewType(Self) = vtZoom and eStateMode = vsmDefault) or eStateMode = vsmRecord) Begin
+            If (hoMainDD <> 0) Begin
+                Move (Main_File(hoMainDD)) to iTable
+                Get HashRecordIdToRowId iTable sMainId (&rRowId) to bSuccess
+                If (bSuccess) Begin
+                    Move (SerializeRowID(rRowId)) to NavigateData.sRowID
+                    Move iTable to  NavigateData.iTable
+                    // Keep new-record state when the state hash contains the configured new-record id.
+                    Move (Lowercase(sMainId) = Lowercase(psStateNewRecordId(Self))) to NavigateData.bNewRecord
+                End
+                Else Begin
+                    Set pbNavReinitError to True
+                    If (pbStateHashInvalidError(Host(Self))) Begin
+                        Error DFERR_WEBAPP_INVALID_URL_REC
+                    End
+                End
+            End
+        End
+        Else If (eStateMode = vsmDefault) Begin
+            If (NavigateData.iTable > 0) Begin
+                Get HashRecordIdToRowId NavigateData.iTable sMainId (&rRowId) to bSuccess
+                If (bSuccess) Begin
+                    Move (SerializeRowID(rRowId)) to NavigateData.sRowID
+                End
+                Else Begin
+                    Set pbNavReinitError to True
+                    If (pbStateHashInvalidError(Host(Self))) Begin
+                        Error DFERR_WEBAPP_INVALID_URL_REC
+                    End
+                End
+            End
+        End
+    End_Procedure
+    
+    // Determines if this view needs to be reininitialized when restoring the state looking at the
+    // record id.
+    //
+    // Params:
+    //      sExpectedMainId     Record ID of the main table navigation table to compare to record buffer.
+    { Visibility=Private }
+    Function NeedReinitialize String sExpectedMainId Returns Boolean
+        tWebNavigateData navData
+        Integer eStateMode
+        Handle hoMainDD
+        RowID rRowId
+        Boolean bValid
+        
+        Get peStateMode to eStateMode
+        Get Main_DD to hoMainDD
+        
+        If ((peViewType(Self) = vtZoom and eStateMode = vsmDefault) or eStateMode = vsmRecord) Begin
+            Get GetNavigateData to navData
+            
+            If (hoMainDD <> 0) Begin
+                If (sExpectedMainId <> "" ) Begin    
+                    Get HashRecordIdToRowId (navData.iTable) sExpectedMainId (&rRowId) to bValid
+                    If (bValid and IsSameRowID(rRowId, CurrentRowId(hoMainDD))) Begin
+                        Function_Return False
+                    End
+                End
+                Else If (navData.bNewRecord and not(HasRecord(hoMainDD))) Begin
+                    Function_Return False
+                End
+            End
+            Else Begin
+                Function_Return False
+            End
+        End
+        Else If (eStateMode = vsmDefault) Begin
+            Get GetNavigateData to navData
+            
+            If (navData.iTable > 0) Begin
+                Get HashRecordIdToRowId (navData.iTable) sExpectedMainId (&rRowId) to bValid
+                If (bValid and navData.sRowID = SerializeRowID(rRowId)) Begin
+                    Function_Return False
+                End
+            End
+            
+            If (navData.eNavigateType = nfUndefined) Begin
+                Function_Return False
+            End
+        End
+        
+        Function_Return True
+    End_Function
+
+    // Called back by the LoadViewCallBack procedure that makes sure that the view is actually in 
+    // sync (by going back to the client and optionally loading it).
+    { Visibility=Private }
+    Procedure NavigateForward_CallBack
+        Send NavigateForwardFinish
+    End_Procedure
+
+    // called by NavigateForward and NavigateForwardCustom only 
+    { Visibility=Private }
+    Procedure NavigateForward2 Handle hoInvokingObject tWebNavigateData NavigateData Integer eNavMode
+        Integer eWebViewStyle eInvokingViewStyle eInitMode iMainFile iStackSize
+        Handle hoInvokingObjectTemp hoInvokingView hoMainDD hoInvokingViewDD 
+        Boolean bOK bChanged bErr bHasRecord bCancel bHandled
+        String sInvokingView sReason sViewName
+        tWebViewInfo[] aViewStack
+        RowID riMainRowId
+        
+        Get NamedValueGet NavigateData.NamedValues "Init_Mode" to eInitMode
+        Get TopViewHandle of (ViewStack(Self)) to hoInvokingView
+        Get Main_DD to hoMainDD
+                
+        // Test Access rights...
+        Get AllowAccess to bOK
+        If (not(bOK)) Begin
+            Get ViewAccessDenied Self False to bHandled
+            Procedure_Return
+        End
+        
+        // Test for valid view style
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDesktop) Begin
+            Error DFERR_PROGRAM "Can't navigate forward to a non-drill down view"
+            Procedure_Return
+        End
+
+        // Test that we can actually navigate to this view
+        Get CanPushView of (ViewStack(Self)) Self (&sReason) to bOK
+        
+        If (not(bOK)) Begin
+            Get WebObjectName to sViewName
+            Error DFERR_PROGRAM ("View stack navigate error: Cannot Navigate to (" + sViewName + "). " + sReason)
+            Procedure_Return             
+        End
+
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        Move (SizeOfArray(aViewStack)) to iStackSize
+        
+        // Populate the Navigate Data struct.
+        If (eNavMode = ntNavigateForwardCustom) Begin
+            Move nfUndefined to NavigateData.eNavigateType
+        End
+        Else Begin      
+            //  Determine navigation type and table
+            Get DetermineNavigateFromType hoInvokingView hoInvokingObject (&NavigateData.iTable) to NavigateData.eNavigateType
+        End 
+        
+        //  Determine rowid and fire OnGetNavigateForwardData
+        If (hoInvokingObject <> C_WebUnresolvedObject) Begin
+            Send GetNavigateForwardData of hoInvokingObject Self (&NavigateData)
+        End
+        
+        //  Override rowid when initializing from a state hash
+        If (eInitMode = initStateReinitialize or eInitMode = initStateReinitializeTopView) Begin
+            Send NavigateInitializeUpdateRowId (&NavigateData)
+            If (pbNavReinitError(Self)) ;
+                Procedure_Return
+        End
+        
+        //  Give a last change to intervene before actual changes will be made
+        Send SetNavigateData NavigateData   // Set the navigationdata so that Refresh reads the right init_mode
+        Move False to bCancel
+        Send OnNavigating (&NavigateData) hoInvokingView hoInvokingObject (&bCancel)
+        If (bCancel) Begin
+            Set pbNavReinitError to True
+            Procedure_Return
+        End
+        
+        // update the top of the stack with what is now the current record which
+        // should have been returned in NavigateData
+        If (iStackSize and aViewStack[iStackSize-1].iMainTable = NavigateData.iTable) Begin 
+            Move (DeserializeRowID(NavigateData.sRowID)) to aViewStack[iStackSize-1].riMainTable
+            WebSet paViewStack of (ViewStack(Self)) to aViewStack
+        End
+                
+        // Store the NavigateData
+        Send SetNavigateData NavigateData
+        Send SetInvokingObject hoInvokingObject
+        
+        // if we must first save, we require a successful save
+        // or an existing record with no changes
+        If (NavigateData.bSaveBeforeNavigate and eInitMode = initStateDefault) Begin
+            Get Server of hoInvokingView to hoInvokingViewDD
+            If (hoInvokingViewDD) Begin
+                Get HasRecord of hoInvokingViewDD to bHasRecord
+            End
+            Get SaveViewBeforeNavigate of hoInvokingView to bErr
+            If bErr Begin
+                Set pbNavReinitError to True    //  This should never happen!
+                Procedure_Return
+            End
+            // if a new successful save we must udpate navigateData and the
+            // top of the view stack with the new record
+            If (hoInvokingViewDD and not(bHasRecord)) Begin
+                Get Main_File of hoInvokingViewDD to iMainFile
+                If (NavigateData.iTable = iMainFile) Begin
+                    Get CurrentRowId of hoInvokingViewDD to riMainRowId
+                    Move (SerializeRowID(riMainRowId)) to NavigateData.sRowID
+                    Send SetNavigateData NavigateData
+                    
+                    If (iStackSize) Begin 
+                        Move riMainRowId to aViewStack[iStackSize-1].riMainTable
+                        WebSet paViewStack of (ViewStack(Self)) to aViewStack
+                    End
+                End
+            End
+        End
+        
+        //Check if we need to hide a dialog
+        If (hoInvokingView <> 0) Begin
+           Get peWebViewStyle of hoInvokingView to eInvokingViewStyle
+            If (eInvokingViewStyle = wvsDialog and eWebViewStyle <> wvsDialog) Begin
+                //If this happens we navigated from a dialog to a view which means we should hide all dialogs.
+                Send HideAllDialogs
+            End
+        End
+        
+        //  Finish navigation
+        If (eInitMode = initStateReinitialize) Begin
+            Send DelayLoadview of (Host(Self)) Self 
+            Send NavigateForwardFinish 
+        End
+        Else Begin
+            Send ShowView of (Host(Self)) Self (RefProc(NavigateForward_CallBack)) Self
+        End
+    End_Procedure
+    
+    // This message is sent when navigating into a view (forward navigation) and is the last chance
+    // to influence the navigation data before the navigation is performed. It also is the place to 
+    // cancel the navigation.
+    { MethodType=Event }
+    Procedure OnNavigating tWebNavigateData ByRef NavigateData Handle hoInvokingView Handle hoInvokingObject Boolean ByRef bCancel
+    End_Procedure
+    
+    // The last step of the forward navigation where the view navigating to is in sync and finds 
+    // and constraints are performed based on the NavigateDataFinish. This procedure does look at
+    // the DDO structure of the invoking view but that shouldn't be a problem.
+    { Visibility=Private }  
+    Procedure NavigateForwardFinish
+        Integer iStackSize iParentTable eInitMode
+        Handle hoMainDD hoParentDD hoInvokingView hoInvokingObject hoTopView
+        Boolean bOK bHasRecord bPrevNav
+        RowID ri
+        tWebNavigateData NavigateData
+        tWebViewInfo[] aViewStack
+        Handle[] hoStackDDOs
+        RowID[] riStackRowIds
+        Boolean bDynamicConstraints bOverrideViewState bFindParent bErr bSuccess
+        Integer eWebViewStyle eViewType
+        Integer iMainFile iConstrainFile eRefindError
+        String sMainRowId sTitle sCustomStateHash
+        RowID riMainRowId
+        Handle hoInvokingViewDD hoInvokingObjectDD hoRefindError
+        
+        //  Indicate that we are navigating
+        Set pbNavigating to True
+        
+        Get Main_DD to hoMainDD
+        Get TopViewHandle of (ViewStack(Self)) to hoInvokingView
+        If (hoInvokingView <> C_WebUnresolvedObject) Begin
+            Get GetInvokingObject to hoInvokingObject
+        End
+        
+        Get GetNavigateData to NavigateData
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        Move (SizeOfArray(aViewStack)) to iStackSize
+        Get NamedValueGet NavigateData.NamedValues "Init_Mode" to eInitMode
+
+        
+        Get peViewType to eViewType
+        Get IsDynamicConstraints to bDynamicConstraints
+        
+        // Interpret the navigate data 
+        
+        If hoMainDD Begin
+            
+            Send Refind_Records of hoMainDD
+            
+            
+            //  We are performing finds on the invoking views here to 'correct' their current records based on our navigate-data
+            If (hoInvokingObject <> C_WebUnresolvedObject and eInitMode <> initStateDefault and NavigateData.iTable > 0) Begin
+                Handle hoInvokingServer hoInvokingDD
+                RowID riNavRowId
+                
+                Get Server of hoInvokingObject to hoInvokingServer 
+                If (hoInvokingServer > 0 and IsInCallActionScope(hoInvokingObject)) Begin
+                    Get Data_Set of hoInvokingServer NavigateData.iTable to hoInvokingDD
+                    Move (DeserializeRowID(NavigateData.sRowID)) to riNavRowId
+                    
+                    If (hoinvokingdd > 0 and not(IsSameRowId(CurrentRowId(hoInvokingDD), riNavRowId))) Begin
+                        Get pbNavigating of hoInvokingView to bPrevNav
+                        Set pbNavigating of hoInvokingView to True
+                        If (IsNullRowID(riNavRowId)) Begin
+                            Send Clear of hoInvokingDD
+                        End
+                        Else Begin
+                            Send FindByRowId of hoInvokingDD NavigateData.iTable riNavRowId
+                        End
+                        Set pbNavigating of hoInvokingView to bPrevNav
+                    End
+                End
+            End
+            
+            If (bDynamicConstraints) Begin
+                // this re-establishes all existing constraints
+                Send EstablishConstrainFiles hoMainDD aViewStack (&hoStackDDOs) (&riStackRowIds)    
+                
+                // Now Set hew highest level constrain_file if needed.
+                Move False to bFindParent
+                // if fromParent we need a constraint
+                If (NavigateData.eNavigateType = nfFromParent and iStackSize>0) Begin
+                    Move aViewStack[iStackSize-1].iMainTable to iParentTable
+                    // must be an immediate parent of the main DDO or this is an error          
+                    Get ParentDDOForTable hoMainDD iParentTable to hoParentDD             
+                    If (hoParentDD = 0) Begin
+                        Error DFERR_PROGRAM ("Parent DDO not found for table# "+String(iParentTable))
+                    End
+                    
+                    Set Constrain_File of hoMainDD to iParentTable
+                    
+                    // find the constraining parent record and its parents
+                    Move True to bFindParent
+                    Move aViewStack[iStackSize-1].riMainTable to ri
+                End
+                // if fromMain and the parent view is fromParent or a manual constraint
+                // we need a constraint added here
+                Else If (NavigateData.eNavigateType = nfFromMain) Begin
+
+                    If (hoInvokingObject) Begin
+                        Boolean bIsDynamic bIsDynamicBase
+                        Handle hoWidgetObj hoWidgetObjDD
+                        
+                        If (hoWidgetObj <> 0) Begin
+                            Get Server of hoInvokingObject to hoInvokingObjectDD
+                            Get Server of hoWidgetObj to hoWidgetObjDD
+                            
+                            If (hoInvokingObjectDD and hoWidgetObjDD<>hoInvokingObjectDD) Begin
+                            
+                                Get Constrain_File of hoInvokingObjectDD to iConstrainFile
+                                If (hoWidgetObjDD > 0) Begin
+                                    Get Main_File of hoWidgetObjDD to iParentTable
+                                End
+                                // if there is an invokingDD constraint, it is a manual constraint. We only support
+                                // navigating from this if that cosntraint parent is the invoking view's main dd
+                                If (iConstrainFile and iParentTable=iConstrainFile) Begin
+                                    // must be an immediate parent of the main DDO or this is an error          
+                                    Get ParentDDOForTable hoMainDD iParentTable to hoParentDD             
+                                    If (hoParentDD = 0) Begin
+                                        Error DFERR_PROGRAM ("Parent DDO not found for table# "+String(iParentTable))
+                                    End
+                                    
+                                    Set Constrain_File of hoMainDD to iParentTable
+                                    
+                                    // find the constraining parent record and its parents
+                                    Move True to bFindParent
+                                    // this is the parent record to refind
+                                    Get CurrentRowId of hoWidgetObjDD to ri
+                                End
+                                Else If (hoWidgetObjDD > 0) Begin
+                                    // this is a navigate from we don't allow.
+                                    Error DFERR_PROGRAM ("Cannot navigate from this invoking manually constrained DDO for table# "+String(iParentTable))
+                                End
+                            End
+                            Else Begin
+                                Send Refind_Records of hoInvokingObjectDD
+                                Get CurrentRowId of hoInvokingObjectDD to ri
+                                Move (SerializeRowID(ri)) to NavigateData.sRowID
+                            End
+                        End
+                        Else Begin
+                            
+                            Get Server of hoInvokingObject to hoInvokingObjectDD
+                            Get Server of hoInvokingView to hoInvokingViewDD
+                            // special fromMain case where the DDO is not the view's main_dd but is
+                            // a child DD that has a constraint. If so we only support this one level
+                            // deep and the DD must be constrained to the invoking view's main DD.
+                            // for example, mavigating from ZoomOrder's detail grid tp a detail zoom
+                            If (hoInvokingObjectDD and hoInvokingViewDD<>hoInvokingObjectDD) Begin
+                            
+                                Get Constrain_File of hoInvokingObjectDD to iConstrainFile
+                                If (hoInvokingViewDD > 0) Begin
+                                    Get Main_File of hoInvokingViewDD to iParentTable
+                                End
+                                // if there is an invokingDD constraint, it is a manual constraint. We only support
+                                // navigating from this if that cosntraint parent is the invoking view's main dd
+                                If (iConstrainFile and iParentTable=iConstrainFile) Begin
+                                    // must be an immediate parent of the main DDO or this is an error          
+                                    Get ParentDDOForTable hoMainDD iParentTable to hoParentDD             
+                                    If (hoParentDD = 0) Begin
+                                        Error DFERR_PROGRAM ("Parent DDO not found for table# "+String(iParentTable))
+                                    End
+                                    
+                                    Set Constrain_File of hoMainDD to iParentTable
+                                    
+                                    // find the constraining parent record and its parents
+                                    Move True to bFindParent
+                                    // this is the parent record to refind
+                                    Get CurrentRowId of hoInvokingViewDD to ri
+                                End
+                                Else If (hoInvokingViewDD > 0) Begin
+                                    // this is a navigate from we don't allow.
+                                    Error DFERR_PROGRAM ("Cannot navigate from this invoking manually constrained DDO for table# "+String(iParentTable))
+                                End
+                            End
+                            
+                        End
+                    End
+                    // this is a more typical fromMain where invoking view is constrained amd
+                    // we want to use that constraint. 
+                    If  (not(bFindParent) and aViewStack[iStackSize-1].eNavigateType=nfFromParent and iStackSize>1) Begin
+                        Move aViewStack[iStackSize-2].iMainTable to iParentTable
+                        // must be an immediate parent of the main DDO or this is an error          
+                        Get ParentDDOForTable hoMainDD iParentTable to hoParentDD             
+                        If (hoParentDD = 0) Begin
+                            Error DFERR_PROGRAM ("Parent DDO not found for table# "+String(iParentTable))
+                        End
+                        // note constrain_file should already be set
+                        Move True to bFindParent
+                        Move aViewStack[iStackSize-2].riMainTable to ri
+                    End
+                End
+                
+            End
+    
+            // Used to set ordering for a List. Do it here so any grid fills will use the right index.
+            // Let's do this before any finds occur on the new view. This can be used to set up custom
+            // constraints
+            Send NavigateForwardPreFindInit NavigateData hoInvokingObject
+
+            // Now rebuild the constraints
+            Send RebuildAllConstraints of hoMainDD
+        
+            // Now refind the parent if needed.
+            // This will only happen with dynamic constraints but this makes our intention clear.
+            If (bDynamicConstraints and bFindParent) Begin
+                // no autofill stops a child findfirst. We don't need that here  
+                Get FindByRowIdExNoAutoFill of hoParentDD iParentTable ri to bSuccess
+                // we also consider navigating forward from a null consrained parent an error
+                If (not(bSuccess) or IsNullRowID(ri)) Begin
+                    // This is kind of complex because it means that the constraining parent cannot be
+                    // reloaded. In such a case you probably should not be in the view at all and
+                    // should navigate back
+                    Move hoParentDD to hoRefindError
+                    Move retCannotRereadConstrainingParent to eRefindError    
+                End
+            End
+
+            If (hoRefindError=0) Begin
+                
+                // now find main file as needed
+                If ( (NavigateData.eNavigateType = nfFromMain or ;
+                      NavigateData.eNavigateType = nfFromChild or ;
+                      NavigateData.eNavigateType = nfUndefined)  ;
+                     and NavigateData.iTable=Main_File(hoMainDD) and iStackSize>0) Begin
+                    
+                    Move (DeserializeRowID(NavigateData.sRowID)) to ri
+                    If (IsNullRowID(ri) or NavigateData.bNewRecord) Begin
+                        // Assume Create New Record
+                        Send Clear to hoMainDD
+                    End
+                    Else Begin
+                        // Populate the list around the passed row ID
+                        Get FindByRowIdEx of hoMainDD (Main_File(hoMainDD)) ri to bSuccess
+                        If not bSuccess Begin
+                            Send Clear of hoMainDD
+                            Move hoMainDD to hoRefindError
+                            Move retCannotRereadMain to eRefindError    
+                        End
+                    End
+                End
+                Else If (eViewType=vtZoom and  NavigateData.eNavigateType = nfFromParent and iStackSize>0) Begin
+                    // Assume Create New Record
+                    Send Clear to hoMainDD
+                End
+    
+                // finally, if a select view and we don't have a record tell the grid to
+                // do an init
+                If (eInitMode <> initStateReinitialize and hoRefindError=0 and eViewType=vtSelect) Begin
+                    Get HasRecord of hoMainDD to bOK
+                    If not bOK Begin
+                        Broadcast Recursive Send InitGrid NavigateData hoInvokingObject
+                    End
+                End
+    
+            End
+        End
+        
+        // Update the View Stack
+        Send PushView to (ViewStack(Self)) Self NavigateData.eNavigateType
+        Send UpdateInvokingViewDrillDownStyle 
+        
+
+        
+        
+        //  Cleanup navigation data
+        Get NamedValueRemove NavigateData.NamedValues "Init_Mode" to NavigateData.NamedValues
+        Send SetNavigateData NavigateData
+        
+        // if a find error, reverse the navigation. We assume that navigating to a view with
+        // records that cannot be found should be reversed. 
+        If hoRefindError Begin
+            If (eInitMode = initStateReinitialize or eInitMode = initStateReinitializeTopView) Begin
+                Set pbNavReinitError to True
+                If (pbStateHashInvalidError(Host(Self))) Begin
+                    Error DFERR_WEBAPP_INVALID_URL_REC
+                End
+            End
+            Else Begin
+                Send OnNavigateForwardRefindError hoRefindError eRefindError
+            End
+        End
+        Else Begin
+            Send OnNavigateForward NavigateData hoInvokingView hoInvokingObject    // Hook to modify the view before opening it 
+        End
+        
+        //  We are done navigating now
+        Set pbNavigating to False
+        
+        // Update URL (check if still the topview, OnNavigateForward might have done a navigation)
+        Get TopViewHandle of (ViewStack(Self)) to hoTopView
+        If (eInitMode <> initStateReinitialize and hoTopView = Self) Begin 
+            Send UpdateStateHash (eInitMode = initStateReinitializeTopView or pbStateReplace(Self))
+                        
+            Send UpdatePageTitle
+        End
+    End_Procedure
+    
+    
+    
+    // set ordering for a List. Do it here so any grid fills will use the right index.
+    // Let's do this before any finds occur on the new view
+    { Visibility=Private }
+    Procedure NavigateForwardPreFindInit tWebNavigateData NavigateData Handle hoInvokingObject
+        Integer eViewType
+        Get peViewType to eViewType
+        If (eViewType=vtSelect) Begin
+            Broadcast Recursive Send InitOrdering NavigateData hoInvokingObject
+        End
+        Send OnNavigateForwardPreFindInit NavigateData hoInvokingObject
+    End_Procedure
+    
+    // This is called during NavigateForward after the automatic constraints have been applied but
+    // before the constraints have been rebuilt and any records have been found for the view.
+    // This primarily exists to give you a chance to apply any additional constraints for the view. You can
+    // also use this to set any finding properties such as piSortCol, etc.
+    // You should not use this to find DD records or fill the DDOs yourself - it won't work!
+    { MethodType=Event }
+    Procedure OnNavigateForwardPreFindInit  tWebNavigateData NavigateData Handle hoInvokingObject
+    End_Procedure
+    
+    // use to navigate to the start of the stack. If there is a default view it
+    // will navigate to there.
+    // if bUnconditional, do this without checking for changed states
+    Procedure NavigateBegin Handle hoInvokingObject Boolean bUnconditional
+        Boolean bOk
+        Handle hoTop hoDefault
+        
+        Get GetDefaultView of (Host(Self)) to hoDefault
+        
+        // reset the breadcrumb stack respecting the default view
+        Get Reset of (ViewStack(Self)) (hoDefault <> Self) bUnconditional to bOK
+        If (bOK) Begin
+            Send NavigateForward hoInvokingObject // note that we do not pass on the invoking object to preven the navigation logic from making wrong assumptions
+        End
+    End_Procedure
+
+    // Send this to change the default caption that is shown for this view
+    // in a breadcrumb.
+    Procedure SetBreadcrumbCaption String sCaption
+        Send SetCaption of (ViewStack(Self)) Self sCaption
+    End_Procedure
+
+    // this gets the breadcrumb caption 
+    Function GetBreadcrumbCaption Returns String
+        String sCaption
+        Get GetCaption of (ViewStack(Self)) Self to sCaption
+        Function_Return sCaption
+    End_Function
+
+    // Send this to change the default caption that is shown for this view
+    // in a "heading". Typically used by a breadcrumb object when it is simply
+    // displaying a view heading rather than the entire breadcrumb.
+    Procedure SetHeaderCaption String sCaption
+        Send SetHeaderCaption of (ViewStack(Self)) Self sCaption
+        
+        Send UpdatePageTitle
+    End_Procedure
+
+    // this gets the breadcrumb heading scaption 
+    Function GetHeaderCaption Returns String
+        String sCaption
+        Get GetHeaderCaption of (ViewStack(Self)) Self to sCaption
+        Function_Return sCaption
+    End_Function
+
+    // if a view is changed, how do we close this?
+    // This uses peChangedViewAction and a corresponding
+    // Verify_Data_Loss_Msg / Verify_SaveClearCancel_msg to
+    // determine the action. Therefore setting the Verify_xxx_msg overrides
+    // the peChangedViewExitAction and force a non-verified abandoning of changes  
+    { Visibility=Private }
+    Function GetChangedViewExitAction Returns Integer
+        Integer iMsg eCloseAction
+        
+        Get peChangedViewExitAction to eCloseAction
+        If (eCloseAction=cveConfirmAbandonChanges) Begin
+            Get Verify_Data_Loss_Msg to iMsg
+            If (iMsg=0) Begin
+                Move cveAbandonChanges to eCloseAction
+            End
+        End
+        Else If (eCloseAction=cveConfirmSaveClearCancel) Begin
+            Get Verify_SaveClearCancel_msg to iMsg
+            If (iMsg=0) Begin
+                Move cveAbandonChanges to eCloseAction
+            End
+        End
+        Function_Return eCloseAction
+    End_Function
+    
+
+    {Visibility=Private}
+    // Callback message in response to VerifyRequest Callback. Called via NavigateClose, 
+    // do not call this directly.
+    // This is used for Yes/No verifies
+    Procedure NavigateClose_Callback Integer eConfirmMode
+        If (eConfirmMode = cmYes) Begin
+            Send NavigateCloseExec False // means close no save
+        End
+    End_Procedure
+
+    {Visibility=Private}
+    // This is used for Yes/No/Cancel verifies (Save, Clear, Cancel)
+    Procedure NavigateCloseYNC_Callback Integer eConfirmMode
+        If (eConfirmMode = cmYes) Begin
+            Send NavigateCloseExec True
+        End
+        Else If (eConfirmMode = cmNo) Begin
+            Send NavigateCloseExec False // means close no save
+        End
+    End_Procedure
+    
+
+    // If a view is the current top view, you can send this message to it
+    // to close the view. If there is a view underneath in the view stack
+    // then it will be passed back navigation data from the callback object.
+    // This control must understand the GetNavigateBackData callback message.
+    // 
+    // If there is no special data to pass back to the view underneath in 
+    // the view stack then you should call NavigateCancel.
+    Procedure NavigateClose Handle hoCallback
+        Handle hoView
+        Get InvokingViewHandle of (ViewStack(Self)) to hoView
+        Send NavigateCloseTo hoView hoCallback
+    End_Procedure
+
+    // NavigateCloseTo is passed the view to return to. Normally NavigateClose is used and this is for more
+    // advanced usage when closing several views but wanting to return a value to the view
+    // 1. When multi-level closes are used the navigateFrom type is always changed to nfUndefined meaning you must
+    //    handle the update yourself.
+    // 2. We only check for data-loss changes in the top view. If there are changes in views in between this and the destination
+    //    view, they are lost.
+    // Use this with care.
+    Procedure NavigateCloseTo Handle hoView Handle hoCallback
+        Handle hoMainDD
+        Boolean bCanPopView bChanged 
+        Integer eCloseAction iIndex
+        String sReason sNavigateDataCallbackObj sInvokingView
+        Integer eWebViewStyle
+
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDesktop) Begin
+            Error DFERR_PROGRAM "Can't navigate back with a non-drill down view"
+            Procedure_Return
+        End            
+
+
+        If hoView Begin
+            Get GetViewIndex of (ViewStack(Self)) hoView to iIndex
+            If (iIndex=-1) Begin
+                Error DFERR_PROGRAM "Target view not in view stack"
+                Procedure_Return
+            End
+            Get WebObjectName of hoView to sInvokingView
+        End
+        WebSet psNavigateBackView to sInvokingView
+        
+        Get WebObjectName of hoCallback to sNavigateDataCallbackObj
+        WebSet psNavigateDataCallbackObj to sNavigateDataCallbackObj
+
+        Get CanPopView of (ViewStack(Self)) Self (&sReason) to bCanPopView
+        
+        If (bCanPopView) Begin
+            Get IsViewChanged to bChanged
+            
+            If bChanged Begin
+                Get GetChangedViewExitAction to eCloseAction
+                If (eCloseAction=cveConfirmAbandonChanges) Begin
+                    Send VerifyRequest (RefProc(NavigateClose_Callback)) (RefFunc(Verify_Data_Loss_msg))
+                End
+                Else If (eCloseAction=cveConfirmSaveClearCancel) Begin
+                    Send VerifyRequest (RefProc(NavigateCloseYNC_Callback)) (RefFunc(Verify_SaveClearCancel_msg))
+                End
+                Else If (eCloseAction=cveSave) Begin
+                    Send NavigateCloseExec True
+                End
+                Else Begin
+                    Send NavigateCloseExec False
+                End
+            End
+            Else Begin            
+                Send NavigateCloseExec False
+            End
+        End
+        Else Begin
+            Error DFERR_PROGRAM ("View stack Navigate error: " + sReason)
+        End
+    End_Procedure
+    
+    // This actually performs the Navigate Close operation. This will close the current
+    // view and pop the view stack without returning any data to the invoking view.
+    // This operates like a cancel. All data loss checking and confirmation has already
+    // been performed before we get here.
+    //
+    // Called via NavigateCloseTo, do not call this directly.
+    {Visibility=Private}
+    Procedure NavigateCloseExec Boolean bSave
+        Handle hoView hoCallback
+        String sNavigateDataCallbackObj sView
+        Boolean bErr
+        
+        If bSave Begin
+           Get SaveViewExec to bErr            
+           If bErr ;
+            Procedure_Return 
+        End
+        
+        WebGet psNavigateBackView to sView   // handle to the new top of view
+        If (Trim(sView) <> "") Begin
+            Get FindWebObject of (Owner(Self)) sView to hoView
+            WebGet psNavigateDataCallbackObj to sNavigateDataCallbackObj
+            If (sNavigateDataCallbackObj<>"") Begin
+                Get WebObjectByName sNavigateDataCallbackObj to hoCallback
+            End
+            Send NavigateBackToHere of hoView False (If(hoCallback, hoCallback, Self))
+        End
+        Else Begin
+            Send Hide   // If the view stack is empty, just hide this view
+        End
+    End_Procedure
+
+    // this attempts a save and returns True if it failed.
+    // There should be no confirmation messages at this point.
+    // Unlike RequestSaveExec, this has to attempt a save at the view level.
+    // Currently it just saves the view's Server, which may not always be enough if
+    // have sub-DD like detail lines.
+    { Visibility=Private }
+    Function SaveViewExec Returns Boolean
+        Handle hoServer
+        Integer iRetVal
+        Boolean bRequestValidateAll bErr
+        Get Server to hoServer
+        If hoServer Begin
+            Get pbRequesteValidateAll to bRequestValidateAll
+            If bRequestValidateAll Begin
+                Get Request_Validate_All of hoServer to iRetVal
+            End
+            Else Begin
+                Get Request_Validate of hoServer to iRetVal
+            End
+            If (iRetVal=0) Begin
+                Move False to Err
+                Send Request_Save to hoServer
+                Move Err to iRetVal
+            End
+        End
+        Function_Return iRetVal
+    End_Function
+
+    // Save before navigate forward to some other view. Return 0 if ok.
+    // Upon completion a saved record must exist, else return non zero
+    { Visibility = Private }    
+    Function SaveViewBeforeNavigate Returns Boolean
+        Handle hoServer
+        Boolean bChanged bErr bHasRec
+        Get Server to hoServer
+        Get IsViewChanged to bChanged
+        
+        If (bChanged) Begin
+           Get SaveViewExec to bErr
+        End
+        Else Begin
+            // if nothing to save but a new record, we will attempt validation and save anyway. Most
+            // likely this will raise a validation error providing the user feedback that they cannot
+            // navigate forward without a valid save
+            If (hoServer) Begin
+                Get HasRecord of hoServer to bHasRec
+                If not bHasRec Begin
+                    Get SaveViewExec to bErr
+                End
+            End
+        End
+        Function_Return bErr
+    End_Function
+
+
+    {Visibility=Private}
+    // Callback message in response to VerifyRequest Callback. Called via NavigateClose, 
+    // do not call this directly.
+    // This is used for Yes/No verifies
+    Procedure NavigateCancel_Callback Integer eConfirmMode
+        If (eConfirmMode = cmYes) Begin
+            Send NavigateCancelExec False
+        End
+    End_Procedure
+
+    {Visibility=Private}
+    // This is used for Yes/No/Cancel verifies (Save, Clear, Cancel)
+    Procedure NavigateCancelYNC_Callback Integer eConfirmMode
+        If (eConfirmMode = cmYes) Begin
+            Send NavigateCancelExec True
+        End
+        Else If (eConfirmMode = cmNo) Begin
+            Send NavigateCancelExec False // means close no save
+        End
+    End_Procedure
+    
+
+    // If a view is the current top view, you can send this message to it
+    // to close the view. Typically this message is sent to a view by a 
+    // Cancel on the view.
+    Procedure NavigateCancel 
+        Handle hoView
+        Get InvokingViewHandle of (ViewStack(Self)) to hoView
+        Send NavigateCancelTo hoView
+    End_Procedure
+    
+    // If a view is the current top view, you can send this message to it
+    // to close the view and navigate down to the passed view. Typically this message is sent to
+    // a view by a breacrumb navigate back action
+    Procedure NavigateCancelTo Handle hoView
+        Boolean bCanPopView bChanged  bOk
+        Integer eCloseAction
+        String sReason sInvokingView
+        Integer eWebViewStyle iIndex
+
+        Get peWebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDesktop) Begin
+            Error DFERR_PROGRAM "Can't navigate back with a non-drill down view"
+            Procedure_Return
+        End            
+        
+        If hoView Begin
+            Get GetViewIndex of (ViewStack(Self)) hoView to iIndex
+            If (iIndex=-1) Begin
+                Error DFERR_PROGRAM "Target view not in view stack"
+                Procedure_Return
+            End
+            Get WebObjectName of hoView to sInvokingView
+        End
+        WebSet psNavigateBackView to sInvokingView
+        
+        Get CanPopView of (ViewStack(Self)) Self (&sReason) to bCanPopView
+        
+        If (bCanPopView) Begin
+            
+            // Set the callback object that will be used by NavigateCloseExec
+            Get IsViewChanged to bChanged
+            If bChanged Begin
+                Get GetChangedViewExitAction to eCloseAction
+                If (eCloseAction=cveConfirmAbandonChanges) Begin
+                    Send VerifyRequest (RefProc(NavigateCancel_Callback)) (RefFunc(Verify_Data_Loss_msg))
+                End
+                Else If (eCloseAction=cveConfirmSaveClearCancel) Begin
+                    Send VerifyRequest (RefProc(NavigateCancelYNC_Callback)) (RefFunc(Verify_SaveClearCancel_msg))
+                End
+                Else If (eCloseAction=cveSave) Begin
+                    Send NavigateCancelExec True
+                End
+                Else Begin
+                    Send NavigateCancelExec False
+                End
+            End
+            Else Begin            
+                Send NavigateCancelExec False
+            End
+        End
+        Else Begin
+            Error DFERR_PROGRAM ("View stack Navigate error: " + sReason)
+        End
+    End_Procedure
+
+    
+    {Visibility=Private}
+    // This actually performs the Navigate Close operation. This will close the current
+    // view and pop the view stack without returning any data to the invoking view.
+    // This operates like a cancel. All data loss checking and confirmation has already
+    // been performed before we get here.
+    //
+    // Called via NavigateCancel, do not call this directly.
+    Procedure NavigateCancelExec Boolean bSave
+        Handle hoView hoCallback
+        Boolean bErr
+        String sView
+
+        If bSave Begin
+           Get SaveViewExec to bErr            
+           If bErr ;
+            Procedure_Return
+           // If save was successful treat this as a close and not a cancel
+           Send NavigateCloseExec False 
+           Procedure_Return
+        End
+
+//        // Navigate to the next view down in the view stack
+//        Send PopView to (ViewStack(Self))                  // removes this view
+//        Get TopViewHandle of (ViewStack(Self)) to hoView   // handle to the new top of view
+        WebGet psNavigateBackView to sView   // handle to the new top of view
+
+        If (Trim(sView) <> "") Begin
+            Get FindWebObject of (Owner(Self)) sView to hoView
+            Send NavigateBackToHere of hoView True 0
+        End
+        Else Begin
+            Send Hide   // If the view stack is empty, just hide this view
+        End
+    End_Procedure
+
+    // Loads default data for NavigateData for NavigateForward.
+    // This must be executed from the point of view
+    // of the invoking object, which is the object that calls this.
+    { Visibility=Private }
+    Procedure LoadDefaultNavigateForwardData Handle hoInvokIngObject tWebNavigateData ByRef NavigateData
+        Integer iFile iField
+        String sValue
+        Handle hoServer hoDDO
+        Boolean bChanged bDataBindable
+        RowID ri
+        
+        // step Populate the Navigate Data struct with the best guess values from
+        // this control's server DDO.
+        // If this is called from outside a view, like a main menu, this should
+        // delegate to cWebApp and return 0.
+        Get Server of hoInvokIngObject to hoServer
+        
+        If (hoServer) Begin
+            Get pbDataBindable of hoInvokIngObject to bDataBindable
+            Get Main_File of hoServer to iFile
+            
+            If (NavigateData.eNavigateType=nfFromParent) Begin
+
+                // Assertion: Check that the constraining table is set properly
+                If (iFile<>NavigateData.iTable) Begin
+                    Error DFERR_PROGRAM "Assert: Bad NavigateData for fromParent"
+                    Procedure_Return
+                End
+
+                Get CurrentRowId of hoServer to ri
+                Move (SerializeRowID(ri)) to NavigateData.sRowID 
+            End
+            Else If (NavigateData.eNavigateType=nfFromChild or NavigateData.eNavigateType=nfFromMain) Begin
+
+                // Assertion: Check that the table is set properly for a from main
+                If (NavigateData.eNavigateType=nfFromMain and NavigateData.iTable<>iFile) Begin
+                    // With the NavigateInitialize logic we don't always have the right invoking object where this is not an error but something we want to correct
+                    Move NavigateData.iTable to iFile
+//                    Error DFERR_PROGRAM "Assert: Bad NavigateData for fromMain"
+//                    Procedure_Return
+                End
+                // Assertion: Check that the table is set properly for a from child
+                If (NavigateData.eNavigateType=nfFromChild and (NavigateData.iTable=0 or NavigateData.iTable=iFile)) Begin
+                    Error DFERR_PROGRAM "Assert: Bad NavigateData for fromChild"
+                    Procedure_Return
+                End
+
+                // use the DDO that owns the file 
+                Get Data_Set of hoServer NavigateData.iTable to hoDDO
+                If hoDDO Begin
+                    Get CurrentRowId of hoDDO to ri
+                    If (bDataBindable) Begin
+                        Get Data_File of hoInvokIngObject  to iFile
+                        If (iFile=NavigateData.iTable) Begin
+                            Get Data_Field of hoInvokIngObject to iField
+                            Move iField to NavigateData.iColumn
+                            WebGet pbChanged of hoInvokIngObject to bChanged
+                            // if changed we will do item_find (read) to seed this
+                            If bChanged Begin
+                                // note this deferred (a DDO read)
+                                Send Item_Find of hoServer GE iFile iField True False True
+                                Move (GetRowID(iFile)) to ri
+                            End
+                        End
+                    End
+                    Move (SerializeRowID(ri)) to NavigateData.sRowID    // Store the resulting RowID
+                End
+            End
+            // If undefined we provide no extra information. Trying to guess what the developer wants
+            // to do will just make things too confusing. Use OnGetNavigateForwardData to set whatever you want 
+        End
+    End_Procedure
+    
+    // loads default data for NavigateData for a NavigateClose
+    // This must be executed from the point of view
+    // of the invoking object, which is the object that calls this.
+    
+    { Visibility=Private }
+    Procedure LoadDefaultNavigateBackData Handle hoInvokingObject tWebNavigateData ByRef NavigateData
+        Integer iFile iField
+        Handle hoServer
+        Boolean bChanged bDataBindable
+        RowID ri
+        
+        // Populate the Navigate Data struct with the best guess values from
+        // this control's server DDO
+        // If this is called from outside a view, like a main menu, this should
+        // delegate to cWebApp and return 0.
+        Get Server of hoInvokingObject to hoServer
+        If (hoServer) Begin
+            Get pbDataBindable of hoInvokingObject to bDataBindable
+            Get CurrentRowId of hoServer to ri
+            Move (SerializeRowID(ri)) to NavigateData.sRowID 
+            Get Main_File of hoServer to NavigateData.iTable
+            
+            If (bDataBindable) Begin
+                Get Data_File of hoInvokingObject  to iFile
+                Get Data_Field of hoInvokingObject to iField
+                
+                Move iFile  to NavigateData.iTable
+                Move iField to NavigateData.iColumn
+            End
+        End
+    
+    End_Procedure
+    
+    
+    // Triggers an update of the state hash and pushes it to the history stack.
+    //
+    // Params:
+    //      bReplace    If true the new state will replace the existing state instead of pushing a 
+    //                  new history item.
+    Procedure UpdateStateHash Boolean bReplace
+        String sPrevHash sStateHash
+        
+        If (peApplicationStateMode(Host(Self)) <> asmOff) Begin
+            Get GenerateStateHash to sStateHash
+
+            If (bReplace) Begin
+                Get StateHash of (Host(Self)) to sPrevHash
+                If (sStateHash <> sPrevHash) Begin
+                    Send SetStateHash of (Host(Self)) sStateHash "" True
+                End
+            End
+            Else Begin
+                Send SetStateHash of (Host(Self)) sStateHash "" False
+            End
+        End
+    End_Procedure
+    
+    
+    // Triggered when a state hash is defined allowing the application to add a custom piece to the
+    // hash. This piece can be used inside OnShow / OnLoad / OnNavigateForward to restore the state.
+    //
+    // Params:
+    //      ByRef sStateHash    String that should be filled with the custom hash.
+    { MethodType=Event }
+    Procedure OnDefineCustomStateHash String ByRef sStateHash
+    End_Procedure
+    
+    
+    // Determines the custom state hash by parsing it out of the view state hash. The view state
+    // has is retrieved form the navigation data or read directly from the url.
+    //
+    // Returns:
+    //      Custom state hash.
+    Function CustomStateHash Returns String
+        Integer eViewStyle
+        String sStateHash sView sRecordId sCustomHash
+        tWebNavigateData navData
+        
+        Get peWebViewStyle to eViewStyle
+        
+        If (eViewStyle = wvsDesktop) Begin
+            Get StateHash of (Host(Self)) to sStateHash
+        End
+        Else If (eViewStyle = wvsDrillDown or eViewStyle = wvsDialog) Begin
+            Get GetNavigateData to navData
+            Get NamedValueGet navData.NamedValues "Init_StateHash" to sStateHash
+        End
+        
+        Send ParseViewStateHash of (Host(Self)) sStateHash (&sView) (&sRecordId) (&sCustomHash)
+        
+        Function_Return sCustomHash
+    End_Function
+    
+    
+    // Converts a record id from a hash for a specific table into a rowid. By default it offloads
+    // this to RecordIdToRowId of the Data Dictionary.
+    //
+    // Params:
+    //      iFile       File number.
+    //      sRecordId   String representing the record id.
+    //      rRowId      (ByRef) Filled with the rowid by this function.
+    // Returns:
+    //      True if the record id is valid.
+    Function HashRecordIdToRowId Integer iFile String sRecordId RowID ByRef rRowId Returns Boolean
+        Handle hoMainDD hoDD
+        Boolean bFound
+        
+        Move True to bFound
+        
+        Get Main_DD to hoMainDD
+        If (hoMainDD > 0) Begin
+            Get Data_Set of hoMainDD iFile to hoDD
+            
+            If (hoDD > 0) Begin
+                If (Lowercase(sRecordId) <> (Lowercase(psStateNewRecordId(Self)))) Begin
+                    Get RecordIdToRowId of hoDD sRecordId (&rRowId) to bFound
+                End
+            End
+        End
+        
+        Function_Return bFound
+    End_Function
+    
+    
+    // Converts a rowid into a state hash record id (a readable format). By default this is
+    // offloaded to the Data Dictionary RowIdToRecordId logic that works on the primary key.
+    //
+    // Params:
+    //      iFile       File number.
+    //      sRowId      Serialized rowid.
+    // Returns:
+    //      Record id.
+    Function GenerateStateHashRecordId Integer iFile RowID rRowId Returns String
+        Handle hoMainDD hoDD
+        String sRecordId
+        
+        
+        Get Main_DD to hoMainDD
+        If (hoMainDD > 0) Begin
+            Get Data_Set of hoMainDD iFile to hoDD
+            
+            If (hoDD > 0) Begin
+                If (IsNullRowID(rRowId)) Begin
+                    Move (psStateNewRecordId(Self)) to sRecordId
+                End
+                Else Begin
+                    Get RowIdToRecordId of hoDD rRowId to sRecordId
+                End
+            End
+        End
+        
+        Function_Return sRecordId
+    End_Function
+    
+    
+    // Generates the view state hash for the drill-down model. Recursively calls its invoking view
+    // (if it is in sync) to get the entire view stack in the hash.
+    //
+    // Returns:
+    //      View state hash including hashes of invoking views.
+    { Visibility=Private }
+    Function GenerateStateHash_DrillDown Returns String
+        String sInvokingHash sViewHash sHash sName sId sCustom sRowId
+        Boolean bInScope
+        Handle hoInvokingView hoDefault hoMain hoInvokingObject
+        tWebNavigateData navData
+        Integer eViewType eStateMode
+        RowID rRowId
+        
+        Get InvokingViewHandleByView of (ViewStack(Self)) Self to hoInvokingView
+        Get peStateMode to eStateMode
+        Get GetDefaultView of (Host(Self)) to hoDefault
+        
+        
+        If (eStateMode <> vsmOff) Begin
+            Get peViewType to eViewType
+            
+            
+            //  For zoom views or record views we look at the main DD
+            If (eStateMode = vsmRecord or (eViewType = vtZoom and eStateMode = vsmDefault)) Begin
+                Get Main_DD to hoMain
+                
+                If (hoMain > 0) Begin
+                    Get CurrentRowId of hoMain to rRowId
+                    
+                    Get GenerateStateHashRecordId (Main_File(hoMain)) rRowId to sId
+                End
+            End
+            Else If (eStateMode = vsmDefault) Begin
+                //  For other views we we look at the navigation data (if eStatEMode is default)
+                Get GetNavigateData to navData
+                
+                Case Begin
+                    Case (navData.eNavigateType = nfFromParent)
+                    Case (navData.eNavigateType = nfFromChild)
+                    Case (navData.eNavigateType = nfFromMain) 
+                        If (hoInvokingView = C_WebUnresolvedObject) Begin
+                            Function_Return ""
+                        End
+                        
+                        If (navData.bNewRecord) Begin
+                            Move "" to sId    
+                        End
+                        Else Begin
+                            Move navData.sRowID to sRowId
+                        End
+                        
+                        Get GenerateStateHashRecordId of hoInvokingView navData.iTable (DeserializeRowID(sRowId)) to sId
+                        
+                        Case Break
+                Case End
+            End
+        
+            Get GetInvokingObject to hoInvokingObject
+            Get StateHashKey hoInvokingObject to sName
+            
+            If (sName <> "") Begin
+                Send OnDefineCustomStateHash (&sCustom)
+            
+                Get ConcatViewStateHash of (Host(Self)) sName sId sCustom to sViewHash
+            End
+        End
+        
+        If (hoInvokingView <> C_WebUnresolvedObject) Begin
+            Get IsInCallActionScope of hoInvokingView to bInScope
+            If (bInScope) Begin
+                Get GenerateStateHash_DrillDown of hoInvokingView to sInvokingHash
+                WebSet psInvokingStateHash to sInvokingHash
+            End
+            Else Begin
+                WebGet psInvokingStateHash to sInvokingHash 
+            End
+            
+        End
+        
+        If (eStateMode <> vsmOff) Begin
+            Get AppendStateHash of (Host(Self)) sInvokingHash sViewHash to sHash
+        End
+        Else Begin
+            Move sInvokingHash to sHash
+        End
+        
+        Function_Return sHash
+    End_Function
+    
+
+    // Restores the view state for desktop style by performing a find if needed.
+    //
+    // Params:
+    //      sRecordId       Record id.
+    //      bManualEnter    True if the state was changed manually so a find should be done (the
+    //                      back button won't cause a find on desktop-style).
+    { Visibility=Private }
+    Procedure RestoreViewState_Desktop String sRecordId Boolean bManualEnter
+        String sRowId
+        Integer iPos
+        Handle hoMain
+        RowID rRowId
+        Boolean bValid
+        
+        If (pbStateRestoreRecord(Host(Self)) and pbStateRestoreRecord(Self)) Begin
+            If (bManualEnter) Begin
+                Get Main_DD to hoMain
+                
+                If (hoMain > 0) Begin
+                    Get HashRecordIdToRowId (Main_File(hoMain)) sRecordId (&rRowId) to bValid  
+                    If (bValid and not(IsSameRowID(CurrentRowId(hoMain), rRowId))) Begin
+                        Send FindByRowId of hoMain (Main_File(hoMain)) rRowId
+                    End
+                    Else If (not(bValid)) Begin
+                        
+                        If (pbStateHashInvalidError(Host(Self))) Begin
+                            Error DFERR_WEBAPP_INVALID_URL_REC
+                        End
+                        Send Clear of hoMain
+                    End
+                End
+            End
+            Else Begin
+                Send UpdateStateHash True
+            End
+        End
+    End_Procedure
+    
+    
+    // Generates the view state hash for desktop-style.
+    //
+    // Returns:
+    //      View state string.
+    { Visibility=Private }
+    Function GenerateStateHash_Desktop Returns String
+        String sState sName sCustom sRowId sRecordId
+        Handle hoMain
+        RowID rRowId
+        Integer eStateMode
+        
+        Get peStateMode to eStateMode
+        
+        If (eStateMode = vsmOff) Begin
+            Function_Return ""
+        End
+        
+        If ((eStateMode = vsmDefault or eStateMode = vsmRecord) and pbStateRestoreRecord(Host(Self)) and pbStateRestoreRecord(Self)) Begin
+            Get Main_DD to hoMain
+            If (hoMain > 0) Begin
+                Get CurrentRowId of hoMain to rRowId
+                
+                Get GenerateStateHashRecordId (Main_File(hoMain)) rRowId to sRecordId
+            End
+        End
+        
+        Get psStateViewName to sName
+        
+        Send OnDefineCustomStateHash (&sCustom)
+        
+        Get ConcatViewStateHash of (Host(Self)) sName sRecordId sCustom to sState
+        
+        Function_Return sState
+    End_Function
+    
+    
+    // Generates the current state hash for this view.
+    //
+    // Returns:
+    //      State hash for this view (for drill-down this includes invoking view hashes).
+    Function GenerateStateHash Returns String
+        Integer eViewStyle
+        String sResult
+        
+        Get peWebViewStyle to eViewStyle
+        If (eViewStyle = wvsDesktop) Begin
+            Get GenerateStateHash_Desktop to sResult    
+        End
+        Else If (eViewStyle = wvsDrillDown or eViewStyle = wvsDialog) Begin
+            Get GenerateStateHash_DrillDown to sResult
+        End
+        
+        Function_Return sResult
+    End_Function
+    
+    // Updates the page title with the current view title (if pbUpdateApplicationTitle of cWebApp 
+    // is true).
+    Procedure UpdatePageTitle
+        String sViewTitle
+        Boolean bUpdate
+        
+        WebGet pbUpdateApplicationTitle of (Host(Self)) to bUpdate
+        
+        If (bUpdate) Begin
+            If (peWebViewStyle(Self) = wvsDrillDown) Begin
+                Get GetHeaderCaption to sViewTitle
+            End
+            Else Begin
+                WebGet psCaption to sViewTitle
+            End
+            
+            Send UpdatePageTitle of (Host(Self)) Self sViewTitle
+        End    
+    End_Procedure
+    
+    
+    // Default refresh logic that updates the state hash when the record changes.
+    // 
+    // Params:
+    //      eMode   The refresh mode.
+    Procedure Refresh Integer eMode
+        String sName sHash sView 
+        Integer eViewType eViewStyle eStateMode iIndex
+        tWebNavigateData navData
+        
+        Forward Send Refresh eMode
+                
+        // if application style is wvsNone it is a basic non-framework application that does handle web-views at
+        // all - refresh should do nothing. This allows web lookups to get added to a basic webapp. While
+        // compiled, we don't want to use them.        
+        If (peApplicationStyle(Host(Self)) = wvsNone or peApplicationStateMode(Host(Self)) = asmOff) ;
+            Procedure_Return
+        
+        If (not(AppSynching(Owner(Self)))) Begin
+            If (phoLoadView(Host(Self)) <> Self and phoCurrentShowView(Host(Self)) <> Self and not(pbNavigating(Self)) and not(pbInitForShow(Self))) Begin
+                Get peViewType to eViewType
+                Get peWebViewStyle to eViewStyle
+                Get peStateMode to eStateMode
+                
+                If (eViewStyle = wvsDrillDown) Begin
+                    If (eStateMode = vsmRecord or (eViewStyle = wvsDrillDown and eViewType = vtZoom and eStateMode = vsmDefault)) Begin
+                        //  Check if still initializing (we can't check if the name is in the URL because the statehash might not be up-to-date)
+                        Get GetNavigateData to navData
+                        Get NamedValueIndex navData.NamedValues "Init_Mode" to iIndex
+                        If (iIndex < 0) Begin
+                            Send UpdateStateHash True
+                        End
+                    End
+                End
+                Else Begin
+                    If (eStateMode = vsmRecord or (eStateMode = vsmDefault and pbStateRestoreRecord(Host(Self)) and pbStateRestoreRecord(Self))) Begin
+                        Get psStateViewName to sName
+                        Get StateHash of (Host(Self)) to sHash
+                        Send ParseViewStateHash sHash (&sView)        
+                        
+                        If (lowercase(sName) = Lowercase(sView)) Begin
+                            Send UpdateStateHash True
+                        End
+                    End
+                End
+            End
+        End
+    End_Procedure
+    
+    
+    {MethodType=Event}
+    // This is an event hook sent to a view during NavigateForward. 
+    // You can augment this event to modify the view based on the 
+    // navigation context that is passed in the NavigateData parameter.
+    //
+    // You would typically use this event when a view is re-used in 
+    // different contexts within your application and you would like 
+    // to modify the appearance and features of the view accordingly.
+    Procedure OnNavigateForward tWebNavigateData NavigateData Handle hoInvokingView Handle hoInvokingObject
+    End_Procedure
+    
+    // Callback handler for the Show function used when navigating into a desktop view with the 
+    // drilldown model. It adds the view to the stack, now that we know for sure that it is in sync.
+    { Visibility=Private }
+    Procedure Show_CallBack Handle hoView
+        Send PushView to (ViewStack(Self)) hoView nfUndefined
+    End_Procedure
+
+    // This is overridden to handle desktop and drill down views.
+    // 1. if this is a dialog or if there is no stack, it just does a normal show
+    // dfirst Clear the view stack down as far as the default
+    // view, then load this view.
+    //
+    // Note: Augmenting this here means two things:
+    // 1. The application already supports the View Stack (drill-down)
+    // 2. That the Show command in the superclass does -not- try to manipulate the view stack.  
+    { NoDoc = True }
+    Procedure Show
+        Handle hoDefaultView hoTopView
+        Integer eWebViewStyle
+        Boolean bOK bUnconditional
+        Get peWebViewStyle to eWebViewStyle
+        If ((ViewStack(Self))=0 or eWebViewStyle=wvsDialog) Begin
+            Forward Send Show
+        End
+        Else If (eWebViewStyle = wvsDesktop) Begin
+            Get GetDefaultView to hoDefaultView
+            Get TopViewHandle of (ViewStack(Self)) to hoTopView
+            Move (hoTopView=0 or peWebViewStyle(hoTopView)=wvsDesktop) to bUnconditional
+            Get Reset of (ViewStack(Self)) True bUnconditional to bOK
+            If bOK Begin
+                // if a non-drilldown just show and add to view stack
+                Send SetInvokingObject 0
+                Send ShowView to (Host(Self)) Self (RefProc(Show_CallBack)) Self
+            End
+        End
+        // moving to a drill down view - same as NavigateBegin
+        Else Begin
+            Send NavigatePathBegin Self False
+        End
+    End_Procedure
+
+
+    // Send this to update psInvokingView of this view to the name of the next view down
+    // in the view stack. Also, psInvokingView of this next view down is set to "".
+    // This ensures that Only to top view in the view stack and its invoking view are synchronized.
+    // The view that receives this message should be the top view in the view stack. 
+    { Visibility=Private }
+    Procedure UpdateInvokingViewDrillDownStyle
+        Handle hoInvokingView
+        String sInvokingView
+        
+        Get InvokingViewHandle of (ViewStack(Self)) to hoInvokingView
+        
+        If (hoInvokingView = 0) Begin
+            Move "" to sInvokingView
+        End
+        Else Begin
+            Get WebObjectName of hoInvokingView to sInvokingView
+            WebSet psInvokingView of hoInvokingView to ""
+        End
+        
+        WebSet psInvokingView to sInvokingView
+    End_Procedure
+    
+    //  Empty stub of cWebModalDialog API to prevent issues when delegating this message from controls (cWebPromptList).
+    { Visibility=Private }    
+    Procedure NotifyCloseModalDialog
+    End_Procedure
+    
+    //  Empty stub of cWebModalDialog API to prevent issues when delegating this message from controls (cWebPromptList).
+    { Visibility=Private }
+    Function ReturnObject Returns Handle
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    
+    // hook called during End_Construct_Object that provides developer a way
+    // to customize any properties based on peWebViewStyle. To be used in a 
+    // sub-class or object. 
+    { MethodType=Event } 
+    Procedure OnCustomizeWebViewStyle
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PostSerializeObject
+        //  Assing key handlers
+        Send DefaultKeyHandlers
+    End_Procedure
+    
+    // Hides all active dialogs
+    { Visibility=Private }
+    Procedure HideAllDialogs
+        Handle hoView
+        String sInvokingView
+        Integer eViewStyle iCount
+        tWebViewInfo[] aViewStack
+        
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        // We start from the 2nd last element going down
+        Move (SizeOfArray(aViewStack)-1) to iCount
+        
+        While (iCount <> 0)
+            Get WebObjectByName aViewStack[iCount].sViewName False to hoView
+            Get peWebViewStyle of hoView to eViewStyle
+            //If the previous view isnt a dialog we can stop looking back
+            If (eViewStyle <> wvsDialog) Begin
+                Procedure_Return
+            End
+            
+            Send Hide of hoView
+            
+            Decrement iCount
+        Loop
+    End_Procedure
+    
+    // Shows a dialog again. It does this by showing All the previous dialogs in the viewstack up untill the first actual view.
+    { Visibility=Private }
+    Procedure RestoreDialog
+        Handle hoView hoNextView
+        String sViewName
+        Integer eViewStyle iIndex iCount iViewsInStack iAmountOfViewsToShow
+        Handle[] aViewsToShow
+        Boolean bFirstNonDialogView
+        tWebViewInfo[] aViewStack
+        tWebViewInfo searchStack
+        
+        Get psStateViewName to sViewName
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        Move sViewName to searchStack.sViewName        
+        Move (SearchArray(searchStack, aViewStack)) to iIndex
+        Move Self to aViewsToShow[-1]
+        
+        // This should never be possible
+        If (iIndex = -1) Begin
+            Procedure_Return
+        End
+        
+        //Start going down the viewstack, and start showing each view that isnt a drill down view.
+        While (not(bFirstNonDialogView))
+            Decrement iIndex
+            Get FindWebObject of (Owner(Self)) aViewStack[iIndex].sViewName to hoView
+            Get peWebViewStyle of hoView to eViewStyle
+            Move (InsertInArray(aViewsToShow, 0, hoView)) to aViewsToShow
+            
+            If (eViewStyle <> wvsDialog) Begin
+                Move True to bFirstNonDialogView
+            End
+        Loop
+        
+        //Now loop through the array of views we should be showing
+        Move (SizeOfArray(aViewsToShow)-1) to iAmountOfViewsToShow
+        For iCount from 0 to iAmountOfViewsToShow
+            Send ShowView to (Host(Self)) aViewsToShow[iCount]
+        Loop
+    End_Procedure
+    
+    // Augmented to add check if view is in sync.
+    { Visibility=Private }
+    Function GetAccessible Returns Integer
+        Integer iAccessible
+        Boolean bInSync
+        
+        Get IsViewInSync Self to bInSync
+        
+        If (bInSync) ;
+            Forward Get GetAccessible to iAccessible
+        Else ;
+            Move 0 to iAccessible
+            
+        Function_Return iAccessible
+    End_Function
+    
+    // Returns true if the view is in the view stack.
+    Function IsInViewStack Returns Boolean
+        Integer iIndex
+        
+        //  If there is no viewstack this is probably not a drill-down application
+        If ((ViewStack(Self)) = C_WebUnresolvedObject) ;
+            Function_Return False
+        
+        Get GetViewIndex of (ViewStack(Self)) Self to iIndex
+        Function_Return (iIndex <> -1)
+    End_Function
+    
+    // Returns true if the view is loaded to the client.
+    Function IsLoaded Returns Boolean
+        Boolean bLoaded
+        
+        Get IsViewLoaded of (Host(Self)) Self to bLoaded
+        
+        Function_Return bLoaded
+    End_Function
+    
+    // Used by controls to query the webviewstyle based on delegation
+    { Visibility=Private }
+    Function WebViewStyle Returns Integer
+        Function_Return (peWebViewStyle(Self))
+    End_Function
+    
+    // Used by controls to query if we are currently synching the field defaults (based on delegation)
+    { Visibility=Private }
+    Function SynchingFieldDefaults Returns Boolean
+        Function_Return (pbSynchingFieldDefaults(Self))
+    End_Function
+    
+    { Visibility=Private }
+    Function AlwaysSaveWhenNewDrillDown Returns Boolean
+        Function_Return (pbAlwaysSaveWhenNewDrillDown(Self))
+    End_Function
+    
+    { Visibility=Private }
+    Function IsDialog Returns Boolean
+        Function_Return False
+    End_Function
+    
+    { Visibility=Private }
+    Function IsWebView Returns Boolean
+        Function_Return True
+    End_Function
+    
+    Procedure End_Construct_Object
+        Integer eWebViewStyle eOverrideViewState
+        Get peWebViewStyle to eWebViewStyle
+        Get pbOverrideStateOnShow to eOverrideViewState
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // Assert that the WebApp has a view stack object
+            If ((ViewStack(Self)) = 0) Begin
+                Error DFERR_PROGRAM "View stack object missing in application using drill down style." 
+            End
+            // drilldown should not clear after save
+            Set pbClearAfterSave to False
+            Set pbFindKeys to False
+            
+            If (eOverrideViewState = C_WebDefault) Begin
+                Set pbOverrideStateOnShow to True
+            End
+        End
+        Else Begin
+            If (eOverrideViewState = C_WebDefault) Begin
+                Set pbOverrideStateOnShow to False
+            End
+        End
+        // final hook to set properties based on peWebViewStyle
+        Send OnCustomizeWebViewStyle
+        
+        WebPublishProcedure NavigateCancel_Callback
+        WebPublishProcedure NavigateClose_Callback
+        WebPublishProcedure NavigateCancelYNC_Callback
+        WebPublishProcedure NavigateCloseYNC_Callback
+        WebPublishProcedure NavigateBackToHere_Callback
+        WebPublishProcedure NavigateForward_CallBack
+        WebPublishProcedure Show_CallBack
+        
+        // Publish methods....
+        WebPublishProcedure OnSubmit
+        WebPublishProcedure OnResizeWindow
+        
+        WebPublishProcedure HandleFindKey
+        WebPublishProcedure HandleClearKey
+        WebPublishProcedure HandleDeleteKey
+        WebPublishProcedure HandleSaveKey
+        
+        // Perform the DEO glue....
+        Send Attach_Deo_To_Server                       // Attach the DEO to the server DDs
+        Broadcast Recursive Send Attach_Deo_To_Server   // Make Child DEO's attach to their server
+        Broadcast Recursive Set In_Use_State to True    // Set each DDO's In_Use_State
+        Send WriteDDOCache                              // Store a cache of the DDO objects
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+
+End_Class

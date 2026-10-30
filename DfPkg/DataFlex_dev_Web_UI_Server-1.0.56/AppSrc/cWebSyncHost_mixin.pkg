@@ -1,0 +1,87 @@
+Use VdfBase.pkg
+Use cWebCallHandler_mixin.pkg
+
+Class cWebSyncHost_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebSyncHost_mixin
+        
+    End_Procedure
+    
+    // Synchronizes the current records with the passed row id's for each DDO in the
+    // passed collection of DDO structures. Each Structure in the collection belongs
+    // to a different view. The aDDOViews parameter is populated with the object handle
+    // of each view referenced in the aDDODefs collection
+    //
+    // During this process the view is tested for AllowViewAccess. If access is denied to
+    // any view in the stack then SynchronizeDDOs is aborted and the function returns False.
+    Procedure Call_PreSync tWebCallContext ByRef cctx
+        Boolean bAllowAccess
+        Integer i icDDODef
+        String sViewName
+        Handle[] aDDOViews
+        Handle hoInvokingObject
+         
+        Set pbSynchronizing to True
+        
+        Send NotifySyncWebApp
+         
+        // Iterate the DDODefs array and synchronize the DDOs for each view....
+        Move True to bAllowAccess
+        Move (SizeOfArray(cctx.request.Header.aDDOViews)) to icDDODef
+        
+        //  First get all the object references
+        For i from 0 to (icDDODef - 1)
+            // Get the array of object handles to the views referenced in the request header's aDDODefs collection....
+            Get GetAjaxWebAppView of (phoWebControlLocator(Self)) cctx.request.Header.aDDOViews[i] to aDDOViews[i]
+        Loop
+        Set paDDOViews to aDDOViews
+        
+        //  Now we can do the rest of the work
+        For i from 0 to (icDDODef - 1)
+            If (aDDOViews[i] <> C_WebUnresolvedObject) Begin
+                // Test if access is allowed to the view...
+                Get Object_Label of aDDOViews[i] to sViewName
+                Get AllowViewAccess of (SessionManager(Self)) aDDOViews[i] sViewName to bAllowAccess
+
+                If (not(bAllowAccess)) Begin
+                    Error DFERR_WEBAPP_ACCESS_DENIED
+                    Move True to cctx.bCancel
+                    Function_Return False
+                End
+                
+                // Synchronize the view's DDOs with the DDOs in the request header
+                Get SyncDDOs of aDDOViews[i] to bAllowAccess
+                If (not(bAllowAccess)) Begin
+                    Move True to cctx.bCancel
+                    Function_Return False
+                End
+                                
+                // Process the synchronized psValue and pbChanged properties for each control that has a data binding
+                Broadcast Recursive Send UpdateDataBinding to aDDOViews[i]
+                
+                // Send the Rights & Roles event hook to the view....
+                Send NotifySyncWebApp to aDDOViews[i]
+                
+                // Get the invoking object, as this might create dynamic objects which could sync their DDO's and we don't want that to happen later
+                Get GetInvokingObject of aDDOViews[i] to hoInvokingObject
+            End
+        Loop 
+        
+        Set pbSynchronizing to False
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostSync tWebCallContext ByRef cctx
+        Integer i icDDODef
+        Handle[] aDDOViews
+        
+        // Iterate all the DDODefs in the Request and return the DDODefs for each one in the response
+        Get paDDOViews to aDDOViews
+        Move (SizeOfArray(aDDOViews)) to icDDODef
+        
+        For i from 0 to (icDDODef - 1)
+            Send StoreDDOStates of aDDOViews[i]
+        Loop
+    End_Procedure
+
+End_Class

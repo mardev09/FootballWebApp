@@ -1,0 +1,41 @@
+﻿Use cWebBaseUIObject.pkg
+Use WebUIConstants.pkg
+
+// Class: cWebCommandBar
+//
+// Special container class for cWebMenuBar and cWebToolbar objects. 
+// Each cWebCommandBar can contain one only cWebMenuBar and multiple cWebToolBar objects.
+//
+// Adds support for...
+// - Panel layout positioning.
+{ DesignerClass=cDTCWebCommandBar }
+{ DesignerJSClass=df.WebCommandBar }
+{ OverrideProperty=psTextColor Visibility=Private }
+{ HelpTopic=cWebCommandBar }
+Class cWebCommandBar is a cWebBaseUIObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Delegate Set phoCommandBar to Self
+        
+        // Published properties....        
+        // Review: Do we want to support other regions - currently prBottom partially works, the other regions do not
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        { EnumList="prCenter, prLeft, prRight, prTop, prBottom" }
+        Property Integer peRegion prTop    // location of panel in its parent container
+
+        Set psJSClass to "df.WebCommandBar"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure NotifyChangeRights
+//        Broadcast Send NotifyChangeRights
+        Send OnChangeRights
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnChangeRights
+    End_Procedure
+End_Class

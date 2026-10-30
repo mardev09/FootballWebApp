@@ -1,0 +1,400 @@
+﻿Use VdfBase.pkg
+Use cJsonObject.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use HtmlEncode.pkg
+Use cBaseErrorHandler.pkg
+Use WebUIConstants.pkg
+Use tWebCallContext.pkg
+Use GlobalFunctionsProcedures.pkg
+Use cWebBaseObject.pkg
+
+// Defines the main structure for processing WebApp Framework requests. The tWebCallContext struct
+// contains the details of the currently processes request. Most steps are defined as empty stub
+// methods implemented by the other mixins used by cWebApp and cLocalWebControlHost.
+Class cWebCallHandler_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebCallHandler_mixin
+        // Web UI Package Version
+        { DesignTime=False }
+        { WebProperty=Client }
+        Property String psVersionID "1.0.56"   
+        
+        { Category="Behavior" }
+        Property Boolean pbLogInvalidRequests True  //  Controls if bad requests cause event log entries
+    End_Procedure
+    
+    // Core webapp framework request handling. Initiates all individual steps (Core_...) that
+    // together process the call.  Note that most steps are implemented in other mixins, and 
+    // some might remain empty depending on the WebControlHost type (cWebApp vs 
+    // cLocalWebControlHost vs cWebControlViewhost).
+    //
+    // Preconditions:
+    //  cctx.hoRequest should contain a valid JSON handle to the request data.
+    //  cctx.hoResponse should contain a valid JSON handle to an empty JSON object.
+    // Postconditions:
+    //  cctx.hoResponse will be filled with the response or cctx.iFatalError will contain an 
+    //  HTTP Error code.
+    { Visibility=Private }
+    Procedure ProcessRequest tWebCallContext ByRef cctx
+        //  Clear data from previous requests
+        Send Call_ClearData (&cctx)
+        If (cctx.bCancel) Begin
+            Send Call_FinishErrorHandling (&cctx)
+            Procedure_Return
+        End
+        
+        //  Initiate error handling
+        Send Call_PreErrorHandling (&cctx)
+        If (cctx.bCancel) Begin
+            Send Call_FinishErrorHandling (&cctx)
+            Procedure_Return
+        End
+            
+        //  Validate the basic request structre
+        Send Call_ValidateData (&cctx)
+        If (cctx.bCancel) Begin
+            Send Call_FinishErrorHandling (&cctx)
+            Procedure_Return
+        End
+        
+        //  Check the passed version number
+        Send Call_VersionCheck (&cctx)
+        If (cctx.bCancel) Begin
+            Send Call_FinishErrorHandling (&cctx)
+            Procedure_Return
+        End
+        If (cctx.bSuccess) Begin
+            Increment giWebAccCacheCtx  //  Invalidate accessibility cache
+            
+            //  Parse the core request structure
+            Send Call_ParseRequestBody (&cctx)
+            If (cctx.bCancel) Begin
+                Send Call_FinishErrorHandling (&cctx)
+                Procedure_Return
+            End
+            If (cctx.bSuccess) Begin
+                
+                //  Validate / initiate session
+                Send Call_PreValidateSession (&cctx)
+                If (cctx.bCancel) Begin
+                    Send Call_CancelWithError (&cctx)
+                    Procedure_Return
+                End
+                If (cctx.bSuccess) Begin 
+                    
+                    //  Initialize attachment handling            
+                    Send Call_PreAttachments (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Initialize web property system
+                    Send Call_PreWebProps (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End   
+                    
+                    //  Notify change rights (if nessecary)
+                    Send Call_PreNotifyChangeRights (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Synchronize DDO's (if nessecary)
+                    Send Call_PreSync (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Execute the core actions (OnClick / OnChange / ...)
+                    Send Call_Action (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End                    
+                    
+                    //  Store DDO states if nessecary
+                    Send Call_PostSync (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Fire OnCallEnd event for that need to do cleanup
+                    Send Call_PostOnCallEnd (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Add changed web properties to the response or store them if nessecary
+                    Send Call_PostWebProps (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                    
+                    //  Add attachments to the response
+                    Send Call_PostAttachments (&cctx)
+                    If (cctx.bCancel) Begin
+                        Send Call_CancelWithError (&cctx)
+                        Procedure_Return
+                    End
+                End
+            End
+        End
+        
+        //  Add client actions to the response
+        Send Call_PostClientAction (&cctx)
+        
+        //  Generate the response body        
+        Send Call_BuildResponseBody (&cctx)
+        
+        //  Stop error handling
+        Send Call_FinishErrorHandling (&cctx)
+    End_Procedure
+    
+    //  Cancels the request handling but still generates a response with an error
+    { Visibility=Private }
+    Procedure Call_CancelWithError tWebCallContext ByRef cctx
+        //  Add client actions
+        Send Call_PostErrorOnlyClientActions (&cctx)
+        
+        //  Generate the response body        
+        Send Call_BuildResponseBody (&cctx)
+        
+        //  Stop error handling
+        Send Call_FinishErrorHandling (&cctx)
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure Call_ClearPropertyHost
+        //  Implemented in cWebObjectOwner_mixin    
+    End_Procedure    
+    
+    { Visibility=Private }
+    Procedure Call_ClearWebObjectOwner
+        //  Implemented in cWebObjectOwner_mixin    
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_ClearWebObjectHost
+        //  Implemented in cWebObjectHost_mixin
+    End_Procedure
+    
+    //  Clear any property data related to this all    
+    { Visibility=Private }
+    Procedure Call_ClearData tWebCallContext ByRef cctx
+        Send Call_ClearWebObjectHost
+        Send Call_ClearWebObjectOwner
+        Send Call_ClearPropertyHost
+    End_Procedure
+    
+    //  Make sure data is valid
+    { Visibility=Private }
+    Procedure Call_ValidateData tWebCallContext ByRef cctx
+        If (not(IsOfJsonType(cctx.hoJsonRequest, jsonTypeObject))) Begin
+            Move True to cctx.bCancel
+            Move "Invalid request data. Expected JSON object." to cctx.sFatalError
+            Move 400 to cctx.iFatalErrorCode
+            If (pbLogInvalidRequests(Self)) Begin
+                Error DFERR_WEBAPP_BAD_REQUEST cctx.sFatalError
+            End
+            Procedure_Return
+        End
+        If (not(HasMember(cctx.hoJsonRequest, "v") and HasMember(cctx.hoJsonRequest, "r") and HasMember(cctx.hoJsonRequest, "a"))) Begin
+            Move True to cctx.bCancel
+            If (HasMember(cctx.hoJsonRequest, "ActionRequest")) Begin
+                //  Use http status 500 because older js engines only respond to that error code
+                Move "Invalid request data. This request is likely sent by an older DataFlex JavaScript Engine (19.1 or older). This could be caused by browser caching." to cctx.sFatalError
+                Move 500 to cctx.iFatalErrorCode
+                If (pbLogInvalidRequests(Self)) Begin
+                    Error DFERR_WEBAPP_BAD_REQUEST cctx.sFatalError
+                End
+            End
+            Else Begin
+                Move "Invalid request data. Required JSON members not found." to cctx.sFatalError
+                Move 400 to cctx.iFatalErrorCode
+                If (pbLogInvalidRequests(Self)) Begin
+                    Error DFERR_WEBAPP_BAD_REQUEST cctx.sFatalError
+                End
+            End
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreErrorHandling tWebCallContext ByRef cctx
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_ParseRequestBody tWebCallContext ByRef cctx
+        Handle hoRequest
+        
+        Move False to Err
+        
+        //  Parse message
+        Get Member of cctx.hoJsonRequest "r" to hoRequest
+        //  Ideally we'd leave pbRequireAllMembers on as it provides more strict validation, lets see if we get away with that
+        // Set pbRequireAllMembers of hoRequest to False  
+        Get JsonToDataType of hoRequest to cctx.request
+        Send Destroy of hoRequest
+        
+        If (Err) Begin
+            //  Response will be HTTP 200 but with WAF error instruction
+            Move False to cctx.bSuccess
+            
+            If (pbLogInvalidRequests(Self)) Begin
+                Error DFERR_WEBAPP_BAD_REQUEST "Invalid request data. Error while parsing request body."
+            End
+        End
+        
+    End_Procedure
+
+    //  Perform version checking logic
+    { Visibility=Private }
+    Procedure Call_VersionCheck tWebCallContext ByRef cctx
+        String sClientVersion sServerVersion sReason
+        String[] aServer aClient
+        Integer iVersionBlock iClientV iServerV
+        Boolean bRes bTrapped
+        
+        Move True to bRes
+        Get psVersionID to sServerVersion
+        Get MemberValue of cctx.hoJsonRequest "v" to sClientVersion
+        
+        Move True to cctx.bSuccess
+        
+        If (sServerVersion <> sClientVersion) Begin
+            //  Parse into components
+            Get StrSplitToArray sClientVersion "." to aClient
+            If (SizeOfArray(aClient) <> 4) Begin
+                Move "Version check: Invalid client version string." to sReason
+                Move False to bRes
+            End
+            
+            If (bRes) Begin
+                Get StrSplitToArray sServerVersion "." to aServer
+                If (SizeOfArray(aServer) <> 4) Begin
+                    Move "Version check: Invalid server version string." to sReason
+                    Move False to bRes
+                End
+            End
+            
+            If (bRes) Begin
+                //  Check individual pieces
+                Get IsTrapped of ghoWebErrorHandler 56 to bTrapped
+                If (bTrapped) ;
+                    Send IgnoreError of ghoWebErrorHandler 56 
+                
+                Move 0 to iVersionBlock
+                While (bRes and (iVersionBlock <= 3))
+                    Move (Convert(aClient[iVersionBlock], Integer)) to iClientV
+                    Move (Convert(aServer[iVersionBlock], Integer)) to iServerV
+                    If (iServerV > iClientV) Begin
+                        Move "The version check failed because the server is newer than the client. This could be a caching issue, try using CTRL-F5 to refresh the page." to sReason
+                        Move False to bRes
+                    End
+                    Else If (iServerV < iClientV) Begin
+                        Move "The version check failed because the client is newer than the server." to sReason
+                        Move False to bRes
+                    End
+                    Increment iVersionBlock
+                Loop
+                
+                If (bTrapped) ;
+                    Send TrapError of ghoWebErrorHandler 56
+            End
+            
+            //  Extend error message
+            If (not(bRes)) Begin
+                Move (sReason + C_NewLine + C_NewLine + SFormat("Client version: %1 %3Server version: %2", HtmlEncode(sClientVersion), sServerVersion, C_NewLine)) to sReason
+                Move True to cctx.bCancel
+                Move False to cctx.bSuccess
+                Move sReason to cctx.sFatalError
+                Move 500 to cctx.iFatalErrorCode
+                If (pbLogInvalidRequests(Self)) Begin
+                    Error DFERR_WEBAPP_BAD_REQUEST sReason //  Put the error in the log
+                End
+            End
+        End
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure Call_PreAttachments tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreValidateSession tWebCallContext ByRef cctx
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreWebProps tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreNotifyChangeRights tWebCallContext ByRef cctx
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PreSync tWebCallContext ByRef cctx
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_Action tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostSync tWebCallContext ByRef cctx
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostOnCallEnd tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure Call_PostWebProps tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostAttachments tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostErrorOnlyClientActions tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostClientAction tWebCallContext ByRef cctx
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_BuildResponseBody tWebCallContext ByRef cctx
+        Handle hoResponseBody
+        
+        Get Create (RefClass(cJsonObject)) to hoResponseBody
+        Send DataTypeToJson of hoResponseBody cctx.response 
+        
+        Send SetMember of cctx.hoJsonResponse "r" hoResponseBody
+        
+        Send Destroy of hoResponseBody
+    End_Procedure
+    
+    //  This can be called in error state!
+    { Visibility=Private }
+    Procedure Call_FinishErrorHandling tWebCallContext ByRef cctx
+    End_Procedure
+    
+End_Class

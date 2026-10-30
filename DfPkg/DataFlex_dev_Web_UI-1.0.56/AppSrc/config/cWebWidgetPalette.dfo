@@ -1,0 +1,8 @@
+Object
+    Set piColumnSpan to 2
+    Set piColumnIndex to 10
+    
+    // ToDo: set the cWebWidgetContainer object here
+    // Set phoWidgetContainer to oWidgetContainer        
+            
+End_Object

@@ -1,0 +1,23 @@
+﻿Use cWebMenuItem.pkg
+
+// Menu items for WebApp Request_Save
+{ HelpTopic=cWebMenuSave }
+Class cWebMenuSave is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set psCaption to C_$CaptionSave
+        Set psToolTip to C_$ToolTipSave
+        Set psCSSClass to "WebSaveMenuItem"
+    End_Procedure
+
+    Procedure OnClick
+        Handle hoFocus
+        Get DEOFocusObject to hoFocus
+        If hoFocus Begin
+            Send Request_Save of hoFocus
+        End
+    End_Procedure
+         
+End_Class 
+

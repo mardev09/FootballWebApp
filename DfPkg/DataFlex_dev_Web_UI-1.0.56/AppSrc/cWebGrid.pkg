@@ -1,0 +1,527 @@
+﻿Use cWebList.pkg
+
+// Container class for client side grid.
+{ OverrideProperty=pbAutoSearch Visibility=Private }
+{ OverrideProperty=pbShowSelected InitialValue=False }
+{ HelpTopic=cWebGrid }
+{ DesignerJSClass=df.WebGrid }
+{ Navigable="" }
+Class cWebGrid is a cWebList
+
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        { Category="Behavior" }
+        Property Boolean pbAutoSave True    // Determines if a changed row should be saved automatically when changing rows
+        { Category="Behavior" }
+        Property Boolean pbAutoRegenerate False  // Determines If adding a new row can trigger a refresh of the grid's ordering. (note: the Windows cCJGrid control defaults this property to True)
+        
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAllowAppendRow True   // Allows inserting rows at the End. 
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAllowInsertRow True   // Allows inserting rows in Between. 
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Integer piCurrentColumn -1       // Indicates the currently selected column.
+        
+        Set pbGridBehavior to True               // Indicates that this class supports full grid behaviors (saving etc).
+        Set psJSClass to "df.WebGrid"
+        
+        // by default no save message for grids. Set to RefProc(SaveConfirmation) to get the same message as cWebForm, etc.
+        Set Verify_Save_msg to 0
+        Set pbAllowDeleteRow to True
+        
+        // disable column sorting with grids
+        Set pbColumnSortable to False
+        Set pbAutoSearch to False
+        Set pbShowSelected to False
+        // with grids (editable) we want to use DDO enabling of DEOs
+        Set pbColumnsEnabledStatic to False
+    End_Procedure
+    
+    Procedure RequestClearExec
+        String sCurrentRowID
+        RowID riCurrentRowID
+        Handle hoDD
+        Integer iMainFile
+        Boolean bOldGridAction bContinue bDataAware bSuccess
+
+        WebGet psCurrentRowId to sCurrentRowID
+        Get OnClearRow sCurrentRowID to bContinue
+        
+        Get pbDataAware to bDataAware
+        If (bDataAware) Begin
+            // db-aware....
+            If (bContinue) Begin
+                //  Set to prevent the entire grid from refreshing
+                Get Server to hoDD        
+                Move (DeserializeRowID(sCurrentRowID)) to riCurrentRowID
+                Get pbNotifyingExternalDD to bOldGridAction
+                Set pbNotifyingExternalDD to True
+                
+                //  Refind the current record
+                If (IsNullRowID(riCurrentRowID)) Begin
+                    Send Clear of hoDD
+                End
+                Else Begin
+                    Get Main_File of hoDD to iMainFile
+                    Get FindByRowIdEx of hoDD iMainFile riCurrentRowID to bSuccess
+                    If not bSuccess Begin
+                        Set pbNotifyingExternalDD to False
+                        Send ReportCacheError
+                    End
+                End
+            
+                Set pbNotifyingExternalDD to bOldGridAction
+            End
+        End
+        Else Begin
+            // non-db aware...
+            If (bContinue) Begin
+                Send ClearRow sCurrentRowID
+            End
+        End
+    End_Procedure
+
+    
+    // Clear Logic which basically means refinding the current record.
+    // returns True if the clear was successful, False if we are not sure because there is a callback or clear actually failed
+    Function ClearSelectedRow Returns Integer
+        Handle hoDD hmVerify
+        String sCurrentRowID
+        Boolean bDataAware bChanged
+        Integer iReturn
+
+        // Manual data handling?
+        Get Verify_Data_Loss_Msg to hmVerify
+        WebGet psCurrentRowId to sCurrentRowID
+        Get pbDataAware to bDataAware
+        
+        Get ShouldSaveRow to bChanged
+        
+        If (bChanged) Begin
+            If (bDataAware) Begin
+                // db-aware..
+                Get Server to hoDD
+                If (hoDD <> 0) Begin
+                    If hmVerify Begin
+                        Send VerifyRequest (RefProc(RequestClearCallBack)) (RefFunc(Verify_Data_Loss_Msg))
+                        Function_Return sroPending // this means there is a verification so we don't know yet
+                    End
+                    Else Begin
+                        Send RequestClearExec
+                        If (Should_Save_Row(hoDD)) Begin
+                            Function_Return sroFail // this means it actually failed
+                        End
+                    End
+                End
+                Function_Return sroSucceed
+            End
+            Else Begin
+                // non db-aware..
+                If hmVerify Begin
+                    Send VerifyRequest (RefProc(RequestClearCallBack)) (RefFunc(Verify_Data_Loss_Msg))
+                    Function_Return sroPending // this means there is a verification so we don't know yet
+                End
+                Else Begin
+                    Send RequestClearExec
+                    // Currently we always consider that a clear succeeds. This is probably as safe
+                    // assumption but might be revisited in the future.
+                    Function_Return sroSucceed
+                End
+            End
+        End
+      
+        Function_Return sroSucceed
+    End_Function
+    
+    // Client action to remove the passed row from the cache. 
+    { Visibility=Public }
+    Procedure ClearRow String sRowID
+        String[] aParams
+        
+        Move sRowID to aParams[0]
+        Send ClientAction "clearRow" aParams    
+    End_Procedure
+
+
+    
+    Procedure RequestSaveExec
+        Handle hoServer 
+        String sCurrentRowID sOrigRowID
+        Boolean bDataAware bContinue bError bUnOrdered bAutoRegenerate
+
+        WebGet psCurrentRowId to sOrigRowID
+        Move sOrigRowID to sCurrentRowID
+        
+        Get OnSaveRow (&sCurrentRowID) to bContinue
+        WebSet psCurrentRowId to sCurrentRowID   
+        
+        // db-aware....
+        Move (not(bContinue)) to bError
+        Get pbDataAware to bDataAware
+        
+        If (bDataAware and bContinue) Begin
+            // Validate the row... 
+            Get Server to hoServer
+            Get ValidateRow to bError
+            If (bError) Begin
+                Procedure_Return
+            End    
+    
+            // Perform the save....
+            Move False to  Err
+            Send Request_Save to hoServer
+            Move Err to bError
+            If not bError Begin
+                // if a successful save see if we need to refresh the list. We do i
+                // pbAutoRegenerate is True and a save has rendered it possible unordered.
+                WebGet pbUnOrdered to bUnOrdered
+                Get pbAutoRegenerate to bAutoRegenerate
+                If (bUnOrdered and bAutoRegenerate) Begin
+                    Send RefreshListFromDD
+                End
+            End
+        End
+        
+        // Force the client to refresh the saved row (in case any values were changed).
+        If (not(bError)) Begin
+            Send UpdateRow sOrigRowID 
+        End
+    End_Procedure
+        
+    // Returns sroSucceed if the save was successful. Called by Request_Save.
+    Function SaveSelectedRow Returns Integer
+        Handle hoDD hmVerify
+        RowID riCurrentRowID riTestRowID
+        String sCurrentRowID
+        Boolean bDataAware bChanged bError
+        Integer iReturn
+
+        // Manual data handling?
+        WebGet psCurrentRowId to sCurrentRowID
+        Get pbDataAware to bDataAware
+        
+        // db-aware data handling....
+        If (bDataAware) Begin
+            Get Server to hoDD
+            
+            If (hoDD <> 0) Begin
+                Move (DeserializeRowID(sCurrentRowID)) to riCurrentRowID
+                Get CurrentRowId of hoDD to riTestRowID
+                
+                If (not(IsSameRowID(riCurrentRowID, riTestRowID))) Begin
+                    Error DFERR_PROGRAM "Assert: Server DDO's current record does not match psCurrentRowId"
+                    Function_Return sroFail
+                End
+                
+                // Verify that we are allowed to save....
+                If (Read_Only_State(hoDD)) Begin
+                    Function_Return sroFail         // the view should not allow this to happen
+                End
+            End
+        End
+        
+        // If there is nothing to save, do nothing....
+        Get ShouldSaveRow to bChanged
+        If (not(bChanged)) Begin
+            Function_Return sroSucceed
+        End
+        
+        // Validate the row... 
+        Get ValidateRow to bError
+        If (bError) Begin
+            Function_Return sroFail
+        End   
+        
+        // perform verify callback or save now...
+        Get Verify_Save_msg to hmVerify
+        If (hmVerify) Begin
+            WebSet pbSaveCallbackActive to True
+            Send VerifyRequest (RefProc(RequestSaveCallBack)) (RefFunc(Verify_Save_msg))
+            Function_Return sroPending
+        End
+        Else Begin
+            Send RequestSaveExec
+            If (bDataAware and Should_Save_Row(hoDD)) Begin
+                Function_Return sroFail
+            End
+        End
+        
+        Function_Return sroSucceed
+    End_Function
+    
+    // Determines if the current row has changed values in which case it should be saved. For 
+    // data-aware grids the DDO is asked to determine this. For non-data-aware grids the individual
+    // changed states of columns are queried.
+    Function ShouldSaveRow Returns Boolean
+        Handle[] aColumns
+        Integer iCol
+        Boolean bChanged
+      
+        // Test for Data-Aware grid...
+        If (pbDataAware(Self)) Begin
+            Function_Return (Should_Save_Row(Server(Self)))            
+        End
+        Else Begin
+            //  Determine if a value was changed
+            Get phoColumnObjects to aColumns
+            For iCol from 0 to (SizeOfArray(aColumns) - 1)
+                WebGet pbChanged of aColumns[iCol] to bChanged
+                
+                If (bChanged) Begin
+                    Function_Return True
+                End
+            Loop
+            
+            Function_Return False
+        End
+    End_Function
+
+    // Returns true if you can move off of the selected row.
+    // This gets called during a row change and returns true if the row change is allowed. You are allowed
+    // to make changes to the row such as saving or clearing before returning if the row change is allowed.
+    //
+    // The following actions are performed here:
+    // [1] - ShouldSaveRow is tested. This will test if the current row needs saving.
+    // [2] - If the row needs saving it is saved if validation passes. If not then we stop here.
+    // [3] - If we are moving to a new row then the row is cleared, loaded with default values,
+    //       and the OnNewRow event gets fired.
+    Function AllowChangeSelectedRow String sGotoRow String sToRowID Returns Boolean
+        Handle hoDD hoColumn
+        Handle hmVerify
+       
+        RowID riCurrentRowID riTestRowID
+        String sCurrentRowID
+        Boolean bAutoSave bDataAware bChanged bResult bOldGridAction
+        Integer eSelectedRowOperation iCol iTo iRowIndex
+
+        Get Server to hoDD
+        Get pbAutoSave to bAutoSave
+        Get pbDataAware to bDataAware
+        
+        //  Assertions
+        If (bDataAware) Begin
+            If (hoDD <> 0) Begin
+                WebGet psCurrentRowId to sCurrentRowID
+                Move (DeserializeRowID(sCurrentRowID)) to riCurrentRowID
+                Get CurrentRowId of hoDD to riTestRowID
+                
+                If (not(IsSameRowID(riCurrentRowID, riTestRowID))) Begin
+                    Error DFERR_PROGRAM "Assert: Server DDO's current record does not match psCurrentRowId"
+                    Function_Return False
+                End
+            End
+            Else Begin
+                Function_Return False
+            End
+        End
+        
+        // Save if needed, test also if the grid is currently cleared (no rows to save)....
+        WebGet piCurrentRowIndex to iRowIndex
+        
+        If (iRowIndex = -1) Begin
+            Move False to bChanged
+        End
+        Else Begin
+            Get ShouldSaveRow to bChanged
+        End
+
+        If (bChanged) Begin
+            // Verify that we are allowed to save....
+            If (bDataAware and Read_Only_State(hoDD)) Begin
+                Function_Return False         // the view should not allow this to happen
+            End
+            
+            // Auto-save gets precedence over data-loss/clear
+            If bAutoSave Begin
+                Get SaveSelectedRow to eSelectedRowOperation
+            End
+            Else Begin
+                Get ClearSelectedRow to eSelectedRowOperation
+            End
+            
+            // we only allow a row change if we are sure we succeeded in the save or clear. If a confirmation verification
+            // is required the above will return sroPending, which we will treat as a no.
+            If (not(eSelectedRowOperation=sroSucceed)) Begin
+                Function_Return False
+            End
+        End
+        
+        //  Handle changing to a new row
+        If (sGotoRow = "new") Begin
+            If (bDataAware) Begin
+                // data-aware: Clear the DD
+                Get Server to hoDD
+                // find the row that we are going to...
+                Get pbNotifyingExternalDD to bOldGridAction
+                Set pbNotifyingExternalDD to True
+                
+                Send Clear of hoDD
+                
+                Set pbNotifyingExternalDD to bOldGridAction
+            End
+            Else Begin
+                // non-data-aware: Use the data received from the client
+                Send FillFromActionData
+            End
+            
+            //  Trigger event
+            Send OnNewRow
+        End
+        
+        Function_Return True
+    End_Function
+    
+    
+    // Validates the selected row. 
+    // Returns True if Error, False if Ok
+    Function ValidateRow Returns Boolean
+        Handle hoDD
+        Handle[] hoColumnObjects
+        Boolean bError bRequestValidateAll bDataAware bOk
+        Integer icColumn iCol
+        
+        Get pbRequesteValidateAll to bRequestValidateAll
+        
+        Get pbDataAware to bDataAware
+        
+        // if not data aware perform validation here
+        If (not(bDataAware)) Begin
+    
+            // Validate each column....
+            Get phoColumnObjects to hoColumnObjects
+            Move (SizeOfArray(hoColumnObjects)) to icColumn
+            
+            For iCol from 0 to (icColumn-1)
+                Get OnValidate of hoColumnObjects[iCol] to bOk
+                If not bOk Begin
+                    If not bRequestValidateAll Begin
+                        Function_Return True
+                    End
+                    Else Begin
+                        Move True to bError
+                    End
+                End
+            Loop
+            Function_Return bError
+        End
+        
+        // if data aware, perform validation through the DDs
+        Get Server to hoDD
+        If (hoDD <> 0) Begin
+            Get pbRequesteValidateAll to bRequestValidateAll
+            If bRequestValidateAll Begin
+                Get Request_Validate_All of hoDD to bError
+            End
+            Else Begin
+                Get Request_Validate of hoDD to bError
+            End
+            
+        End
+        Function_Return bError
+    End_Function
+
+
+    // Client action that updates a grid row with the passed data.
+    Procedure UpdateRow String sRowID
+        tWebRow[] aData
+        String[] aParams
+
+        Get LoadGridRow to aData[0]
+        
+        Move sRowID to aParams[0]
+        // For non data aware lists we'll now merge tWebRow so that dynamic buttons and classnames assigned in OnManualLoadData survive.
+        // Note that we do not WebGet pbDataAware on purpose, we never do that for safety.
+        Move (not(pbDataAware(Self))) to aParams[1]     
+        Send ClientAction "updateRow" aParams aData   
+    End_Procedure
+    
+    
+    // Event that is triggered when the user performs a clear on a grid or tries to change rows 
+    // with pbAutoSave set to false. Implement this event to perform a custom clear action. To do 
+    // this the psValue and pbChanged properties of the column objects can be set. Return false to 
+    // stop the default clear action.
+    { MethodType=Event }
+    Function OnClearRow String sCurrentRowID Returns Boolean
+        Function_Return True
+    End_Function        
+
+    // This event is triggered by Request_Save. Augment this event to manually save the current 
+    // grid. The rowid of the current row is passed and psValue and pbChanged can be queried on the
+    // column objects to fetch current values. Manipulating those properties will update the 
+    // displayed record on the client. Returning false will cancel the default save action when 
+    // pbDataAware is true. When saving a new row the sCurrentRowID can be changed to update the 
+    // rowid of the newly created record.
+    //
+    // Note that this event is not triggered on a row change when pbOfflineEditing is set to True. 
+    { MethodType=Event }
+    Function OnSaveRow String ByRef sCurrentRowID Returns Boolean
+       Function_Return True 
+    End_Function
+    
+    
+    // This event method is called when user navigates to a new row using shift-f10 or goes to the 
+    // last row. It can be implemented to manipulate the initial values of the new row. This can be
+    // done by updating the psValue properties of the grid columns.
+    // 
+    // Note that this event is not called when pbofflineEditing is set to True.
+    { MethodType=Event }
+    Procedure OnNewRow
+    End_Procedure
+    
+    Procedure MoveToNextColumn
+        Send ClientAction "nextCol"
+    End_Procedure
+    
+    Procedure MoveToPreviousColumn
+        Send ClientAction "prevCol"
+    End_Procedure
+    
+    Procedure MoveToColumnObject Handle hoColumn
+        Handle[] aColumnObjects
+        Integer iColumnIndex
+        String[] aParams
+        
+        Get phoColumnObjects to aColumnObjects
+        
+        Move (SearchArray(hoColumn, aColumnObjects)) to iColumnIndex
+        
+        If (iColumnIndex >= 0) Begin
+            Move iColumnIndex to aParams[0]    
+        
+            Send ClientAction "selectCol" aParams
+        End
+        Else Begin
+            Error DFERR_PROGRAM "Invalid column handle!"
+        End
+    End_Procedure
+    
+    Procedure InsertNewRow
+        Send ClientAction "insertNewRow"
+    End_Procedure
+    
+    Procedure AppendNewRow
+        Send ClientAction "appendNewRow"
+    End_Procedure
+    
+    // When using a grid in the drill-down model we assume that the navigateback was most likely 
+    // from a parent lookup and doesn't need a refresh.
+    { Visibility=Private }
+    Procedure RefreshListForBackNavigation Boolean bCancel Handle hoDDTarget RowID riTarget
+    End_Procedure
+    
+    // Grids trigger ChangeCurrentRow on empty data sets during intialization to select the new row. This happens regardless of wether the grid is visible / enabled, so we need to allow this server action explicitly.
+    Procedure AllowServerAction Boolean ByRef bAllow String sMethodName Handle hoMessage Boolean bIsFunction String[] ByRef aParams
+        If (hoMessage = RefFunc(ChangeCurrentRow)) Begin
+            If (aParams[0] = "new") ;
+                Procedure_Return  
+        End
+        
+        Forward Send AllowServerAction (&bAllow) sMethodName hoMessage bIsFunction (&aParams)
+    End_Procedure
+    
+End_Class

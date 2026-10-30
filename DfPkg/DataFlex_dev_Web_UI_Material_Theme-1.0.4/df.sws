@@ -1,0 +1,25 @@
+{
+    "dependencies": [
+        "DataFlex-dev/Web UI#~1.0.42"
+    ],
+    "description": "Material theme for Web UI.",
+    "df": 26.0,
+    "package": {
+        "df-max": 26.0,
+        "df-min": 26.0,
+        "htmlIncludes": [
+            "CssThemes/Df_Material/theme.css"
+        ],
+        "icon": "Web UI Theme.svg",
+        "install": [
+            "${AppHtml}/CssThemes/Df_Material"
+        ],
+        "license": "DocumentRef-DataFlex",
+        "licenseFile": "LICENSE",
+        "version": "1.0.4"
+    },
+    "paths": {
+        "fileList": "DummyFilelist.cfg"
+    },
+    "workspaceName": "Web UI Material Theme"
+}

@@ -1,0 +1,53 @@
+﻿Use cWebColumn.pkg
+
+// Used to represent each column of a cWebGrid or cWebLookup control.
+{ OverrideProperty=pbVisible Visibility=Private }
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProperty=psLabel Visibility=Private }
+{ OverrideProperty=psLabelColor Visibility=Private }
+{ OverrideProperty=peLabelAlign Visibility=Private }
+{ OverrideProperty=peLabelPosition Visibility=Private }
+{ OverrideProperty=piLabelOffset Visibility=Private }
+{ OverrideProperty=pbShowLabel Visibility=Private }
+{ OverrideProperty=piColumnIndex Visibility=Private }
+{ OverrideProperty=piColumnSpan Visibility=Private }
+{ OverrideProperty=piRowIndex Visibility=Private }
+{ OverrideProperty=piRowSpan Visibility=Private }
+{ HelpTopic=cWebColumnLink }
+{ DesignerJSClass=df.WebColumnLink }
+{ Navigable=OnClick }
+Class cWebColumnLink is a cWebBaseDEO
+    Import_Class_Protocol cWebColumn_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Send Define_cWebColumn_mixin
+        
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnClick True
+        { WebProperty=Client } 
+        { Category="Client Events" } 
+        Property String psClientOnClick ""
+        
+        Set psJSClass to "df.WebColumnLink"
+        
+        // We assume that links should always be enabled, even when based on a
+        // foreign field or a read only view.
+        // This must be Set after the cWebColumn_mixin is initialized.
+        Set pbEnabledStatic to True
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnClick String sRowID String sCellValue
+        
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnClick
+    End_Procedure
+
+End_Class

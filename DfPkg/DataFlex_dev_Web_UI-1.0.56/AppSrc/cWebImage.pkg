@@ -1,0 +1,114 @@
+﻿Use cWebBaseControl.pkg
+Use WebUIConstants.pkg
+Use cWebResourceManager_mixin.pkg
+
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=psTextColor Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ HelpTopic=cWebImage }
+{ DesignerJSClass=df.WebImage }
+{ Navigable=OnClick }
+Class cWebImage is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property String psUrl ""
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbScroll False
+        { WebProperty=Client }
+        { Category="Appearance" }
+        {EnumList="wiActual, wiStretch, wiStretchHoriz, wiCenter, wiFit" }
+        Property Integer pePosition wiActual // Actual, Stretch, StretchHoriz, Center
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbShowBorder False
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbFitZoom True
+        
+        { Category="Behavior" }
+        Property String psLocalFile ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnClick ""
+                
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebImage"
+        Set piHeight to 200
+    End_Procedure
+
+    
+    Procedure OnLoad
+        String sLocalFile
+        
+        Forward Send OnLoad
+        
+        Get psLocalFile to sLocalFile
+        If (sLocalFile) Begin
+            Send UpdateLocalImage sLocalFile
+        End
+    End_Procedure
+    
+    Procedure UpdateLocalImage String sPath
+        String sUrl
+        
+        If (Trim(sPath) <> "") Begin
+            Get DownloadURL of (ResourceManager(Self)) sPath to sUrl    
+        End
+        
+        WebSet psURL to sUrl
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Function MimeType String sFile Returns String
+        String sExt
+        
+        Move (Lowercase(Trim(Right(sFile, Length(sFile) - RightPos(".", sFile))))) to sExt
+        
+        Case Begin
+            Case (sExt = "jpg")
+            Case (sExt = "jpeg")
+                Function_Return "image/jpeg"
+            Case (sExt = "gif")
+                Function_Return "image/gif"
+            Case (sExt = "png")
+                Function_Return "image/png"
+            Case (sExt = "svg")
+                Function_Return "image/svg"
+            Case (sExt = "tiff")
+                Function_Return "image/tiff"
+            Case (sExt = "bmp")
+                Function_Return "image/bmp"
+            Case (sExt = "ico")
+                Function_Return "image/x-icon"
+            Case Else 
+                Function_Return ("image/" + sExt)
+        Case End
+        
+    End_Function
+    
+    
+    { MethodType=Event }
+    Procedure OnClick
+        // On click event stub.
+    End_Procedure
+    
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnClick
+    End_Procedure
+End_Class

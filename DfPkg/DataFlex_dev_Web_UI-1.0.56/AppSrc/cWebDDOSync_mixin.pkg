@@ -1,0 +1,581 @@
+﻿Use VdfBase.pkg
+Use tNameHandlePair.pkg
+Use tWebDDODef.pkg
+
+// Refind Error by row Id operation error type.
+// Used in OnRefindRecordError
+Enum_List
+    Define reoUndefined
+    Define reoSyncDDOs
+    Define reoNavigateForward
+    Define reoNavigateBack
+    Define reoRefreshRecord
+End_Enum_List
+
+// Refind By row Id error type. Can be used with
+// forward and back navigation
+Enum_List
+    Define retUndefined
+    Define retCannotRereadMain
+    Define retCannotRereadConstrainingParent
+End_Enum_List
+
+Class cWebDDOSync_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebDDOSync_mixin
+        { DesignTime=False }
+        Property Handle Main_DD 0
+
+        /*
+        This array is used to cache the DDO structure of the view. It is initialized during 
+        End_Construct_Object and is sorted alphabetically. The name is generated using the 
+        DDIdentity which makes it unique within the view. Used for fast searches of DDO object name 
+        to DDO handle.
+        */
+        { Visibility=Private }
+        Property tNameHandlePair[] paDDOIndex
+        
+        // This array is used for traversing the DDO structure in order of Main DD, then the child DDO structure followed by the parent DDO structure.
+        { Visibility=Private }
+        Property Handle[] paDDOHandlesTree  // Handle to each DDO in the DDO Structure - sorted by: Main DD, Child DD tree, Parent DD tree
+        
+        // This array stores the Main_DD of one or more alternative DDO structures. This is used to
+        // append multiple DDO structures to the set of DDO structures that are synchronized at the client.
+        // Note: you do not need to add the View's Main_DD to this array. Its DDO structure is automatically
+        // added to the synchronized list.
+        { Visibility=Private }
+        Property Handle[] paAdditionalDDOStructures
+        
+        { WebProperty=Server }
+        { Visibility=Private }
+        Property tWebDDODef ptDDOStates
+    End_Procedure
+    
+    Procedure AddDDOStructure Handle hoMain_DD
+        // If your view has two or more independant DDO Structures then send this message to add
+        // each additional DDO structure to the set of DDO structures that are synchronized with
+        // the client. Do not Send this to add the view's main DDO structure, that will be added
+        // automatically. Pass the Main_DD of the DDO structure as the parameter.
+        Handle[] aAdditionalDDOStructures
+        
+        Get paAdditionalDDOStructures to aAdditionalDDOStructures
+        Move hoMain_DD to aAdditionalDDOStructures[SizeOfArray(aAdditionalDDOStructures)]
+        Set paAdditionalDDOStructures to aAdditionalDDOStructures
+    End_Procedure
+    
+    
+    { Visibility=Private }
+     Procedure FindDataDictionaries Handle hoCurrentDD Handle[] ByRef aDDOHandles
+        // Recursive function to iterate the structure of data dictionary objects in this view
+        // returning an array of DD object handles in the ByRef parameter.
+        //
+        // To start the search call this method with hoCurrentDD set to the view's Main DD
+        // and hDataDictionaries passed as an empty array.
+        //
+        // Returns an array of DDO object handles: first the Main DD, followed by the child DD tree, then the parent DD tree
+        Handle hoNextDD
+        Integer iCounter iCount
+        
+        // Append the passed data dictionary to the array.....
+        Move hoCurrentDD to aDDOHandles[(SizeOfArray(aDDOHandles))]
+    
+        // Add the client ddo's....
+        Get Data_Set_Client_Count of hoCurrentDD to iCount
+        
+        For iCounter from 0 to (iCount - 1)
+            Get Data_Set_Client of hoCurrentDD iCounter to hoNextDD
+            
+            If (SearchArray(hoNextDD, aDDOHandles) < 0) Begin
+               Send FindDataDictionaries hoNextDD (&aDDOHandles)
+            End
+        Loop
+        
+        // Add the server ddo's....
+        Get Data_Set_Server_Count of hoCurrentDD to iCount
+        
+        For iCounter from 0 to (iCount-1)
+            Get Data_Set_Server of hoCurrentDD iCounter to hoNextDD
+    
+            If (SearchArray(hoNextDD, aDDOHandles) < 0) Begin
+               Send FindDataDictionaries hoNextDD (&aDDOHandles)
+            End
+        Loop
+    End_Procedure
+    
+    /*
+    Returns unique name for DDO object within this view, which is basically the long object name 
+    not including the view name. This allows duplicate DD object names (as long as they are not 
+    siblings!). This name is used in the synchronization logic.
+    */
+    { Visibility=Private }
+    Function DDIdentity Handle hoDD Returns String
+        Function_Return (Right(Name(hoDD), Length(Name(hoDD)) - Length(Name(Self)) - 1))
+    End_Function
+    
+    /*
+    Finds a DD object by its DD Identity string and returns the handle. Returns 
+    C_WebUnresolvedObject if not found.
+    */
+    { Visibility=Private }
+    Function FindDDOByIdentifier String sDDOId Returns Handle
+        tNameHandlePair[] aDDOIndex
+        tNameHandlePair searchItem
+        Integer iIndex
+        
+        Get paDDOIndex to aDDOIndex
+        Move sDDOId to searchItem.sName
+        Move (BinarySearchArray(searchItem, aDDOIndex, False)) to iIndex
+        
+        If (iIndex <> -1) ;
+            Function_Return aDDOIndex[iIndex].hValue
+            
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // Returns the collection of DDO object name and RowID pairs for the view's DDO structure.
+    // The collection is specially ordered so that the first DDO is the view's Main DD, followed
+    // by the child DDO sub-tree, then the parent DDO sub-tree. This is the order that you want
+    // to traverse the DDO tree when synchronizing each server DDO to the client RowIDs.
+    { Visibility=Private }
+    Procedure StoreDDOStates
+        Integer i icDDO iFile
+        RowID riRowID
+        String sCheck
+        Boolean bDynamicConstraints
+        Integer iSrvr iSrvrs
+        Handle hoServerDD
+        Integer iTable
+        Boolean bSwitched
+        Handle[] aDDOHandles
+        tWebDDODef tDDODef
+        
+        Get IsDynamicConstraints to bDynamicConstraints
+        Get WebObjectName to tDDODef.sView
+        
+        Get paDDOHandlesTree to aDDOHandles
+        Move (SizeOfArray(aDDOHandles)) to icDDO
+        
+        For i from 0 to (icDDO - 1)
+            Get CurrentRowId of aDDOHandles[i] to riRowID
+            Move (SerializeRowID(riRowID)) to tDDODef.aDDOs[i].sRowID
+            Get DDIdentity aDDOHandles[i] to tDDODef.aDDOs[i].sName
+            Get pDDDefaults of aDDOHandles[i] to tDDODef.aDDOs[i].aRemembered 
+            If (bDynamicConstraints) Begin
+                Get Constrain_File of aDDOHandles[i] to iFile
+            End
+            Else Begin
+                Move -1 to iFile
+            End
+            Move iFile to tDDODef.aDDOs[i].iConstrainFile
+
+            // DD changed_state and parent changed state info
+            Get Changed_State of aDDOHandles[i] to tDDODef.aDDOs[i].bChanged
+            Get Data_Set_Server_Count of aDDOHandles[i] to iSrvrs
+            For iSrvr from 0 to (iSrvrs-1)
+                Get Data_Set_Server of aDDOHandles[i] iSrvr to hoServerDD
+                Get Main_File of hoServerDD to iTable
+                Move iTable to tDDODef.aDDOs[i].aParentChanged[iSrvr].iTable
+                Get ParentDDOSwitched of aDDOHandles[i] iTable to bSwitched
+                Move bSwitched to tDDODef.aDDOs[i].aParentChanged[iSrvr].bSwitched 
+            Loop
+
+                        
+        Loop
+            
+        Move True to tDDODef.bA
+        
+        WebSet ptDDOStates to tDDODef
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure NotifySyncWebApp
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure RebuildDDConstraints
+        Handle hoMainDD
+        Integer i iCount
+        Handle[] aAdditionalDDOStructures
+        
+        Get Main_DD to hoMainDD
+        
+        If hoMainDD Begin
+            Send RebuildAllConstraints of hoMainDD
+        End
+        
+        // Now iterate the main dd of any 'additional' DDO structures
+        Get paAdditionalDDOStructures to aAdditionalDDOStructures
+        Move (SizeOfArray(aAdditionalDDOStructures)) to iCount
+        
+        For i from 0 to (iCount - 1)
+            If (aAdditionalDDOStructures[i] <> 0) Begin
+                Send RebuildAllConstraints of aAdditionalDDOStructures[i]
+            End
+        Loop
+    End_Procedure
+    
+    { Visibility=Private }
+    Function SyncDDOs  Returns Boolean
+        // Synchronize the servers DDO's with the record ID's passed from the client.
+        String sDDOName sCheck
+        Integer i icDDO icAdditionalDDO iIndex iMainFile iConstrainFile
+        Handle hoDDO hoMainDD hoParentDDO hoBadDDO hoFirstBadDDO
+        RowID riRowID
+        Handle[] aAdditionalDDOStructures aDDOQueue
+        tNameHandlePair[] aDDOIndex
+        tNameHandlePair searchItem
+        tWebDDO[] aDDOs
+        Boolean bFound bTestSyncDDO
+        RowID riCrnt
+        tWebDDODef tDDODef
+        tDDChangedInfo DDChangedInfo EmptyDDChangedInfo
+        Integer iSrvr 
+        
+        If (Operation_Mode <> MODE_WAITING) Begin
+            Error DFERR_PROGRAM "Reentrancy issue, the DDO's are not ready for synchronization."
+            Function_Return False
+        End
+        
+        // Clear the DDOs....
+        Get Main_DD to hoMainDD
+        
+        If (hoMainDD <> 0) Begin
+            Send ReSyncClearAll of hoMainDD
+        End
+        
+        // Now clear the main dd of any 'additional' DDO structures
+        Get paAdditionalDDOStructures to aAdditionalDDOStructures
+        Move (SizeOfArray(aAdditionalDDOStructures)) to icAdditionalDDO
+        
+        For i from 0 to (icAdditionalDDO - 1)
+            If (aAdditionalDDOStructures[i] <> 0) Begin
+                Send ReSyncClearAll of aAdditionalDDOStructures[i]
+            End
+        Loop
+        
+        //  Load the stats
+        WebGet ptDDOStates to tDDODef
+        
+        //  Check if this view was already active
+        If (not(tDDODef.bA)) Begin
+            Function_Return True
+        End
+        
+        Move tDDODef.aDDOs to aDDOs
+        Move (SizeOfArray(aDDOs)) to icDDO
+        
+        Get paDDOIndex to aDDOIndex
+
+        // reset all constrain_Files in the DDOs if this view does that
+        For i from 0 to (icDDO - 1)
+            If (aDDOs[i].iConstrainFile<>-1) Begin
+                
+                // Get an index to the DDO handle....
+                Move aDDOs[i].sName to searchItem.sName
+                Move (BinarySearchArray(searchItem, aDDOIndex, False)) to iIndex
+                If (iIndex = -1) Begin
+                    Error DFERR_PROGRAM ("Client DDO " + aDDOs[i].sName + " not found on server")
+                    Function_Return False 
+                End
+                Set Constrain_File of aDDOIndex[iIndex].hValue to aDDOs[i].iConstrainFile
+            End
+        Loop
+        
+        // establish constraints for this instance before refinding DDOs
+        Send RebuildDDConstraints
+
+        // Iterate the client DDO collection. This collection is sorted by: the view's Main_DD,
+        // followed by the child DDO tree, then the parent DDO tree.
+        For i from 0 to (icDDO - 1)
+            // Get an index to the DDO handle....
+            Move aDDOs[i].sName to searchItem.sName
+            Move (BinarySearchArray(searchItem, aDDOIndex, False)) to iIndex
+            If (iIndex = -1) Begin
+                Error DFERR_PROGRAM ("Client DDO " + aDDOs[i].sName + " not found on server")
+                Function_Return False 
+            End
+            Move aDDOIndex[iIndex].hValue to hoDDO
+            // each ddo in the structure needs to know the rowid to find and 
+            // various parent_changed_state info.
+            Set prFindRowId of hoDDO to (DeserializeRowID(aDDOs[i].sRowID))
+            Set pDDDefaults of hoDDO to aDDOs[i].aRemembered
+            
+            // set changed state and parent changed state info
+            Move EmptyDDChangedInfo to DDChangedInfo 
+            Move (aDDOs[i].bChanged) to DDChangedInfo.bChanged
+            For iSrvr from 0 to (SizeOfArray(aDDOs[i].aParentChanged)-1)
+                Move aDDOs[i].aParentChanged[iSrvr].iTable to DDChangedInfo.ParentChanged[iSrvr].iTable
+                Move aDDOs[i].aParentChanged[iSrvr].bSwitched to DDChangedInfo.ParentChanged[iSrvr].bSwitched
+            Loop    
+            Set pDDChangedInfo of hoDDO to DDChangedInfo
+
+            Move hoDDO to aDDOQueue[i] 
+        Loop
+
+        
+        If hoMainDD Begin
+            If (hoMainDD<>aDDOQueue[0]) Begin
+                Error DFERR_PROGRAM "Assert: SynchDDO hoMainDD issue"                 
+            End
+            // this will resync all records in DDO structure and return
+            // the 0 or the first DDO where it could not find the record
+            Get ReSyncRecords of hoMainDD True to hoBadDDO
+        End
+
+        // if additional DDO structures do the same.
+        For i from 0 to (icAdditionalDDO - 1)
+            If (aAdditionalDDOStructures[i] <> 0) Begin
+                Get ReSyncRecords of aAdditionalDDOStructures[i] True to hoFirstBadDDO
+                If (hoFirstBadDDO <> 0) ;
+                    Move hoFirstBadDDO to hoBadDDO
+            End
+        Loop
+
+        If (icDDO) Begin
+            // Field defaults might get cleared by above operation so we reset them here
+            For i from 0 to (icDDO - 1)
+                Move aDDOQueue[i] to hoDDO
+    
+                // Refresh field defaults in constrained child DDOs.
+                // Constrained children of the main DDO do not refresh the field defaults
+                // during Clear_All (at the beginning of SyncDDOs).
+                
+                Get Constrain_File of hoDDO to iConstrainFile
+                If (iConstrainFile <> 0 and IsNullRowId(prFindRowId(hoDDO))) Begin
+                    Send SetDDFieldDefaults hoDDO
+                End
+            Loop
+    
+            Get pbTestSyncDDO to bTestSyncDDO
+            If bTestSyncDDO Begin
+
+                // Test to see if all DDOs were visited and that all records were found.
+                // At some point we may not want to keep this as it is checking if our logic
+                // is correct and there may not be a need to add this overhead to deployed applications.
+                For i from 0 to (icDDO - 1)
+                    Move aDDOQueue[i] to hoDDO
+                    Move (DeserializeRowID(aDDOs[i].sRowID)) to riRowID
+                    Get CurrentRowId of hoDDO to riCrnt
+                    
+                    // all ddos should have been visited. If not, it's probably a DAW logic error
+                    If (not(Visited_State(hoDDO))) Begin
+                        Error DFERR_PROGRAM ("DDO " + aDDOs[i].sName + " not visited in syncDDOs")
+                        Function_Return False
+                    End
+                    
+                    // Normally the expected record should now be in the DDO, but not always!
+                    // If a record has been deleted or is constraint invalid, we will have a mismatch.
+                    // If this happened, hoBadDDO should have been set or current rowid is null.
+                    // If not, we have a logic flaw 
+                    If (not(IsSameRowID(riRowID,riCrnt))) Begin
+                        // If mismatch but an error, we are ok.
+                        // If a mismtach and the current RowId is null, this is probably a child
+                        // relates to constraint failure that was cleared, we are ok.
+                        // Else we have a logic Error                    
+                        If (not(hoBadDDO) and not(IsNullRowID(riCrnt))) Begin
+                            Error DFERR_PROGRAM ("Client DDO " + aDDOs[i].sName + " cannot set the rowid on server(2")
+                            Function_Return False
+                        End
+                    End
+                    
+                Loop
+            End
+        
+        End
+        
+        If hoBadDDO Begin
+            Send OnSyncDDOsRefindError hoBadDDO
+        End
+        
+        Function_Return True
+    End_Function
+    
+    // sets defaults for passed DDO. 
+    // This is only used by the DDO syncing process and it will change
+    { Visibility=Private }
+    Procedure SetDDFieldDefaults Handle hoDDO
+        Boolean bOldState
+        Set pbSynchingFieldDefaults to True                // indicate that we are in the process of syncing a DDO's field_defaults
+        Get Change_Disabled_State of hoDDO to bOldState
+        Set Change_Disabled_State of hoDDO to True
+        Send Private_Field_Defaults of hoDDO
+        Send Field_Defaults of hoDDO
+        Send AssignDynamicDefaults of hoDDO
+        Set Change_Disabled_State of hoDDO to bOldState
+        Set pbSynchingFieldDefaults to False
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure WriteDDOCache
+        // Stores the DDO object array and creates a corresponding array of DDO object names.
+        // Both arrays are sorted according the object names. This cache can then be used for fast
+        // lookups of DDO object name to DDO handle.
+        //
+        // Note: Must be called after Main_DD has been set.
+        Handle hoMain_DD
+        Integer i icDDO iIndex iCount
+        tNameHandlePair[] aDDOIndex
+        
+        String[] aNames aSortedNames
+        Handle[] aDDOHandles aSortedDDOs aAdditionalDDOStructures
+        
+        // Get all the DDOs in the main DDO structure
+        Get Main_DD to hoMain_DD
+        
+        If (hoMain_DD <> 0) Begin
+            // returns the DDO tree structure Main DD, followed by child DD tree, then parent DD tree
+            Send FindDataDictionaries hoMain_DD (&aDDOHandles)
+        End
+        
+        // Get all "additional" DDO structures
+        Get paAdditionalDDOStructures to aAdditionalDDOStructures
+        Move (SizeOfArray(aAdditionalDDOStructures)) to iCount
+        
+        For i from 0 to (iCount - 1)
+            // returns the DDO tree structure Main DD, followed by child DD tree, then parent DD tree
+            Send FindDataDictionaries aAdditionalDDOStructures[i] (&aDDOHandles)
+        Loop
+    
+        
+        //  Build the search index
+        Move (SizeOfArray(aDDOHandles)) to icDDO
+        If (icDDO > 0) Begin
+            Move (ResizeArray(aDDOIndex, icDDO)) to aDDOIndex
+            For i from 0 to (icDDO - 1)
+                Get DDIdentity aDDOHandles[i] to aDDOIndex[i].sName
+                Move aDDOHandles[i] to aDDOIndex[i].hValue
+            Loop
+            
+            Move (SortArray(aDDOIndex, False)) to aDDOIndex
+        End
+        
+        // Save the arrays....
+        Set paDDOIndex to aDDOIndex
+        Set paDDOHandlesTree to aDDOHandles     // Store the DDO tree structure Main DD, followed by child DD tree, then parent DD tree
+    End_Procedure
+    
+    // Returns the DDO object handle in this view for the passed table number.
+    // Returns 0 if the passed table is not the main table of "any" DDO in this view.
+    { Visibility=Private }
+    Function FindDDOForTable Integer iTable Returns Handle
+        Integer iDDO icDDO
+        Integer iMainFile
+        tNameHandlePair[] aDDOIndex
+        
+        Get paDDOIndex to aDDOIndex
+        Move (SizeOfArray(aDDOIndex)) to icDDO
+        
+        For iDDO from 0 to (icDDO - 1)
+            Get Main_File of aDDOIndex[iDDO].hValue to iMainFile
+            
+            If (iMainFile = iTable) Begin
+                Function_Return aDDOIndex[iDDO].hValue
+            End
+        Loop
+        
+        Function_Return 0
+    End_Function
+    
+    // sets all Constrain_Files starting at hoMainDD and up as based on the view stack.
+    { Visibility=Private }
+    Procedure EstablishConstrainFiles Handle hoMainDD tWebViewInfo[] aViewStack Handle[] ByRef hoStackDDOs RowID[] ByRef riStackRowIds
+        Integer iClient iClients iStack iParent iStackSize
+        Handle hoDDO hoParentDD
+        
+        // set constrain_file to 0 from main_DDO on up
+        Send ClearConstrainFiles hoMainDD 
+        
+        // establish all parent constraints. Take any nfFromParent and set
+        // a constrain if this view has the same DDO structure.
+        Move (SizeOfArray(aViewStack)) to iStackSize
+        For iStack from 1 to (iStackSize-1)
+            If (aViewStack[iStack].eNavigateType=nfFromParent) Begin
+                Get FindDDOForTable aViewStack[iStack-1].iMainTable to hoParentDD
+                // it's possible for there to be no connection here in this view, that's ok
+                If hoParentDD Begin
+                    // keep track of all parents and their RowId
+                    Move (InsertInArray(hoStackDDOs,-1,hoDDO)) to hoStackDDOs
+//                    Move (InsertInArray(riStackRowIds,-1,DeserializeRowID(aViewStack[iStack-1].sMainTableRowID))) to riStackRowIds
+                    Move (InsertInArray(riStackRowIds,-1,aViewStack[iStack-1].riMainTable)) to riStackRowIds
+                    // Set constraint to this parent for all children.
+                    // Odds are there will only be one or no child connections.
+                    Get Data_Set_Client_Count of hoParentDD to iClients
+                    For iClient from 0 to (iClients-1)
+                        Get Data_Set_Client of hoParentDD iClient to hoDDO
+                        Set Constrain_File of hoDDO to aViewStack[iStack-1].iMainTable
+                    Loop
+                End
+            End
+        Loop
+    End_Procedure
+
+    // returns a parent DDO for the parent table that is the immediate parent of hoMain
+    // If there is no parent DDO connected to hoMainDD with this table number, it returns 0
+    { Visibility = Private }
+    Function ParentDDOForTable Handle hoMainDD Integer iParentTable Returns Handle
+        Integer iServers i
+        Handle hoParentDD
+        Get Data_Set_Server_Count of hoMainDD to iServers
+        For i from 0 to (iServers-1)
+            Get Data_Set_Server of hoMainDD i to hoParentDD
+            If (Main_File(hoParentDD)=iParentTable) Begin
+                Function_Return hoParentDD
+            End
+        Loop
+        Function_Return 0
+    End_Function
+    
+    // Sent when a SyncDDos fails - which happens during a request resync process. 
+    // By default call standard OnRefindRecordError. This allows for customization
+    // This mainly exists for debugging purposes. There is not much you can do here because
+    // this is happening at a very low level. If you change this, be careful.
+    { MethodType=Event }
+    Procedure OnSyncDDOsRefindError Handle hoDD
+        Send OnRefindRecordError hoDD reoSyncDDOs retUndefined
+    End_Procedure
+
+    // Sent when a refind record fails during one of the refind records operation 
+    // By default it does nothing, but it can raise an error and allows for careful customization
+    //
+    // hoDDO is the DDO that had the refind failure.
+    // This failed because RowId record cannot be refound or the RowId record is not 
+    // constraint valid.
+    //
+    // eOperation tells you what operation caused this:
+    // 0 - reoUndefined: should not get called with this
+    // 1 - reoSyncDDOs: During a request resync 
+    // 2 - reoNavigateForward: After resync during a NavigateForward
+    // 3 - reoNavigateBack: After resync during a NavigateBack 
+    // 4 - reoRefreshRecord: during RefreshRecord.
+    //
+    // eReason tells you the type of record find failure. 
+    // These only apply to NavigateForward|Back
+    // 0 - retUndefined
+    // 1 - retCannotRereadMain: Failed rereading the main file
+    // 2 - retCannotRereadConstrainingParent: Failed rereading a constraining parent
+    // 
+    // If you place a breakpoint here, you've got a place where all refind errors
+    // are redirected - very useful for debugging.
+
+    { MethodType=Event }
+    Procedure OnRefindRecordError Handle hoDD Integer eOperation Integer eReason
+        Boolean bShowAllRefindErrors
+        
+        // pbShowAllRefindErrors is cWebApp property, set it true when debugging to see all
+        // errors. This assumes that a refind error during debugging is probably a programming bug.
+        
+        Get pbShowAllRefindErrors to bShowAllRefindErrors
+        If bShowAllRefindErrors Begin
+             Send CannotRefindRecordUnhandledError hoDD
+        End
+    End_Procedure
+
+    // Sent when RefreshRecord fails. 
+    // By default call standard OnRefindRecordError. This allows for customization
+    { MethodType=Event }
+    Procedure OnRefreshRecordError Handle hoDD
+        Send OnRefindRecordError hoDD reoRefreshRecord retUndefined
+    End_Procedure
+End_Class

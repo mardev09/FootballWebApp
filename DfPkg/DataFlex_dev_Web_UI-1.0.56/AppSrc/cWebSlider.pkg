@@ -1,0 +1,178 @@
+﻿Use cWebBaseDEO.pkg
+
+{ OverrideProperty=peAlign WebProperty=False Visibility=Private }
+{ OverrideProperty=piMaxLength WebProperty=False Visibility=Private }
+{ OverrideProperty=piPrecision WebProperty=False Visibility=Private }
+{ OverrideProperty=psMask WebProperty=False Visibility=Private }
+{ OverrideProperty=pbCapslock WebProperty=False Visibility=Private }
+{ HelpTopic=cWebSlider }
+{ DesignerJSClass=df.WebSlider }
+Class cWebSlider is a cWebBaseDEO
+   
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psJSClass to "df.WebSlider"
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Integer piMinValue 0
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piMaxValue 10
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piInterval 1
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbVertical False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbRanged False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piSliderValue 0
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piFrom 0
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piTo 0
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowValue False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowRange False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowMarkers False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piMaxMarkers 101
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        Property Boolean pbMouseWheelScroll True
+        
+        { Visibility=Private }
+        Property tWebNameValue[] paLabels
+        
+        //  Configure super classes
+        Set piColumnSpan to 0
+    End_Procedure
+    
+    Procedure AddLabel Integer iValue String sLabel
+        Integer iCount
+        tWebNameValue[] aLabelItems
+        
+        Get paLabels to aLabelItems
+        Move (SizeOfArray(aLabelItems)) to iCount
+        
+        Move iValue to aLabelItems[iCount].sV
+        Move sLabel to aLabelItems[iCount].sN
+        
+        Set paLabels to aLabelItems
+    End_Procedure
+     
+    // OnFill event stub. Fired whenever the label list is to be filled.
+    { MethodType=Event }
+    Procedure OnFillLabels
+    End_Procedure
+    
+    // Send this to trigger OnFill event to populate the combo list.
+    // Note: we wanted to call this method "Fill" but this symbol is already used in FMAC
+    //       which means we cannot register it using WebPublishMethod
+    Procedure RefillLabels
+        String[] aParams
+        tWebNameValue[] aEmpty aData
+        tWebValueTree tData
+        
+        
+        Set paLabels to aEmpty
+        Send OnFillLabels
+        
+        Get paLabels to aData
+        ValueTreeSerializeParameter aData to tData
+        
+        Send ClientAction "fillLabels" aParams tData        
+    End_Procedure
+    
+    
+    // Augmented to trigger a Refill of the label items.
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Send RefillLabels
+    End_Procedure
+    
+
+    Function ValueToPosition String sValue Returns Integer
+        // Called if the cWebSlider has a data binding. Maps the database value (sValue) as an integer
+        // to the slider position.
+        // Augment this function to make a different kind of mapping e.g. date values or enumerated strings.
+        // If you augment this then you should also augment PositionToValue to perform the converse mapping.
+        Function_Return sValue
+    End_Function
+    
+    
+    Function PositionToValue Integer iPosition Returns String
+        // Called if the cWebSlider has a data binding. Maps the slider position to the database value as an integer.
+        // Augment this function to make a different kind of mapping e.g. date values or enumerated strings.
+        // If you augment this then you should also augment ValueToPosition to perform the converse mapping.
+        Function_Return iPosition
+    End_Function
+
+
+    { Visibility=Private }        
+    Procedure SetPositionFromValue
+        // convert psValue to piSliderValue
+        Integer iFile iPosition
+        Handle hoServer
+        String sValue
+        Get Server to hoServer
+        Get Data_File to iFile
+        If (hoServer and iFile) Begin
+            WebGet psValue to sValue
+            Get ValueToPosition sValue to iPosition
+            WebSet piSliderValue to iPosition
+        End
+    End_Procedure
+
+    
+    { Visibility=Private }        
+    Procedure SetValueFromPosition
+        // convert piSliderValue to psValue
+        Integer iFile iPosition
+        Handle hoServer
+        String sValue
+        Get Server to hoServer
+        Get Data_File to iFile
+        If (hoServer and iFile) Begin
+            WebGet piSliderValue to iPosition
+            Get PositionToValue iPosition to sValue
+            WebSet psValue to sValue
+        End
+    End_Procedure
+    
+    
+    Procedure File_Field_Value_Changed Integer iFile Integer iField String sValue Integer iChangeDisabled
+        Forward Send File_Field_Value_Changed iFile iField sValue iChangeDisabled
+        Send SetPositionFromValue
+    End_Procedure
+
+
+    Procedure Refresh Integer eMode
+        Boolean bSynching
+        Forward Send Refresh eMode
+        Get AppSynching to bSynching
+        If not bSynching Begin
+            Send SetPositionFromValue
+        End
+    End_Procedure
+    
+                          
+    { Visibility=Private }                      
+    Procedure UpdateDataBinding
+        Send SetValueFromPosition
+        Forward Send UpdateDataBinding
+    End_Procedure
+End_Class

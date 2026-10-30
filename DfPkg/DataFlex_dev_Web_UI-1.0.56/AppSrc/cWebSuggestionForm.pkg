@@ -1,0 +1,484 @@
+﻿Use cWebForm.pkg
+Use sql.pkg
+Use tSuggestion.pkg
+Use cJsonObject.pkg
+
+{ HelpTopic=cWebSuggestionForm }
+{ DesignerJSClass=df.WebSuggestionForm }
+Class cWebSuggestionForm is a cWebForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        { EnumList="smFind, smValidationTable, smCustom" }
+        Property Integer peSuggestionMode smFind
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbFullText False
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbCaseSensitive False
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbAllowForce True
+                
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbHighlight True
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piMaxResults 15
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Integer piStartAtChar 2
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbClientRefinement True
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piSuggestionWidth 0
+                
+        { Category="Behavior" } 
+        Property Integer piFindIndex 0
+        { Category="Behavior" } 
+        Property Boolean pbFindOnSelect True
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Integer piPopupTimeout 50
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Integer piTypeTimeout 20
+        
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbShowResults True         //  If set to false the suggestionform functions purely to handle the key requests on the server
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property String psPopupCSSClass ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnHideSuggestions False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnHideSuggestions ""
+        
+        Set psAutoComplete to "off"                 // Turn off browser autocompletion
+        
+        Set psJSClass to "df.WebSuggestionForm"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure FindSuggestions String sSearch
+        tSuggestion[] aResults
+        String[] aParams
+        
+        Send OnFindSuggestions sSearch (&aResults)
+        
+        Move sSearch to aParams[0]
+        Send ClientAction "suggestHandle" aParams aResults
+    End_Procedure
+    
+    { Visibility=Private }
+    Function IsInvalidNumericSearch String sSearch Returns Boolean
+        Number  nValue
+        Boolean bInvalid
+        
+        Move False to bInvalid
+        If (Length(Trim(sSearch)) > 0) Begin
+            Move False to Err
+            MoveTrapErr sSearch to nValue
+            Move (Err <> 0) to bInvalid
+            Move False to Err
+        End
+        
+        Function_Return bInvalid
+    End_Function
+
+    
+    { Visibility=Private }
+    Procedure SuggestionsFindIncremental String sSearch tSuggestion[] ByRef aSuggestions
+        Integer iFile iField iIndex iLen iRow iMax eType iLength iDec
+        Handle hoServer
+        Boolean bContinue bCase bOldRelate bNeedsRelate bInvalidSearch
+
+        String sVal sLowSearch
+        RowID riTest
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            Get piFindIndex to iIndex
+            WebGet piMaxResults to iMax
+            WebGet pbCaseSensitive to bCase
+            
+            Get_Attribute DF_FIELD_TYPE of iFile iField to eType
+            Get_Attribute DF_FIELD_LENGTH of iFile iField to iLength
+            Get_Attribute DF_FIELD_PRECISION of iFile iField to iDec
+            
+            Move (iLength - iDec) to iLength
+            
+            If (iIndex <= 0) Begin
+                Get_Attribute DF_FIELD_INDEX of iFile iField to iIndex
+            End
+            
+            If (iIndex > 0) Begin
+                Get No_Relate_State of hoServer to bOldRelate
+                Get DDOConstraintNeedsRelate of hoServer iIndex to bNeedsRelate
+                Set No_Relate_State of hoServer to (not(bNeedsRelate))
+                                
+                Move True to bContinue
+                Move (Length(sSearch)) to iLen
+                Move (Lowercase(sSearch)) to sLowSearch
+                Move 0 to iRow
+                
+                If (eType = DF_BCD) Begin
+                    Get IsInvalidNumericSearch sSearch to bInvalidSearch
+                    If (bInvalidSearch) Begin
+                        Set No_Relate_State of hoServer to bOldRelate
+                        Procedure_Return
+                    End
+                End
+                
+                //  Find first record
+                Send Request_Read of hoServer FIRST_RECORD iFile iIndex
+                Set_Field_Value iFile iField to sSearch
+                Send Request_Read of hoServer GE iFile iIndex
+                
+                While (Found and bContinue)
+                    Get_Field_Value iFile iField to sVal
+                    
+                    If ((not(bCase) and Lowercase(Left(sVal, iLen)) = sLowSearch) or (bCase and Left(sVal, iLen) = sSearch)) Begin
+
+                        Move (SerializeRowID(GetRowID(iFile)))  to aSuggestions[iRow].sRowId
+                        Move (Trim(sVal))                       to aSuggestions[iRow].aValues[0]
+                        Increment iRow
+                        
+                        Move (iRow < iMax) to bContinue
+                       
+                        Send Request_Read of hoServer GT iFile iIndex  
+                    End
+                    Else Begin
+
+                        Move False to bContinue
+                        If (eType = DF_BCD and Length(sSearch) < iLength) Begin
+                            Move (GetRowID(iFile)) to riTest
+                            
+                            Repeat
+                                Move (sSearch + "0") to sSearch
+                                If (Length(sSearch) >= iLength) ;
+                                    Break
+                                
+                                Set_Field_Value iFile iField to sSearch
+                                Send Request_Read of hoServer GE iFile iIndex
+                                Move (not(IsSameRowID(riTest, GetRowID(iFile)))) to bcontinue
+                            Until (bcontinue)
+                        End
+                    End
+                Loop
+                Set No_Relate_State of hoServer to bOldRelate
+            End
+        End
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure SuggestionsFindFullText String sSearch tSuggestion[] ByRef aSuggestions
+        Integer iFile iField iIndex iRow iMax
+        Handle hoServer
+        Boolean bContinue bCase  bOldRelate bNeedsRelate
+        String sVal sLowSearch
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            WebGet piMaxResults to iMax
+            WebGet pbCaseSensitive to bCase
+            
+            Get piFindIndex to iIndex
+            If (iIndex <= 0) Begin
+                Get_Attribute DF_FIELD_INDEX of iFile iField to iIndex
+            End
+            
+            Get No_Relate_State of hoServer to bOldRelate
+            Get DDOConstraintNeedsRelate of hoServer iIndex to bNeedsRelate
+            Set No_Relate_State of hoServer to (not(bNeedsRelate))
+            
+            
+            Move (Lowercase(sSearch)) to sLowSearch
+            Move True to bContinue
+            Move 0 to iRow
+                
+            //  Find first record
+            Send Request_Read of hoServer FIRST_RECORD iFile iIndex
+            
+            While (Found and (iRow < iMax))
+                Get_Field_Value iFile iField to sVal
+                
+                If ((bCase and sVal contains sSearch) or (not(bCase) and Lowercase(sVal) contains sLowSearch) or sSearch = "") Begin
+                    Move (SerializeRowID(GetRowID(iFile)))  to aSuggestions[iRow].sRowId
+                    Move (Trim(sVal))                       to aSuggestions[iRow].aValues[0]
+                    Increment iRow
+                End
+                
+                Send Request_Read of hoServer GT iFile iIndex 
+            Loop
+            Set No_Relate_State of hoServer to bOldRelate
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure SuggestionsSQLFullText String sSearch tSuggestion[] ByRef aSuggestions
+        Integer iFile iField iIndex iRow iMax
+        Handle hoServer
+        Boolean bContinue bOrigActive  bOldRelate bNeedsRelate
+        String sVal sOrigFilter sFilter sFile sField
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            
+            // make sure we send DD messages to owner DDO
+            Get Which_Data_Set of hoServer iFile to hoServer
+            If (hoServer=0) Begin
+                Procedure_Return
+            End
+            
+            WebGet piMaxResults to iMax
+            Get piFindIndex to iIndex
+            If (iIndex <= 0) Begin
+                Get_Attribute DF_FIELD_INDEX of iFile iField to iIndex
+            End
+            
+            //  Determine current filter settings
+            Get psSQLFilter of hoServer to sOrigFilter
+            Get pbUseDDSqlFilters of hoServer to bOrigActive
+            
+            // generate the Like filter string
+            Get SQLStrLike of hoServer iField sSearch to sFilter
+            // If filtering was active append this to what's there
+            If (bOrigActive) Begin
+                Get SQLStrAppend of hoServer sOrigFilter sFilter to sFilter
+            End
+            
+            //  Set filter
+            Set psSQLFilter of hoServer to sFilter
+            Set pbUseDDSqlFilters of hoServer to True
+            
+            
+            // this will optimize No_relate. If your DF constraint does not
+            // need a post-relate test, we will disabled relates for this
+            Get No_Relate_State of hoServer to bOldRelate
+            Get DDOConstraintNeedsRelate of hoServer iIndex to bNeedsRelate
+            Set No_Relate_State of hoServer to (not(bNeedsRelate))
+
+            //  Find records
+            Move True to bContinue
+            Move 0 to iRow
+            
+            Send Request_Read of hoServer FIRST_RECORD iFile iIndex
+            
+            While (bContinue)
+                Get_Field_Value iFile iField to sVal
+                
+                If (Found) Begin // and ((bCase and sVal contains sSearch) or (not(bCase) and Lowercase(sVal) contains sLowSearch))) Begin
+                    Move (SerializeRowID(GetRowID(iFile)))  to aSuggestions[iRow].sRowId
+                    Move (Trim(sVal))                       to aSuggestions[iRow].aValues[0]
+                    Increment iRow
+                    
+                    Move (iRow < iMax) to bContinue
+                   
+                    Send Request_Read of hoServer GT iFile iIndex 
+                End
+                Else Begin
+                    Move False to bContinue
+                End
+                
+            Loop
+            
+            //  Restore filters
+            Set psSQLFilter of hoServer to sOrigFilter
+            Set pbUseDDSqlFilters of hoServer to bOrigActive
+            Set No_Relate_State of hoServer to bOldRelate
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure SuggestionsValidation String sSearch tSuggestion[] ByRef aSuggestions Boolean bFullText
+        Handle hoServer hoTable
+        Integer iFile iField iRow iCount iFound iMax iLen
+        Variant[][] aData
+        Boolean bCaseSensitive bContinue
+        String sDescr sVal
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            Get File_Field_Table_Object of hoServer iFile iField to hoTable
+            If (hoTable <> 0) Begin
+                Get tabledata of hoTable to aData
+        
+                WebGet piMaxResults to iMax
+                WebGet pbCaseSensitive to bCaseSensitive  
+            
+                If (not(bCaseSensitive)) Begin
+                    Move (Lowercase(sSearch)) to sSearch
+                End
+                
+                
+                Move (SizeOfArray(aData)) to iCount
+                Move 0 to iRow
+                Move (Length(sSearch)) to iLen
+                Move True to bContinue
+                
+            
+                While (iFound < iMax and iRow < iCount and bContinue)
+                    If (not(bCaseSensitive)) Begin
+                        Move (Lowercase(aData[iRow][0])) to sVal
+                        Move (Lowercase(aData[iRow][1])) to sDescr
+                    End
+                    Else Begin
+                        Move aData[iRow][0] to sVal
+                        Move aData[iRow][1] to sDescr
+                    End
+                    
+                    If ((bFullText and (sVal contains sSearch)) or (not(bFullText) and (Left(sVal, iLen) = sSearch))) Begin
+                        Move aData[iRow][0] to aSuggestions[iFound].sRowId
+                        Move aData[iRow][0] to aSuggestions[iFound].aValues[0]
+                        Move aData[iRow][1] to aSuggestions[iFound].aValues[1]
+                        Increment iFound
+                    End
+                    Else Begin
+                        Move (bFullText or iFound = 0) to bContinue
+                    End
+                    
+                    Increment iRow
+                Loop
+            End
+        End
+         
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnFindSuggestions String sSearch tSuggestion[] ByRef aSuggestions
+        Integer iMode iFile
+        Boolean bFullText bResult bSupportsSQL
+        Handle hoServer
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            
+            WebGet peSuggestionMode to iMode
+            WebGet pbFullText to bFullText
+            
+            If (iMode = smFind) Begin
+                If (not(bFullText)) Begin
+                    Send SuggestionsFindIncremental sSearch (&aSuggestions)
+                End
+                Else Begin
+                    Get SupportsSQLFilters of hoServer to bSupportsSQL
+                    If (bSupportsSQL) Begin
+                        Send SuggestionsSQLFullText sSearch (&aSuggestions)
+                    End
+                    Else Begin
+                        Send SuggestionsFindFullText sSearch (&aSuggestions)
+                    End
+                End
+            End
+            Else If (iMode = smValidationTable) Begin
+                Send SuggestionsValidation sSearch (&aSuggestions) bFullText
+            End
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure SelectSuggestion String sSearch
+        tSuggestion[] aData
+        Handle hoJson
+        
+        //  Deserialize the sent row
+        Get phoActionJsonData to hoJson
+        Get JsonToDataType of hoJson to aData
+        
+        If (SizeOfArray(aData) = 1) Begin
+            Send OnSelectSuggestion sSearch aData[0] 
+        End
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnHideSuggestions
+        
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnSelectSuggestion String sSearch tSuggestion Suggestion
+        Handle hoServer
+        Integer iFile iField iMode
+        Boolean bFind bSuccess
+        RowID rRowId
+        
+        Get Server to hoServer
+        Get Data_File  to iFile
+        Get Data_Field to iField       
+        
+        If ((hoServer <> 0) and (iFile <> 0)) Begin
+            WebGet peSuggestionMode to iMode
+            
+            If (iMode = smFind) Begin
+                Get pbFindOnSelect to bFind
+                If (bFind) Begin
+                    Move (DeserializeRowID(Suggestion.sRowId)) to rRowId    
+                    
+                    If (not(IsNullRowID(rRowId))) Begin
+                        Get FindByRowIdEx of hoServer iFile rRowId to bSuccess
+                        // this is very unlikely
+                        If not bSuccess Begin
+                            Error DFERR_CANT_REFIND_RECORD
+                        End
+                    End
+                End
+                Else Begin
+                    WebSet psValue to Suggestion.aValues[0]
+                    WebSet pbChanged to True
+                End
+            End
+            Else If (imode = smValidationTable) Begin
+                WebSet psValue to Suggestion.sRowId
+                WebSet pbChanged to True
+            End
+            
+        End
+    End_Procedure
+    
+    // Forces the suggestion list to display. This might trigger OnFindSuggestions in another round-trip.
+    Procedure ShowSuggestions
+        Send ClientAction "showSuggestions"
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure FindSuggestions
+        WebPublishProcedure SelectSuggestion
+        WebPublishProcedure OnHideSuggestions
+    End_Procedure
+
+End_Class

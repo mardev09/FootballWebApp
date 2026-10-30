@@ -1,0 +1,8 @@
+﻿Use tWebValueTree.pkg
+
+
+// Used for WebApp Synchronized and Published properties of complicated types (arrays & structs)
+Struct tWebAdvNameValue
+    String sN           // property name
+    tWebValueTree tV    // advanced property value
+End_Struct

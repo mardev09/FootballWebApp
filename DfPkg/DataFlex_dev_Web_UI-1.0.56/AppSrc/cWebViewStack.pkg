@@ -1,0 +1,591 @@
+﻿Use cWebObject.pkg
+Use tWebViewInfo.pkg
+Use tWebNavigateData.pkg
+Use WebUIConstants.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use cWebViewHost_mixin.pkg
+
+Register_Procedure OnUpdateViewStack
+
+// Singleton stack object. Store and manipulates information about the stack of views
+// in a drill-down navigation architecture.
+{ OverrideProcedure=OnGetNavigateBackData Visibility=Private } 
+{ OverrideProcedure=OnGetNavigateForwardData Visibility=Private } 
+{ OverrideProcedure=OnNavigateBack Visibility=Private } 
+{ OverrideProcedure=OnLoad Visibility=Private } 
+Class cWebViewStack is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Global handle is deprecated.
+        Move Self to ghoWebViewStack
+        // Set the viewstack of the cWebApp or cLocalWebControlHost to this object
+        Set phoViewStack of (Host(Self)) to Self
+        
+        { Visibility=Private }
+        { WebProperty=Server } 
+        Property tWebViewInfo[] paViewStack    // The stack of current views navigated to in the drill-down view stack.
+        
+        { Visibility=Private }
+        Property Handle[] paClientControls     // Array of client web controls that are notified whenever the view stack is modified
+    End_Procedure 
+
+    
+    // Returns the total number of views currently in the view stack.
+    Function ViewStackSize Returns Integer
+        Integer iCount
+        tWebViewInfo[] aViewStack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iCount
+        Function_Return iCount
+    End_Function
+
+        
+    // Adds a new client object to the set of listening client objects.
+    // See also NotifyClients
+    Procedure AddClient Handle hoClient
+        Integer iCount
+        Handle[] aClientControls
+        
+        Get paClientControls to aClientControls
+        Move (SizeOfArray(aClientControls)) to iCount
+        Move hoClient to aClientControls[iCount]
+        Set paClientControls to aClientControls
+    End_Procedure
+
+
+
+    // sReason - [Out] Passes back the reason why Pop View is not allowed.
+    // Returns true if you can pop the passed View. 
+    // Returns False if the view is not at the top of the stack
+    { Visibility=Private }
+    Function CanPopView Handle hoView String ByRef sReason Returns Boolean
+        Integer iCount
+        String sViewName
+        tWebViewInfo[] aViewStack
+        
+        //Send DeserializeViewStack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iCount
+        Get WebObjectName of hoView to sViewName
+        
+        If (iCount > 0 and sViewName = aViewStack[iCount-1].sViewName) Begin
+            Function_Return True
+        End
+        Else Begin
+            Move "This is not the top view." to sReason
+            Function_Return False
+        End
+    End_Function
+    
+    // sReason - [Out] Passes back the reason why Push View is not allowed.
+    // Returns true if you can push the passed View. 
+    // Returns False If the view is already on the view stack.
+    { Visibility=Private }
+    Function CanPushView Handle hoView String ByRef sReason Returns Boolean
+        Integer iIndex
+        Boolean bOK
+        
+        Get GetViewIndex hoView to iIndex
+        Move (iIndex = -1) to bOK
+        If (not(bOK)) Begin
+            Move "View is already in the view stack." to sReason        
+        End
+        Function_Return bOK
+    End_Function
+
+    
+    // Returns the index in the view stack of the passed view handle. 
+    // Returns -1 if the view is not in the stack
+    { Visibility=Private }
+    Function GetViewIndex Handle hoView Returns Integer
+        Integer i iCount
+        String sViewName
+        tWebViewInfo[] aViewStack
+
+        If (hoView <> 0) Begin        
+            WebGet paViewStack to aViewStack
+            Move (SizeOfArray(aViewStack)) to iCount
+            Get WebObjectName of hoView to sViewName
+            
+            For i from 0 to (iCount-1)
+                If (sViewName = aViewStack[i].sViewName) Begin
+                    Function_Return i
+                End
+            Loop
+        End
+        
+        Function_Return -1
+    End_Function
+
+
+    // Returns the view handle of the view below the top of stack. 
+    // Returns 0 If there are less than two views in the stack.
+    // See also TopViewHandle.
+    { Visibility=Private }
+    Function InvokingViewHandle Returns Handle
+        Integer iTop
+        Handle hoView
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        //Send DeserializeViewStack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iTop
+            
+        If (iTop < 2) Begin
+            Function_Return 0
+        End
+        Else Begin
+            Get WebObjectByName aViewStack[iTop-2].sViewName to hoView
+            Function_Return hoView
+        End
+    End_Function
+    
+    // Returns the view handle of the invoking view of a specific view that is on the stack. 
+    // Returns C_WebUnresolvedObject if the view is not found on the stack.
+    { Visibility=Private }
+    Function InvokingViewHandleByView Handle hoView Returns Handle
+        Integer iIndex
+
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        //Send DeserializeViewStack
+        WebGet paViewStack to aViewStack
+        
+        Get GetViewIndex hoView to iIndex
+        If (iIndex > 0) Begin
+       
+            Get WebObjectByName aViewStack[iIndex-1].sViewName to hoView
+            Function_Return hoView
+        End
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    
+    // Returns the view in the stack after the passed view. So the view of which the passed view is
+    // the invoking view. If the passed view is not in the stack or is the top view then
+    // C_WebUnresolvedObject will be returned.
+    { Visibility=Private }
+    Function NextViewHandleByView Handle hoView Returns Handle
+        Integer iIndex
+
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        //Send DeserializeViewStack
+        WebGet paViewStack to aViewStack
+        
+        Get GetViewIndex hoView to iIndex
+        If (iIndex < SizeOfArray(aViewStack) - 1) Begin
+       
+            Get WebObjectByName aViewStack[iIndex+1].sViewName to hoView
+            Function_Return hoView
+        End
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+
+    
+    // Notifies all listening client objects that the view stack has changed.
+    // These objects must understand the OnUpdateViewStack event.
+    // See also AddClient
+    { Visibility=Private }
+    Procedure NotifyClients
+        Integer i iCount
+        Handle[] aClientControls
+        
+        Get paClientControls to aClientControls
+        Move (SizeOfArray(aClientControls)) to iCount
+        
+        For i from 0 to (iCount-1)
+            Send OnUpdateViewStack to aClientControls[i]
+        Loop
+    End_Procedure
+    
+    
+    // Pops all members of the stack down to the passed view handle. If the view is
+    // not on the stack then nothing is removed.
+    { Visibility=Private }
+    Procedure PopDownToView Handle hoView
+        Integer iIndex iTopOfStack
+        tWebViewInfo[] aViewStack
+
+        Get GetViewIndex hoView to iIndex
+        
+        If (iIndex <> -1) Begin
+            // Update the stack
+            WebGet paViewStack to aViewStack
+            Move (ResizeArray(aViewStack, iIndex+1)) to aViewStack
+            WebSet paViewStack to aViewStack        
+            Send NotifyClients    // Notify the view stack clients of this change
+        End
+    End_Procedure
+
+
+    // Pops a view off the top of the view stack.
+    { Visibility=Private }
+    Procedure PopView
+        Integer iTop
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iTop
+        
+        If (iTop = 0) Begin
+            Error DFERR_PROGRAM "View Stack Error: Pop past end of stack"
+        End
+        Else Begin
+            Move (ResizeArray(aViewStack, iTop - 1)) to aViewStack
+            WebSet paViewStack to aViewStack        
+            Send NotifyClients    // Notify the view stack clients of this change
+        End
+    End_Procedure
+
+    
+    // Pushes a new view to the top of the view stack (Note: we assume hoView's web properties are in scope).
+    { Visibility=Private }
+    Procedure PushView Handle hoView Integer eNavigateType
+        Handle hoMainDD
+        Integer iTop
+        tWebViewInfo ViewInfo
+        tWebViewInfo[] aViewStack
+        RowID riId
+        // Before pushing any new view onto the stack we want 
+        // to retrieve the latest "Should_Save state of the
+        // current top view...
+        Send UpdateShouldSave
+        
+        // Populate the ViewInfo struct
+        Get WebObjectName of hoView  to ViewInfo.sViewName
+        WebGet psCaption of hoView   to ViewInfo.sCaption
+        Move ViewInfo.sCaption       to ViewInfo.sHeaderCaption    // by default these are both set to the same value
+        Get peViewType of hoView     to ViewInfo.eViewType
+        Move eNavigateType           to ViewInfo.eNavigateType 
+        
+        Get Main_DD of hoView to hoMainDD
+        If (hoMainDD <> 0) Begin
+            Get Main_File of hoMainDD to ViewInfo.iMainTable
+            Get CurrentRowId of hoMainDD to riId
+            Move riId to ViewInfo.riMainTable
+//            Move (SerializeRowID(riId)) to ViewInfo.sMainTableRowID
+        End
+        
+        // Update the stack
+        WebGet paViewStack to aViewStack
+        Move (InsertInArray(aViewStack,-1,ViewInfo)) to aViewStack
+        WebSet paViewStack to aViewStack        
+        Send NotifyClients    // Notify the view stack clients of this change
+    End_Procedure
+    
+    // returns handle of object we can close up to
+    // hoCloseToView is the view you want to close to. If 0, it's all.
+    // bSkipTop deremines if you should skip the top of the stack, which sometimes gets special
+    // treatment.
+    { Visibility=Private }
+    Function CanCloseViews Handle hoCloseToView Boolean bSkipTop Returns Handle
+        tWebViewInfo[] aViewStack
+        Integer iStackViews eCloseAction
+        Handle hoView
+        Boolean bStop
+        Send UpdateShouldSave to (ViewStack(Self))
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack
+        Move (SizeOfArray(aViewStack)) to iStackViews
+        If bSkipTop Begin
+            Decrement iStackViews
+        End
+        While (iStackViews and not(bStop))
+            Decrement iStackViews
+            Get WebObjectByName aViewStack[iStackViews].sViewName to hoView
+            If (hoView=hoCloseToView) Begin
+                Move 0 to iStackViews
+            End
+            Else If (aViewStack[iStackViews].bShouldSave) Begin
+                Get GetChangedViewExitAction of hoView to eCloseAction 
+                // we only allow a close if it is a pure adandon changes.
+                If (eCloseAction<>cveAbandonChanges) Begin
+                   Function_Return hoView 
+                End
+            End
+        Loop
+        Function_Return hoCloseToView
+    End_Function
+    
+    // Clears the view stack.
+    // bDefaultView - Pass True if the default view should be pushed onto the
+    //                view stack automatically after it is reset.
+    // Returns - True if the Reset succeeded.
+    //           False if the View stack could not be reset (usually due to unsaved changes in
+    //           one of the current views in the stack).
+    { Visibility=Private }
+    Function Reset Boolean bDefaultView Boolean bUnconditional Returns Boolean
+        Handle hoShouldSaveView 
+        Handle hoTopView hoDefaultView
+        Integer iDefaultViewIndex
+        tWebViewInfo[] aViewStack
+        String sReason
+        
+        Get GetDefaultView of (Host(Self)) to hoDefaultView
+        Get TopViewHandle to hoTopView
+        
+        // First see if it is OK to close all of the current views down
+        // to the current first view.
+        If bUnconditional Begin
+            Move hoDefaultView to hoShouldSaveView
+        End
+        Else Begin
+            Get CanCloseViews hoDefaultView False to hoShouldSaveView
+        End
+        If (hoShouldSaveView<>hoDefaultView) Begin
+            If (hoShouldSaveView <> hoTopView) Begin
+                Send ShowView to (Host(Self)) hoShouldSaveView
+            End
+            Send PopDownToView of (ViewStack(Self)) hoShouldSaveView
+            Send UpdateInvokingViewDrillDownStyle to hoShouldSaveView
+            Send CantCloseChangedViewError
+            Function_Return False
+        End
+        
+        // If we got here then we can reset the stack...
+        If (hoTopView <> 0) Begin
+            If (hoDefaultView <> hoTopView or not(bDefaultView)) Begin
+                Send Hide to hoTopView    // First hide the current view
+            End
+        End
+        
+        // Make sure we do not clear the default view off the stack
+        If (bDefaultView and hoDefaultView <> 0) Begin
+            // Test that the default view is the first view in the stack
+            Get GetViewIndex hoDefaultView to iDefaultViewIndex
+            
+            If (iDefaultViewIndex = 0) Begin
+                WebGet paViewStack to aViewStack
+                Move (ResizeArray(aViewStack, 1)) to aViewStack
+            End
+        End
+        
+        // Clear the stack
+        WebSet paViewStack to aViewStack        
+        Send NotifyClients    // Notify the view stack clients of this change
+        
+        Function_Return True
+    End_Function
+
+
+//    // Returns the view handle of the top most view that has a should save flag 
+//    // set to True. Returns 0 if there are no views with should save = True.
+//    // hoAboveView - Only checks views in the view stack above this view handle
+//    //               pass 0 to check the entire stack
+//    Function TopShouldSaveViewHandles Handle hoAboveView Returns Handle[]
+//        Handle[] hoShouldSaveViews
+//        Integer i iCount iAboveView iChanged
+//        tWebViewInfo[] aViewStack
+//        
+//        // search the view stack....
+//        
+//        Get GetViewIndex hoAboveView to iAboveView
+//        //Send DeserializeViewStack
+//        WebGet paViewStack to aViewStack
+//        Move (SizeOfArray(aViewStack)) to iCount
+//        Increment iAboveView
+//        For i from iAboveView to (iCount-1)
+//            If (aViewStack[i].bShouldSave) Begin
+//                Get WebObjectByName aViewStack[i].sViewName to hoShouldSaveViews[iChanged]
+//                Increment iChanged
+//            End
+//        Loop
+//        Function_Return hoShouldSaveViews
+//    End_Function
+
+
+    // Returns the view handle of the top of stack. Returns 0 if the Stack is empty.
+    // See also InvokingViewHandle.
+    Function TopViewHandle Returns Handle
+        Integer iTop
+        Handle hoView
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iTop
+            
+        If (iTop = 0) Begin
+            Function_Return C_WebUnresolvedObject
+        End
+        Else Begin
+            Get WebObjectByName aViewStack[iTop-1].sViewName to hoView
+            Function_Return hoView
+        End
+    End_Function
+    
+    
+    // Updates the Should Save value of the top view in the view stack
+    { Visibility=Private }
+    Procedure UpdateShouldSave
+        Integer iTop
+        Handle hoView hoMain_DD
+        tWebViewInfo[] aViewStack
+
+        // Update the stack
+        //Send DeserializeViewStack
+        WebGet paViewStack to aViewStack
+        Move (SizeOfArray(aViewStack)) to iTop
+            
+        If (iTop > 0) Begin
+            Get WebObjectByName aViewStack[iTop-1].sViewName to hoView
+            Get IsViewChanged of hoView to aViewStack[iTop-1].bShouldSave
+            WebSet paViewStack to aViewStack
+        End
+    End_Procedure
+    
+    // dynamically change the breadcrumb caption for a view
+    { Visibility=Private }
+    Procedure SetCaption Handle hoView String sCaption
+        tWebViewInfo[] aViewStack
+        Integer iIndex
+        Get GetViewIndex hoView to iIndex
+        If (iIndex>=0) Begin
+            WebGet paViewStack to aViewStack 
+            Move sCaption to aViewStack[iIndex].sCaption
+            WebSet paViewStack to aViewStack 
+            Send NotifyClients    // Notify the view stack clients of this change
+        End
+    End_Procedure
+
+    // get breadcrumb caption for this view
+    { Visibility=Private }
+    Function GetCaption Handle hoView Returns String
+        tWebViewInfo[] aViewStack
+        Integer iIndex
+        Get GetViewIndex hoView to iIndex
+        If (iIndex>=0) Begin
+            WebGet paViewStack to aViewStack 
+            Function_Return aViewStack[iIndex].sCaption
+        End
+    End_Function
+    
+    // dynamically change the "header" caption for a view
+    { Visibility=Private }
+    Procedure SetHeaderCaption Handle hoView String sCaption
+        tWebViewInfo[] aViewStack
+        Integer iIndex
+        Get GetViewIndex hoView to iIndex
+        If (iIndex>=0) Begin
+            WebGet paViewStack to aViewStack 
+            Move sCaption to aViewStack[iIndex].sHeaderCaption
+            WebSet paViewStack to aViewStack 
+            Send NotifyClients    // Notify the view stack clients of this change
+        End
+    End_Procedure
+
+    // get header caption for this view
+    { Visibility=Private }
+    Function GetHeaderCaption Handle hoView Returns String
+        tWebViewInfo[] aViewStack
+        Integer iIndex
+        Get GetViewIndex hoView to iIndex
+        If (iIndex>=0) Begin
+            WebGet paViewStack to aViewStack 
+            Function_Return aViewStack[iIndex].sHeaderCaption
+        End
+    End_Function
+
+    // Send this to the stack view to Navigate Back down the View Stack to this view.
+    // The target view can be in any position in the current view stack, but 
+    // it must belong to the current view stack.
+    //
+    // Each view in the view stack, above the target view, will be tested for
+    // data loss (pending saves). If one of the higher views requires a save
+    // then it will be activated instead and the "save changes" message will
+    // be shown.
+    //
+    // Typically, this message will be called by a breadcrumb navigation control.
+    //
+    { Visibility=Private }
+    Procedure NavigateBack Handle hoTargetView Boolean bUnconditional
+        Handle hoView hoInvokingView hoTopView  
+        Integer iIndex
+        Boolean bTopChanged
+        Integer iStackViews
+        tWebViewInfo[] aViewStack
+        
+        Get TopViewHandle to hoTopView
+        If not hoTopView Begin
+            Procedure_Return
+        End
+        
+        Get GetViewIndex hoTargetView to iIndex
+        If (iIndex=-1) Begin
+            Error DFERR_PROGRAM "Target view not in view stack"
+            Procedure_Return
+        End
+
+        If bUnconditional Begin
+            Move hoTargetView to hoView
+        End
+        Else Begin
+            Get InvokingViewHandle to hoInvokingView
+    
+            If (hoTargetView = hoInvokingView) Begin
+                Send NavigateCancel of hoTopView
+                Procedure_Return
+            End
+    
+            // If we are not the current top then make sure we are not popping off
+            // any views that have pending changes (should save)...
+            Get IsViewChanged of hoTopView to bTopChanged
+            Get CanCloseViews hoTargetView True to hoView
+            If (hoView = hoTargetView and bTopChanged) Begin
+               Send NavigateCancelTo of hoTopView hoView 
+               Procedure_Return
+            End
+            Else If (bTopChanged) Begin
+               Move hoTopView to hoView 
+            End
+    
+            If (hoView <> hoTargetView) Begin
+                Send CantCloseChangedViewError
+            End
+        End
+        // finish the navigation back to the view
+        If (hoView <> hoTopView) Begin
+            Send NavigateBackToHere of hoView True 0
+        End
+    End_Procedure
+
+    // navigate back to named view.
+    { Visibility=Private }
+    Procedure NavigateBackByName String sViewName
+        Handle hoView hoTopView
+        If (sViewName <> "") Begin
+            Get WebObjectByName sViewName to hoView
+            Get TopViewHandle to hoTopView
+            If (hoView > 0 and hoView <> hoTopView) Begin
+                Send NavigateBack hoView False
+            End
+        End
+    End_Procedure
+    
+    // this can be augmented to create a custom message
+    { Visibility=Private }
+    Function CantCloseErrorText Returns String
+       Function_Return C_$Cannot_Close_Changed_Web_View
+    End_Function
+    
+    { Visibility=Private } 
+    Procedure CantCloseChangedViewError
+       String sError
+       Get CantCloseErrorText to sError
+       If (sError<>"") Begin
+           Send UserError sError
+       End
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

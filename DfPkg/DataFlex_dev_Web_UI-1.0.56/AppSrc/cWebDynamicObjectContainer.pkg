@@ -1,0 +1,2327 @@
+﻿Use cWebBaseControl.pkg
+Use cWebBaseContainer_mixin.pkg
+Use cWebObjectOwner_mixin.pkg
+Use cWebList.pkg
+Use cWebCardContainer.pkg
+Use tWebValueTree.pkg
+Use tWebDynamicObject.pkg
+Use tWebRadioGroup.pkg
+Use cWebRadio.pkg
+
+
+{ ClassLibrary=WebApp } 
+Class cWebDynamicObjectContainer is a cWebBaseControl
+    Import_Class_Protocol cWebBaseContainer_mixin
+    Import_Class_Protocol cWebObjectOwner_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Send Define_cWebBaseContainer_mixin
+        Send Define_cWebObjectOwner_mixin
+
+        Delegate Send RegisterOnCallEndEvent Self
+
+        { WebProperty=Server,
+          Visibility=Private }
+        Property tWebDynamicObject[] paDynamicObjects               // Contains the object details for all dynamic objects
+        { WebProperty=Server,
+          Visibility=Private }
+        Property tQueuedSyncProp[] paSyncPropsQueue                 // Contains all syncprops that are queued to be sent to the client
+        
+        
+        { WebProperty=Client,
+          Visibility=Private } 
+        Property tWebSyncPropsWrapper ptSyncPropsWrapper            // Synchronized properties for dynamic objects
+        { WebProperty=Server,
+          Visibility=Private }
+        Property tWebSyncPropsWrapper ptSyncServerPropsWrapper            // Synchronized server properties for dynamic objects  
+        { WebProperty=ServerSession }
+        Property tWebSyncPropsWrapper ptSyncServerSessionPropsWrapper            // Synchronized serversession properties for dynamic objects 
+        
+        { WebProperty=Client,
+          Visibility=Private } 
+        Property tWebAdvSyncPropsWrapper ptAdvSyncPropsWrapper      // Advanced synchronized properties for dynamic objects 
+        { WebProperty=Server,
+          Visibility=Private }
+        Property tWebAdvSyncPropsWrapper ptAdvServerSyncPropsWrapper      // Advanced synchronized server properties for dynamic objects 
+        { WebProperty=ServerSession,
+          Visibility=Private }
+        Property tWebAdvSyncPropsWrapper ptAdvServerSessionSyncPropsWrapper      // Advanced synchronized serversession properties for dynamic objects 
+        
+        { WebProperty=Client,
+          Visibility=Private }
+        Property Boolean pbActivated False                          // Indicates whether the container has been loaded/initialized with objects (used to determine if next operation is insertion)                     
+        
+        
+        // Radio button properties
+        { WebProperty=Server,
+          Visibility=Private } 
+        Property tWebDynamicRadioGroup[] paRadioGroups              // Contains all radiogroups in this container       
+        { WebProperty=Server,
+          Visibility=Private }
+        Property String[] paRadioConnectQueue                       // Contains a list of radio groups that have yet to be connected
+        { WebProperty=Server,
+          Visibility=Private }
+        Property String[] paRadioGroupNames                         // Contains the names of radiogroups in this container
+        
+        
+        // Local properties
+        { Visibility=Private }
+        Property tObjectInMemory[] paDynamicObjectsInMemory         // Handles of dynamic objects that have been created during this request
+        { Visibility=Private }
+        Property tWebClientAction[] paClientActionsQueue            // Client actions for objects not yet available on the client
+        
+        
+        { Visibility=Private }
+        Property Boolean pbIsCreating False                         // True when creating new dynamic web objects (so administration needs to be updated with static children)
+        
+        Set piColumnSpan to 0
+        Set pbShowLabel to False
+        
+        Set psJSClass to "df.WebDynamicObjectContainer"
+    End_Procedure
+    
+    
+    // Handles destruction of all dynamic objects at the end of
+    // a webapp client call. Overrides stub implemenation.
+    { Visibility=Private }
+    Procedure OnCallEnd
+        Send DestroyLocalObjects 
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure RegisterChildWebObject Handle hoChild
+        // We just want to interrupt the delegation of this procedure here, because
+        // dynamic objects should not be registered with the static container.
+        Procedure_Return
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure OwnerRegisterWebObject Handle hoWO
+    End_Procedure
+    
+    { Visibility=Private }
+    Function OwnerIsInCallActionScope Handle hoWO Returns Boolean
+        Boolean bRes
+        
+        Get IsInCallActionScope to bRes
+        
+        Function_Return bRes
+    End_Function
+  
+    { Visibility=Private }
+    Function IsDynamicObjectContainer Returns Boolean
+        Function_Return True
+    End_Function
+    
+    // Compares both the object name and the property name of advanced sync props
+    { Visibility=Private }
+    Function CompareAdvProp tWebAdvSyncProp tSyncProp1 tWebAdvSyncProp tSyncProp2 Returns Integer
+        If (Uppercase(tSyncProp1.sO) > Uppercase(tSyncProp2.sO)) ;
+            Function_Return (GT)
+        If (Uppercase(tSyncProp1.sO) < Uppercase(tSyncProp2.sO)) ;
+            Function_Return (LT)
+        
+        If (Uppercase(tSyncProp1.sP) > Uppercase(tSyncProp2.sP)) ;
+            Function_Return (GT)
+        If (Uppercase(tSyncProp1.sP) < Uppercase(tSyncProp2.sP)) ;
+            Function_Return (LT)
+        
+        Function_Return (EQ)
+    End_Function
+    
+    // Compares the property names of two advanced syncprops
+    { Visibility=Private }
+    Function CompareAdvPropNames tWebAdvSyncProp tSyncProp1 tWebAdvSyncProp tSyncProp2 Returns Integer
+        If (Uppercase(tSyncProp1.sP) > Uppercase(tSyncProp2.sP)) ;
+            Function_Return (GT)
+        If (Uppercase(tSyncProp1.sP) < Uppercase(tSyncProp2.sP)) ;
+            Function_Return (LT)
+        
+        Function_Return (EQ)
+    End_Function
+    
+    // Compares object name and property name of a queued syncprop
+    { Visibility=Private }
+    Function CompareQueuedSyncProps tQueuedSyncProp tProp1 tQueuedSyncProp tProp2 Returns Integer
+        If (Uppercase(tProp1.sO) = Uppercase(tProp2.sO)) Begin
+            If (Uppercase(tProp1.sP) = Uppercase(tProp2.sP)) Begin
+                Function_Return (EQ)
+            End
+        End
+    End_Function
+    
+    // Completely clears and resets the container.
+    Procedure ResetContainer
+        String[]                aEmptyStringArray
+        tWebDynamicRadioGroup[] aEmptyRadioGroupArray
+        tWebDynamicObject[]     aEmptyDynamicObjects
+        tQueuedSyncProp[]       aEmptyQueuedSyncPropsArray
+        tWebSyncPropsWrapper    tSyncPropsWrapper
+        tWebAdvSyncPropsWrapper tAdvSyncPropsWrapper 
+        
+        Send DestroyLocalObjects
+        
+        WebSet paDynamicObjects    to aEmptyDynamicObjects
+        WebSet paSyncPropsQueue    to aEmptyQueuedSyncPropsArray
+        WebSet paRadioGroupNames   to aEmptyStringArray
+        WebSet paRadioGroups       to aEmptyRadioGroupArray
+        WebSet paRadioConnectQueue to aEmptyStringArray
+        WebSet pbActivated         to False
+          
+        Move True to tSyncPropsWrapper.bReset
+        WebSet ptSyncPropsWrapper to tSyncPropsWrapper
+        WebSet ptSyncServerPropsWrapper to tSyncPropsWrapper
+        WebSet ptSyncServerSessionPropsWrapper to tSyncPropsWrapper
+        
+        Move True to tAdvSyncPropsWrapper.bReset
+        WebSet ptAdvSyncPropsWrapper to tAdvSyncPropsWrapper
+        WebSet ptAdvServerSyncPropsWrapper to tAdvSyncPropsWrapper
+        WebSet ptAdvServerSessionSyncPropsWrapper to tAdvSyncPropsWrapper
+        
+        Send ClientAction "resetContainer"
+    End_Procedure
+      
+    
+    // ====================
+    // CLIENT COMMUNICATION
+    // ====================
+    
+    // Adds a client action to the queue of client actions. Used to keep track
+    // of client actions that are executed before the objects actually 
+    // exist on the client.
+    { Visibility=Private }
+    Procedure AddClientAction tWebClientAction tClientAction
+        String sName
+        Integer iIndex
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tWebClientAction[] aClientActionsQueue 
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        // This simply removes parentage from the name of the object
+        Get TruncateName tClientAction.sTarget to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            If (aDynamicObjects[iIndex].bRendered) Begin
+                Send AddClientAction of (Owner(Self)) tClientAction
+            End 
+            Else Begin
+                Get paClientActionsQueue to aClientActionsQueue 
+                Move tClientAction to aClientActionsQueue[SizeOfArray(aClientActionsQueue)]
+                Set paClientActionsQueue to aClientActionsQueue
+            End
+        End
+        Else Begin
+            Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, tDynamicObject.sId))
+        End
+    End_Procedure
+    
+    // Cancels a client action that was scheduled.
+    // tClientAction    - Is the action to be executed
+    { Visibility=Private }
+    Procedure OwnerCancelClientAction Handle hoWO String sName
+        Integer iIndex
+        Boolean bRendered
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tWebClientAction[] aClientActionsQueue
+        String sFullName
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        // This simply removes parentage from the name of the object
+        Get WebObjectName of hoWO to sFullName
+        Get TruncateName sFullName to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex].bRendered to bRendered
+            
+            If (bRendered) Begin
+                Send OwnerCancelClientAction of (Owner(Self)) hoWO sName
+            End 
+            Else Begin
+                Get paClientActionsQueue to aClientActionsQueue 
+                For iIndex from 0 to (SizeOfArray(aClientActionsQueue) - 1)
+                    If (aClientActionsQueue[iIndex].sTarget = sFullName and aClientActionsQueue[iIndex].sName = sName) Begin
+                        Move (RemoveFromArray(aClientActionsQueue, iIndex)) to aClientActionsQueue
+                        Decrement iIndex
+                    End
+                Loop
+                Set paClientActionsQueue to aClientActionsQueue
+                
+                
+            End
+        End
+    End_Procedure
+    
+    
+    // Signals that the dynamic objects of this container have been loaded.
+    // Sends all queued client actions to the client to be executed ands
+    // marks all dynamic objects as being rendered.
+    { Visibility=Private }
+    Procedure FinishRendering String[] aObjects
+        Integer icObjects iObject iObjectIndex
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tWebClientAction[] aClientActions aClientActionsQueue
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Get paClientActions of (Host(Self)) to aClientActions
+        Get paClientActionsQueue to aClientActionsQueue
+        Move (AppendArray(aClientActions, aClientActionsQueue)) to aClientActions
+        Set paClientActions of (Host(Self)) to aClientActions
+        
+        Move (ResizeArray(aClientActionsQueue, 0)) to aClientActionsQueue
+        Set paClientActionsQueue to aClientActionsQueue
+        
+        Move (SizeOfArray(aObjects)) to icObjects
+        For iObject from 0 to (icObjects - 1)
+            Send SetRendered aObjects[iObject] True (&aDynamicObjects) True
+        Loop
+        
+        WebSet paDynamicObjects to aDynamicObjects
+        WebSet pbActivated to True
+    End_Procedure
+    
+    
+    // =====================================
+    // DYNAMIC OBJECT CREATION & DESTRUCTION
+    // =====================================
+    
+    // Registers a dynamic object
+    Function CreateDynamicObject Integer iClassId String sDynamicObjectId String sParentId Returns Handle
+        Integer iIndex
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects  
+        
+        WebGet paDynamicObjects to aDynamicObjects
+
+        Move sDynamicObjectId to tDynamicObject.sId
+
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex = -1) Begin                 
+            // Dynamic object has not been registered before, so append it  
+            Move (BinarySearchInsertPos()) to iIndex 
+            
+            //  Check for illegal characters in the id
+            If (Pos("#", sDynamicObjectId) > 0 or Pos("$", sDynamicObjectId) > 0) Begin
+                Error DFERR_PROGRAM (SFormat("# and $ characters are not allowed in sDynamicObjectId ('%1').", sDynamicObjectId))
+                Function_Return C_WebUnresolvedObject 
+            End
+            
+            Move sParentId to tDynamicObject.sParentId
+            Move iClassId to tDynamicObject.iClassId
+            Move False to tDynamicObject.bRendered
+            
+            Move (InsertInArray(aDynamicObjects, iIndex, tDynamicObject)) to aDynamicObjects
+            
+            WebSet paDynamicObjects to aDynamicObjects
+            
+            // Create the object
+            Set pbIsCreating to True
+            Get CreateLocal sDynamicObjectId to hoObj
+            Set pbIsCreating to False
+            
+            // Insert object at end of parent's child structure
+            Send AppendToSiblings sDynamicObjectId
+        End        
+        Else Begin
+            // Object has been registered before, so throw an error
+            Error DFERR_PROGRAM (SFormat(C_$DynamicObjectAlreadyExists, sDynamicObjectId))
+        End
+        
+        Function_Return hoObj
+    End_Function
+    
+    
+    // Moves a dynamic object to a different location, after another specified dynamic object.
+    Procedure MoveDynamicObject String sDynamicObjectId String sInsertAfter
+        String sParentId sName
+        String[] aParams aChildren
+        Integer iIndex iRemoveIndex iInsertIndex
+        Boolean bSendCommand
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex].sParentId to sParentId
+            Move sParentId to tDynamicObject.sId
+            
+            // Remove child from old location
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iRemoveIndex
+                Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iRemoveIndex)) to aDynamicObjects[iIndex].aChildren
+            End  
+            
+            // Insert child at new location
+            Move sInsertAfter to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move aDynamicObjects[iIndex].sParentId to sParentId
+                
+                // Find new parent
+                Move sParentId to tDynamicObject.sId
+                Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+                If (iIndex <> -1) Begin
+                    Move (SearchArray(sInsertAfter, aDynamicObjects[iIndex].aChildren)) to iInsertIndex
+                    If (iInsertIndex <> -1) Begin
+                        Move aDynamicObjects[iIndex].aChildren to aChildren
+                        
+                        // Insert object afer sInsertAfter
+                        Move (InsertInArray(aChildren, iInsertIndex + 1, sDynamicObjectId)) to aChildren
+                        Move aChildren to aDynamicObjects[iIndex].aChildren
+                        WebSet paDynamicObjects to aDynamicObjects
+                        
+                        Move True to bSendCommand
+                    End
+                End
+            End
+        End
+        
+        If (bSendCommand) Begin
+            Send ConnectRadioButtons
+            
+            Get DynamicObject sDynamicObjectId to hoObj
+            Get WebObjectName of hoObj to sName
+            
+            Move sName to aParams[0]
+            
+            Get DynamicObject sInsertAfter to hoObj
+            Get WebObjectName of hoObj to sName
+            
+            Move sName to aParams[1]
+            
+            Send ClientAction "moveDynamicObject" aParams
+        End
+    End_Procedure
+    
+    
+    // Moves a dynamic object to a specific index in a new parent's list of children.
+    Procedure MoveDynamicObjectToIndex String sDynamicObjectId String sParentId Integer iInsertIndex
+        String sName
+        String[] aParams aChildren
+        Integer iIndex iRemoveIndex
+        Boolean bSendCommand
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex].sParentId to tDynamicObject.sId
+            
+            // Remove child from old location
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iRemoveIndex
+                Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iRemoveIndex)) to aDynamicObjects[iIndex].aChildren
+            End  
+                
+            // Find new parent
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move aDynamicObjects[iIndex].aChildren to aChildren
+                
+                // Insert object afer sInsertAfter
+                Move (InsertInArray(aChildren, iInsertIndex, sDynamicObjectId)) to aChildren
+                Move aChildren to aDynamicObjects[iIndex].aChildren
+                WebSet paDynamicObjects to aDynamicObjects
+                
+                Move True to bSendCommand
+            End
+        End
+        
+        If (bSendCommand) Begin
+            Send ConnectRadioButtons
+            
+            Get DynamicObject sDynamicObjectId to hoObj
+            Get WebObjectName of hoObj to sName
+            Move sName to aParams[0] 
+            
+            Get DynamicObject sParentId to hoObj
+            Get WebObjectName of hoObj to sName
+            Move sName to aParams[1] 
+
+            Move iInsertIndex to aParams[2]
+            
+            Send ClientAction "moveDynamicObjectToIndex" aParams
+        End 
+    End_Procedure
+    
+    
+    // Inserts a dynamic object after the given object. The inserted 
+    // object inherits the parent of the object it is inserted after.
+    Procedure InsertDynamicObject String sDynamicObjectId String sInsertAfter
+        String sParentId
+        String[] aParams aChildren aEmptyArray aObjects
+        Integer iIndex iInsertIndex iRemoveIndex
+        Boolean bSendCommand
+        Handle hoObj hoQueuedSyncPropsJson hoObjectJson
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tQueuedSyncProp[] aSyncPropsQueue
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            // Retrieve parent
+            Move aDynamicObjects[iIndex].sParentId to sParentId
+            
+            // Find parent object
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                
+                // Remove previously appended object (in CreateDynamicObject)
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iRemoveIndex
+                Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iRemoveIndex)) to aDynamicObjects[iIndex].aChildren
+                
+                Move (SearchArray(sInsertAfter, aDynamicObjects[iIndex].aChildren)) to iInsertIndex
+                If (iInsertIndex <> -1) Begin
+                    Move aDynamicObjects[iIndex].aChildren to aChildren
+                    
+                    // Insert object afer sInsertAfter
+                    Move (InsertInArray(aChildren, iInsertIndex + 1, sDynamicObjectId)) to aChildren
+                    Move aChildren to aDynamicObjects[iIndex].aChildren
+                    WebSet paDynamicObjects to aDynamicObjects
+                    
+                    Move True to bSendCommand
+                End
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat(C_$DynamicParentNotFound, sParentId))
+            End
+        End
+        Else Begin
+            Error DFERR_PROGRAM (SFormat(C_$CannotInsertDynamic, sInsertAfter))
+        End
+        
+        // Finally, send an insert command to the client
+        If (bSendCommand) Begin
+            Send ConnectRadioButtons
+            
+            Get DynamicObject sDynamicObjectId to hoObj
+            Get SerializeDynamicObject hoObj aDynamicObjects to hoObjectJson
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            Get DynamicObject sParentId to hoObj
+            Get WebObjectName of hoObj to sParentId
+            
+            // Convert queued sync props to JSON
+            Get Create (RefClass(cJsonObject)) to hoQueuedSyncPropsJson
+            Send DataTypeToJson of hoQueuedSyncPropsJson aSyncPropsQueue 
+
+            Move sParentId to aParams[0]
+            Move sInsertAfter to aParams[1]
+            
+            // Send actions to the client
+            Send ClientActionEx "loadQueuedSyncProps" aEmptyArray hoQueuedSyncPropsJson
+            Send ClientActionEx "insertDynamicObject" aParams hoObjectJson
+            
+            Send Destroy of hoObjectJson
+            Send Destroy of hoQueuedSyncPropsJson
+
+            Move sDynamicObjectId to aObjects[0]
+            Send FinishRendering aObjects
+        End
+    End_Procedure
+    
+    
+    // Inserts a dynamic object at a certain index in its parent's list of childen.
+    Procedure InsertDynamicObjectAtIndex String sDynamicObjectId String sParentId Integer iInsertIndex
+        String[] aParams aChildren aEmptyArray aObjects
+        Integer iIndex iRemoveIndex
+        Boolean bSendCommand
+        Handle hoObj hoQueuedSyncPropsJson hoObjectJson
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tQueuedSyncProp[] aSyncPropsQueue
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            // Retrieve parent
+            Move aDynamicObjects[iIndex].sParentId to sParentId
+            
+            // Find parent object
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                
+                // Remove previously appended object (in CreateDynamicObject)
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iRemoveIndex
+                Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iRemoveIndex)) to aDynamicObjects[iIndex].aChildren
+            End
+                
+            // Find new parent
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move aDynamicObjects[iIndex].aChildren to aChildren
+                
+                // Insert object at specified index
+                Move (InsertInArray(aChildren, iInsertIndex, sDynamicObjectId)) to aChildren
+                Move aChildren to aDynamicObjects[iIndex].aChildren
+                WebSet paDynamicObjects to aDynamicObjects
+                
+                Move True to bSendCommand
+            End
+        End
+        
+        If (bSendCommand) Begin
+            Send ConnectRadioButtons
+            
+            Get DynamicObject sDynamicObjectId to hoObj
+            Get SerializeDynamicObject hoObj aDynamicObjects to hoObjectJson
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            Get DynamicObject sParentId to hoObj
+            Get WebObjectName of hoObj to sParentId
+            
+            // Convert queued sync props to JSON
+            Get Create (RefClass(cJsonObject)) to hoQueuedSyncPropsJson
+            Send DataTypeToJson of hoQueuedSyncPropsJson aSyncPropsQueue 
+            
+            // Convert object definition to JSON
+
+            
+            Move sParentId to aParams[0]
+            Move iInsertIndex to aParams[1]
+            
+            // Send actions to the client
+            Send ClientActionEx "loadQueuedSyncProps" aEmptyArray hoQueuedSyncPropsJson
+            Send ClientActionEx "insertDynamicObjectAtIndex" aParams hoObjectJson
+            
+            Send Destroy of hoObjectJson
+            Send Destroy of hoQueuedSyncPropsJson
+
+            Move sDynamicObjectId to aObjects[0]
+            Send FinishRendering aObjects
+        End 
+    End_Procedure
+    
+    
+    // Appends a dynamic object at the end of its parent's list of children.
+    Procedure AppendDynamicObject String sDynamicObjectId
+        String[] aParams aEmptyParams aObjects
+        Handle hoObj hoQueuedSyncPropsJson hoObjectJson
+        tQueuedSyncProp[] aSyncPropsQueue
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Send ConnectRadioButtons
+            
+        Get DynamicObject sDynamicObjectId to hoObj
+        Get SerializeDynamicObject hoObj aDynamicObjects to hoObjectJson
+        WebGet paSyncPropsQueue to aSyncPropsQueue
+        
+        // Convert queued sync props to JSON
+        Get Create (RefClass(cJsonObject)) to hoQueuedSyncPropsJson
+        Send DataTypeToJson of hoQueuedSyncPropsJson aSyncPropsQueue 
+        
+        // Convert object definition to JSON
+        Get DynamicParent sDynamicObjectId to hoObj
+        Get WebObjectName of hoObj to aParams[0]
+        
+        // Send actions to the client
+        Send ClientActionEx "loadQueuedSyncProps" aEmptyParams hoQueuedSyncPropsJson
+        Send ClientActionEx "appendDynamicObject" aParams hoObjectJson
+        
+        Send Destroy of hoObjectJson
+        Send Destroy of hoQueuedSyncPropsJson
+
+        Move sDynamicObjectId to aObjects[0]
+        Send FinishRendering aObjects
+    End_Procedure
+    
+    
+    // Prepends a dynamic object at the beginning of its parent's list of children.
+    Procedure PrependDynamicObject String sDynamicObjectId
+        String sParentId
+        String[] aParams aChildren aEmptyParams aObjects
+        Integer iIndex iRemoveIndex
+        Boolean bSendCommand
+        Handle hoObj hoQueuedSyncPropsJson hoObjectJson
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tQueuedSyncProp[] aSyncPropsQueue
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            // Retrieve parent
+            Move aDynamicObjects[iIndex].sParentId to sParentId
+            
+            // Find parent object
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects)) to iIndex
+            If (iIndex <> -1) Begin
+                
+                // Remove previously appended object (in CreateDynamicObject)
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iRemoveIndex
+                Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iRemoveIndex)) to aChildren
+                
+                // Insert object at beginning of the array
+                Move (InsertInArray(aChildren, 0, sDynamicObjectId)) to aChildren
+                Move aChildren to aDynamicObjects[iIndex].aChildren
+                
+                WebSet paDynamicObjects to aDynamicObjects 
+                Move True to bSendCommand
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat(C_$DynamicParentNotFound, sParentId))
+            End
+        End
+        
+        // Finally, send an insert command to the client
+        If (bSendCommand) Begin
+            Send ConnectRadioButtons
+            
+            Get DynamicObject sDynamicObjectId to hoObj
+            Get SerializeDynamicObject hoObj aDynamicObjects to hoObjectJson
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            // Convert queued sync props to JSON
+            Get Create (RefClass(cJsonObject)) to hoQueuedSyncPropsJson
+            Send DataTypeToJson of hoQueuedSyncPropsJson aSyncPropsQueue 
+            
+            // Convert object definition to JSON
+            Get DynamicParent sDynamicObjectId to hoObj
+            Get WebObjectName of hoObj to aParams[0]
+            
+            // Send actions to the client
+            Send ClientActionEx "loadQueuedSyncProps" aEmptyParams hoQueuedSyncPropsJson
+            Send ClientActionEx "prependDynamicObject" aParams hoObjectJson
+        
+            Send Destroy of hoObjectJson
+            Send Destroy of hoQueuedSyncPropsJson
+    
+            Move sDynamicObjectId to aObjects[0]
+            Send FinishRendering aObjects
+        End
+    End_Procedure
+
+  
+    // Destroys the given dynamic object and removes it from the container.
+    Procedure DestroyDynamicObject String sDynamicObjectId
+        String sParentId sName sRadioGroup
+        String[] aParams aChildren
+        Handle hoObj
+        Integer iIndex iChildIndex iTotal iNum icObjects iObject
+        Variant vResult
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        tWebSyncProps tSyncProp
+        tWebSyncPropsWrapper tSyncPropsWrapper
+        tWebAdvSyncProp tAdvSyncProp
+        tWebAdvSyncPropsWrapper tAdvSyncPropsWrapper
+        tQueuedSyncProp tTest
+        tQueuedSyncProp[] aSyncPropsQueue
+        tWebClientAction[] aClientActionsQueue
+        tWebDynamicRadioGroup[] aRadioGroups
+        tObjectInMemory[] aDynamicObjectsInMemory
+        tObjectInMemory tObjectInMemory
+        
+        Get DynamicObject sDynamicObjectId to hoObj
+        Get WebObjectName of hoObj to sName
+        
+        WebGet paDynamicObjects to aDynamicObjects
+           
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex] to tDynamicObject
+            
+            // Destroy the object's children
+            Move tDynamicObject.aChildren to aChildren
+            Move (SizeOfArray(aChildren)) to icObjects
+            For iObject from 0 to (icObjects - 1)
+                Send DestroyDynamicObject aChildren[iObject]
+            Loop
+            
+            // We need to do a WebGet again, because the array might have changed while children were being destroyed
+            WebGet paDynamicObjects to aDynamicObjects
+            
+            // The index also needs to be updated
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            
+            // Destroy the dynamic object itself
+            Move tDynamicObject.sParentId to sParentId
+            Move (RemoveFromArray(aDynamicObjects, iIndex)) to aDynamicObjects
+            
+            // Remove it from its parent's list of children
+            Move sParentId to tDynamicObject.sId
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move (SearchArray(sDynamicObjectId, aDynamicObjects[iIndex].aChildren)) to iChildIndex
+                If (iChildIndex <> -1) Begin
+                    Move (RemoveFromArray(aDynamicObjects[iIndex].aChildren, iChildIndex)) to aDynamicObjects[iIndex].aChildren
+                End
+            End
+            
+            WebSet paDynamicObjects to aDynamicObjects
+            
+            // Optional: remove radio button from its group
+            If (IsObjectOfClass(hoObj, (RefClass(cWebRadio)))) Begin
+                WebGet paRadioGroups to aRadioGroups
+                
+                Move (SizeOfArray(aRadioGroups)) to iTotal
+                For iNum from 0 to (iTotal - 1)
+                    Move (SearchArray(sDynamicObjectId, aRadioGroups[iNum].aRadioButtons)) to iIndex
+                    If (iIndex <> -1) Begin
+                        Move (RemoveFromArray(aRadioGroups[iNum].aRadioButtons, iIndex)) to aRadioGroups[iNum].aRadioButtons
+                    End
+                Loop
+                
+                WebSet paRadioGroups to aRadioGroups
+            End  
+            
+            // Destroy the local object in memory (we can't leave this untill OnCallEnd as destructors and SyncDDO could change props)
+            Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+            Move sDynamicObjectId to tObjectInMemory.sDynamicObjectId
+            
+            Move (BinarySearchArray(tObjectInMemory, aDynamicObjectsInMemory, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Send Destroy of aDynamicObjectsInMemory[iIndex].hoObj
+                Move (RemoveFromArray(aDynamicObjectsInMemory, iIndex)) to aDynamicObjectsInMemory
+                Set paDynamicObjectsInMemory to aDynamicObjectsInMemory
+            End
+            Move 0 to hoObj
+            // Remove client properties
+            WebGet ptSyncPropsWrapper to tSyncPropsWrapper
+            Move (SortArray(tSyncPropsWrapper.aSyncProps, False)) to tSyncPropsWrapper.aSyncProps
+            
+            Move sName to tSyncProp.sO
+            Move (BinarySearchArray(tSyncProp, tSyncPropsWrapper.aSyncProps, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move (RemoveFromArray(tSyncPropsWrapper.aSyncProps, iIndex)) to tSyncPropsWrapper.aSyncProps
+                WebSet ptSyncPropsWrapper to tSyncPropsWrapper
+            End
+            // Remove server properties
+            WebGet ptSyncServerPropsWrapper to tSyncPropsWrapper
+            Move (BinarySearchArray(tSyncProp, tSyncPropsWrapper.aSyncProps, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move (RemoveFromArray(tSyncPropsWrapper.aSyncProps, iIndex)) to tSyncPropsWrapper.aSyncProps
+                WebSet ptSyncServerPropsWrapper to tSyncPropsWrapper
+            End
+            
+            
+            
+            // Remove advanced properties
+            WebGet ptAdvSyncPropsWrapper to tAdvSyncPropsWrapper
+            Move sName to tAdvSyncProp.sO
+            Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+            If (iIndex <> -1) Begin
+                While (iIndex <> -1)
+                    Move (RemoveFromArray(tAdvSyncPropsWrapper.aAdvSyncProps, iIndex)) to tAdvSyncPropsWrapper.aAdvSyncProps
+                    Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+                Loop
+                WebSet ptAdvSyncPropsWrapper to tAdvSyncPropsWrapper
+            End
+            
+            // Remove advanced server properties
+            WebGet ptAdvServerSyncPropsWrapper to tAdvSyncPropsWrapper
+            Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+            If (iIndex <> -1) Begin
+                While (iIndex <> -1)
+                    Move (RemoveFromArray(tAdvSyncPropsWrapper.aAdvSyncProps, iIndex)) to tAdvSyncPropsWrapper.aAdvSyncProps
+                    Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+                Loop
+                WebSet ptAdvServerSyncPropsWrapper to tAdvSyncPropsWrapper      
+            End
+            
+            // Remove advanced server session properties
+            WebGet ptAdvServerSessionSyncPropsWrapper to tAdvSyncPropsWrapper
+            Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+            If (iIndex <> -1) Begin
+                While (iIndex <> -1)
+                    Move (RemoveFromArray(tAdvSyncPropsWrapper.aAdvSyncProps, iIndex)) to tAdvSyncPropsWrapper.aAdvSyncProps
+                    Move (SearchArray(tAdvSyncProp, tAdvSyncPropsWrapper.aAdvSyncProps)) to iIndex
+                Loop
+                WebSet ptAdvServerSessionSyncPropsWrapper to tAdvSyncPropsWrapper
+            End
+            
+            // Remove queued sync props for this object
+            WebGet paSyncPropsQueue to aSyncPropsQueue            
+            Move (SizeOfArray(aSyncPropsQueue)) to iTotal
+            For iNum from 0 to (iTotal - 1)
+                If (aSyncPropsQueue[iNum].sO = sName) Begin
+                    Move (RemoveFromArray(aSyncPropsQueue, iNum)) to aSyncPropsQueue
+                    
+                    // This is necessary to keep the loop running correctly
+                    Decrement iNum
+                    Decrement iTotal
+                End
+            Loop
+            WebSet paSyncPropsQueue to aSyncPropsQueue
+            
+            // Remove queued client actions for this object
+            Get paClientActionsQueue to aClientActionsQueue
+            Move (SizeOfArray(aClientActionsQueue)) to iTotal
+            For iNum from 0 to (iTotal - 1)
+                If (aClientActionsQueue[iNum].sName = sName) Begin
+                    Move (RemoveFromArray(aClientActionsQueue, iNum)) to aClientActionsQueue
+                    
+                    // This is necessary to keep the loop running correctly
+                    Decrement iNum
+                    Decrement iTotal
+                End
+            Loop
+            
+            // Update client
+            Move sName to aParams[0]
+            Send ClientAction "destroyDynamicObject" aParams
+        End
+    End_Procedure
+                
+    // Appends a child object to the end of the parent's list of children.
+    { Visibility=Private }
+    Procedure AppendToSiblings String sDynamicObjectId
+        String sParentId
+        Integer iIndex iSize
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        // First get parent of the object
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex].sParentId to sParentId
+            Move sParentId to tDynamicObject.sId
+            
+            // Search for parent object
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex = -1) Begin
+                // Root object is not yet in the list of objects, so add it now
+                Move (BinarySearchInsertPos()) to iIndex 
+                Move (InsertInArray(aDynamicObjects, iIndex, tDynamicObject)) to aDynamicObjects
+            End
+           
+            Move (SizeOfArray(aDynamicObjects[iIndex].aChildren)) to iSize
+            Move sDynamicObjectId to aDynamicObjects[iIndex].aChildren[iSize]
+            WebSet paDynamicObjects to aDynamicObjects
+        End
+    End_Procedure
+    
+       
+    // =======================
+    // DYNAMIC OBJECT QUERYING
+    // =======================
+
+    // Checks whether the given object should always create its children when it is being created.
+    // Currently, this is true if the object is a subclass of:
+    //      - cWebList
+    //      - cWebCardContainer
+    { Visibility=Private }
+     Function RequiresChildren Handle hoObj Returns Boolean
+        Integer iClass icClasses
+        Integer[] aClassIds
+        Boolean bResult
+        
+        Move False to bResult
+        
+        Move (RefClass(cWebList)) to aClassIds[SizeOfArray(aClassIds)]
+        Move (RefClass(cWebCardContainer)) to aClassIds[SizeOfArray(aClassIds)]
+        
+        Move (SizeOfArray(aClassIds)) to icClasses
+        For iClass from 0 to (icClasses - 1)
+            If (IsObjectOfClass(hoObj, aClassIds[iClass])) Begin
+                Move True to bResult
+            End
+            
+            If bResult ;
+                Break
+        Loop
+        
+        Function_Return bResult
+    End_Function
+    
+    
+    // Creates all child objects for the given dynamic object in memory
+    { Visibility=Private }
+    Procedure CreateChildren String sDynamicObjectId
+        Integer iIndex
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        String[] aChildren
+        
+        //  Find the dynamic object        
+        WebGet paDynamicObjects to aDynamicObjects
+        Move sDynamicObjectId to tDynamicObject.sId
+
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex >= 0) Begin
+            //  Loop over its children
+            Move aDynamicObjects[iIndex].aChildren to aChildren
+            For iIndex from 0 to (SizeOfArray(aChildren) - 1)
+                Get CreateLocal aChildren[iIndex] to hoObj
+            Loop
+        End
+    End_Procedure
+    
+    
+    //  This function searches the object handle of a dynamic object using its public name.
+    //      sObjectName - Name of the web object.
+    Function FindWebObject String sObjectName Boolean bOptErr Returns Handle
+        Integer iIndex
+        String sDynamicObjectId
+        Handle hoObj
+        
+        // Only the actual name of the object (without parentage) is saved.
+        // Therefore, we first need to remove the parentage from the name
+        // of the object.
+        Get TruncateName sObjectName to sDynamicObjectId
+        
+        Get DynamicObject sDynamicObjectId to hoObj
+        Function_Return hoObj
+    End_Function
+    
+    
+    /*
+    Converts a name received from the client into the identifier used in the dynamic object id 
+    its registration. Dynamic objects their names are prefixed with a # when they are created, so 
+    when a name comes from the client it will include the #.
+    
+    So a full object name for a dynamic object will be:
+    oDynamicContainer@#dynamicobjectid  => dynamicobjectid
+    
+    But a static child will be:
+    oDynamicContainer@#dynamicobjectid.oStaticChild  => dynamicobjectid.oStaticChild
+    
+    But it can also be nested dynamic obects:
+    oDynamicContainer@#dynamicobjectid.#nesteddynamicobject  => #nesteddynamicobject
+    oDynamicContainer@#dynamicobjectid.#nesteddynamicobject.oStaticChild  => #nesteddynamicobject.oStaticChild
+    
+    Note that usually oDynamicContainer@ is already stripped off when this function is called, but 
+    for compatibility we still check for that if we do not find a #.    
+    */
+    { Visibility=Private }
+    Function TruncateName String sObjectName Returns String
+        Integer iPos
+        
+        Move (RightPos("#", sObjectName)) to iPos
+        
+        If (iPos = 0) ;
+            Move (RightPos("$", sObjectName)) to iPos
+        
+        If (iPos > 0) ;
+            Function_Return (Right(sObjectName, (Length(sObjectName) - iPos)))
+        
+        Function_Return sObjectName
+    End_Function
+    
+    
+    // Returns the dynamic object with the given ID. Creates the object
+    // in memory if it doesn't exist yet.
+    Function DynamicObject String sDynamicObjectId Returns Handle
+        Handle hoObj
+        
+        Get DynamicObjectEx sDynamicObjectId to hoObj
+        
+        If (hoObj = C_WebUnresolvedObject) ;
+            Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, sDynamicObjectId))
+            
+        Function_Return hoObj
+    End_Function
+    
+    // Static children of dynamic objects are registered as "<dynamicparentid>.oChild.oChild". 
+    // Dynamic children are registered under their ID which is also set as their name, so then this 
+    // function is called with "<dynamicparentid>.<dynamicchildid>" while we should search for
+    // "<dynamicchildid>". So this function just tries to find them both ways.
+    //
+    // Worst case scenario is that we get collisions when people use the "." in dynamic object id's.
+    //
+    // This function is called by the cWebControlLocator.
+    { Visibility=Private }
+    Function OwnerFindWebObject String sObjectName Returns Handle
+        Handle hoObj
+        String sDynamicObjectId
+        
+        // If this is a root object or static child
+        Get TruncateName sObjectName to sDynamicObjectId
+        
+        Get DynamicObjectEx sDynamicObjectId to hoObj
+        
+        If (hoObj <> C_WebUnresolvedObject) ;
+            Function_Return hoObj
+        
+        Function_Return hoObj
+    End_Function
+    
+    // DynamicObject function that does not give an error.
+    { Visibility=Private }
+    Function DynamicObjectEx String sDynamicObjectId Returns Handle
+        Integer iObjectIndex
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        // Check if the object we are looking for is the top-parent object:
+        // the container itself.
+        If (sDynamicObjectId = "") Begin
+            Function_Return Self
+        End
+        
+        WebGet paDynamicObjects to aDynamicObjects  
+           
+        Move sDynamicObjectId to tDynamicObject.sId
+     
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin
+            Get StoredHandle sDynamicObjectId to hoObj
+            
+            If (hoObj = 0) Begin
+                // This means the object is not yet loaded, so load it now.
+                Get CreateLocal sDynamicObjectId to hoObj
+            End
+        End
+        Else Begin
+            Move C_WebUnresolvedObject to hoObj 
+        End
+        
+        Function_Return hoObj
+    End_Function
+    
+    
+    // Returns the dynamic parent of a dynamic object. 
+    Function DynamicParent String sDynamicObjectId Returns Handle
+        String sParentId
+        Integer iObjectIndex iParentIndex
+        Handle hoParent
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Get TruncateName sDynamicObjectId to sDynamicObjectId
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin
+            Move aDynamicObjects[iObjectIndex].sParentId to sParentId
+            
+            If (sParentId = "") ;
+                Function_Return (Self)
+                
+            Move sParentId to tDynamicObject.sId
+                
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iParentIndex
+            If (iParentIndex <> -1) Begin
+                Get DynamicObject sParentId to hoParent
+            End
+            Else ;
+                Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, sParentId))
+        End
+        Else ;
+            Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, sDynamicObjectId))
+            
+        Function_Return hoParent
+    End_Function
+    
+    
+        
+    // Returns the list of children for an object.
+    Function DynamicChildren String sDynamicObjectId Returns String[]
+        String[] aResult
+        Integer iIndex
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Function_Return aDynamicObjects[iIndex].aChildren
+        End
+        Else Begin
+            If (sDynamicObjectId <> "") ;
+                Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, sDynamicObjectId)) 
+        End
+        Function_Return aResult
+    End_Function
+
+    
+    // =========================
+    // PROCESS MEMORY MANAGEMENT
+    // =========================
+    
+    // Loads all dynamic objects in memory. This method is often called
+    // before rendering, so that all inter-object connections are set
+    // up properly.
+    { Visibility=Private }
+    Procedure CreateAllLocal 
+        Integer icObjects iObject
+        tWebDynamicObject[] aDynamicObjects
+        Handle hoObj
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move (SizeOfArray(aDynamicObjects)) to icObjects
+        For iObject from 0 to (icObjects - 1)
+            Get DynamicObject aDynamicObjects[iObject].sId to hoObj
+        Loop
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Function CreateLongNameUsingParents Handle hoDynamicObject Handle hoMaxParent Returns String
+        String sName
+        Handle hoParent hoCurrent
+        
+        Move hoDynamicObject to hoCurrent
+        Get Parent of hoMaxParent to hoMaxParent
+        
+        While (hoCurrent <> hoMaxParent and hoCurrent <> Self)
+            If (hoCurrent = hoDynamicObject) ;
+                Move (Object_Label(hoCurrent)) to sName
+            Else ;
+                Move (Object_Label(hoCurrent) + "." + sName) to sName
+            
+            Get Parent of hoCurrent to hoCurrent
+        Loop
+        
+        
+        
+        If (Left(sName, 1) = "#") ;
+            Move (Remove(sName, 1, 1)) to sName
+            
+        Function_Return sName
+    End_Function
+    
+    { Visibility=Private }
+    Function SyncDynamicDDOs Handle hoDynamicObj Returns Integer
+        // Override in cWebWidgetContainer
+        Function_Return 0
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure StoreDynamicDDOs Handle hoDynamicObj
+        // Override in cWebWidgetContainer
+    End_Procedure
+    
+    
+    // Creates an object in memory. Due to process pooling, it can not
+    // be guaranteed that all objects are always loaded in memory. 
+    // This method creates an object in the memory of the current process.
+    { Visibility=Private }
+    Function CreateLocal String sDynamicObjectId Returns Handle
+        String sName
+        Boolean bRequiresChildren
+        Integer iObjectIndex iHandleIndex iClassId iParentIndex icObjects iObject iWebRadioClass iSyncRequestResponse
+        Handle hoObj hoParent hoChild   
+        tObjectInMemory tObject
+        tObjectInMemory[] aDynamicObjectsInMemory
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+
+        Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        
+        Move sDynamicObjectId to tObject.sDynamicObjectId
+
+        Move (BinarySearchArray(tObject, aDynamicObjectsInMemory, False)) to iHandleIndex
+        If (iHandleIndex = -1) Begin
+            WebGet paDynamicObjects to aDynamicObjects
+            
+            Move sDynamicObjectId to tDynamicObject.sId
+            
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+            If (iObjectIndex <> -1) Begin
+                Move aDynamicObjects[iObjectIndex].iClassId to iClassId
+                Get DynamicParent sDynamicObjectId to hoParent
+                // DynamicParent might already have created the object. We either retrieve the created object.
+                // Or we do an in-place CreateNamed.
+                Send RetrieveOrCreateHandle sDynamicObjectId (&hoObj) hoParent iClassId
+
+                // Check WebObject
+                If (not(IsAjaxWebObject(hoObj))) Begin
+                    Error DFERR_PROGRAM (SFormat("Class %1 is not a valid cWebObject and can't be used with CreateDynamicObject.", iClassId))
+                    Send Destroy of hoObj
+                    Function_Return C_WebUnresolvedObject
+                End
+                
+                If (Pos(".", sDynamicObjectId) > 0) Begin
+                    // This is a static child so it has been created by DynamicParent which means that all processing below is already done
+                    Function_Return hoObj
+                End
+                
+                Set psDynamicObjectId of hoObj to sDynamicObjectId
+                Set phoOwner of hoObj to (Self)
+                
+                Send ApplyDynamicProps sDynamicObjectId hoObj
+                
+                // Call to attempt to sync DDO's
+                Get SyncDynamicDDOs hoObj to iSyncRequestResponse
+                If (iSyncRequestResponse = -1) Begin
+                    // Request response -1 means no access, so we should destroy this object to prevent any possible calls
+                    Send DestroyDynamicObject sDynamicObjectId
+                    Procedure_Return
+                End
+                
+                // Process belated childs.
+                Send CreateLocalOfChildren hoObj hoObj
+                
+                //  All data bindable objects need AfterAttachDDO message (even through Data awareness is not supported on dynamic objects for now)
+                If (pbDataBindable(hoObj)) Begin
+                    Send AfterAttachDDO of hoObj
+                End         
+                
+                // WebRadio's require slightly different logic. Here we check if the 
+                // object we want to create is a cWebRadio. 
+                Move (RefClass(cWebRadio)) to iWebRadioClass
+                If (IsObjectOfClass(hoObj, iWebRadioClass)) Begin
+                    Send RegisterRadio hoObj   
+                End   
+            End
+            Else ;
+                Error DFERR_PROGRAM (SFormat(C_$DynamicObjectNotRegistered, sDynamicObjectId))
+        End
+        Else Begin
+            Get StoredHandle sDynamicObjectId to hoObj
+        End
+        
+        // In addition to creating the object itself, we also want to create all child objects (for some objects).
+        // This solves issues with objects that have embedded children (such as cWebList).
+        Get RequiresChildren hoObj to bRequiresChildren
+        If (bRequiresChildren) Begin      
+            Send CreateChildren sDynamicObjectId
+        End
+  
+        Function_Return hoObj
+    End_Function
+                
+    // This function is only called from a createlocal with static children (should be guarded by DynamicObjectsInMemory).
+    // It registers the dynamic object if it has to and sets a mangled name on the child to make it unique.
+    // It then recurses down.
+    { Visibility=Private }
+    Procedure CreateLocalFor Handle hoObj Handle hoParent Handle hoMaxParent
+        Integer iIndex iSyncRequestResponse
+        Boolean bRequiresChildren
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects  
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        // Get parent info.
+        Get psDynamicObjectId of hoParent to tDynamicObject.sParentId
+        Get CreateLongNameUsingParents hoObj hoMaxParent to tDynamicObject.sId
+        
+        // Find a registration.
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex = -1) Begin
+            // Dynamic object has not been registered before, so append it  
+            Move (BinarySearchInsertPos()) to iIndex
+            Get ObjectClass of hoObj to tDynamicObject.iClassId
+            Move False to tDynamicObject.bRendered
+            
+            Move (InsertInArray(aDynamicObjects, iIndex, tDynamicObject)) to aDynamicObjects
+            
+            WebSet paDynamicObjects to aDynamicObjects
+        End
+        
+        // Now apply state.
+        Set psDynamicObjectId of hoObj to tDynamicObject.sId
+        Set phoOwner of hoObj to Self
+        
+        Send ApplyDynamicProps tDynamicObject.sId hoObj
+        Send StoreDirectHandle tDynamicObject.sId hoObj
+        
+        // Call to attempt to sync DDO's
+        Get SyncDynamicDDOs hoObj to iSyncRequestResponse
+        If (iSyncRequestResponse = -1) Begin
+            // Request response -1 means no access, so we should destroy this object to prevent any possible calls
+            Send DestroyDynamicObject tDynamicObject.sId
+            Procedure_Return
+        End
+
+        // Process belated childs.
+        Send CreateLocalOfChildren hoObj hoMaxParent
+        
+        //  All data bindable objects need AfterAttachDDO message (even through Data awareness is not supported on dynamic objects for now)
+        If (pbDataBindable(hoObj)) Begin
+            Send AfterAttachDDO of hoObj
+        End
+        
+        // WebRadio's require slightly different logic. Here we check if the 
+        // object we want to create is a cWebRadio. 
+        If (IsObjectOfClass(hoObj, (RefClass(cWebRadio)))) Begin
+            Send RegisterRadio hoObj
+        End
+        
+        Get RequiresChildren hoObj to bRequiresChildren
+        If (bRequiresChildren) Begin      
+            Send CreateChildren tDynamicObject.sId
+        End
+        
+        // Insert object at end of parent's child structure
+        If (pbIsCreating(Self)) Begin
+            Send AppendToSiblings tDynamicObject.sId
+        End
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure CreateLocalOfChildren Handle hoParent Handle hoMaxParent
+        Integer iIndex
+        Handle hoChild
+        
+        For iIndex from 0 to (Child_Count(hoParent) - 1)
+            Get ChildByIndex of hoParent iIndex to hoChild
+            If (IsObjectOfClass(hoChild, RefClass(cWebObject))) Begin
+                Send CreateLocalFor hoChild hoParent hoMaxParent
+            End
+        Loop
+    End_Procedure
+    
+     
+    // Destroys all dynamic objects on the server. This procedure is
+    // executed after every call from the client to prevent spawning too 
+    // many objects in complex applications.
+    { Visibility=Private }
+    Procedure DestroyLocalObjects
+        Handle hoChild
+        Integer iObject
+        String sDynamicObjectName
+        tObjectInMemory[] aDynamicObjectsInMemory
+        tWebClientAction[] aClientActions
+            
+        Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        
+        For iObject from 0 to (Child_Count(Self) - 1)
+            Get ChildByIndex iObject to hoChild
+            If (IsObjectOfClass(hoChild, RefClass(cWebObject))) Begin
+                Get psDynamicObjectId of hoChild to sDynamicObjectName
+                If (IsDynamicObject(hoChild) and SizeOfString(sDynamicObjectName)) Begin
+                    Send StoreDynamicDDOs hoChild
+                    Send Destroy of hoChild
+                    Decrement iObject
+                End
+            End
+        Loop
+        
+        Move (ResizeArray(aDynamicObjectsInMemory, 0)) to aDynamicObjectsInMemory
+        Set paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        Set paClientActionsQueue to aClientActions  // Should be empty, clear to preven cross session leakage
+    End_Procedure
+    
+    
+    // Returns the handle of a dynamic object from memory. Does not guarantee
+    // the object exists or is loaded. Do not use this method to get the handle
+    // of a dynamic object in applications. Use 'Get DynamicObject' instead.
+    { Visibility=Private }
+    Function StoredHandle String sDynamicObjectId Returns Handle
+        Integer iObjectIndex iHandleIndex
+        Handle hoObj
+        tObjectInMemory tObject
+        tObjectInMemory[] aDynamicObjectsInMemory
+
+        Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        
+        Move sDynamicObjectId to tObject.sDynamicObjectId
+        
+        Move (BinarySearchArray(tObject, aDynamicObjectsInMemory, False)) to iHandleIndex
+        If (iHandleIndex <> -1) Begin
+            Move aDynamicObjectsInMemory[iHandleIndex].hoObj to hoObj
+        End
+        
+        Function_Return hoObj
+    End_Function
+    
+    // Saves the handle for a dynamic object in memory.
+    { Visibility=Private }
+    Procedure StoreDirectHandle String sDynamicObjectId Handle hoObj
+        Integer iHandleIndex iIndex
+        tObjectInMemory tObject
+        tObjectInMemory[] aDynamicObjectsInMemory
+        
+        Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        
+        Move sDynamicObjectId to tObject.sDynamicObjectId
+        
+        Move (BinarySearchArray(tObject, aDynamicObjectsInMemory, False)) to iHandleIndex
+        If (iHandleIndex <> -1) Begin
+            // Update handle
+            Move hoObj to aDynamicObjectsInMemory[iHandleIndex].hoObj
+        End
+        Else Begin
+            // Set new handle
+            Move (BinarySearchInsertPos()) to iIndex
+            Move sDynamicObjectId to tObject.sDynamicObjectId
+            Move hoObj to tObject.hoObj
+            
+            Move (InsertInArray(aDynamicObjectsInMemory, iIndex, tObject)) to aDynamicObjectsInMemory
+        End  
+        
+        Set paDynamicObjectsInMemory to aDynamicObjectsInMemory
+    End_Procedure
+    
+    // Saves the handle for a dynamic object in memory.
+    { Visibility=Private }
+    Procedure RetrieveOrCreateHandle String sDynamicObjectId Handle ByRef hoObj Handle hoParent Integer iClassId 
+        Integer iHandleIndex iIndex
+        tObjectInMemory tObject
+        tObjectInMemory[] aDynamicObjectsInMemory
+        
+        Get paDynamicObjectsInMemory to aDynamicObjectsInMemory
+        
+        Move sDynamicObjectId to tObject.sDynamicObjectId
+        
+        Move (BinarySearchArray(tObject, aDynamicObjectsInMemory, False)) to iHandleIndex
+        If (iHandleIndex <> -1) Begin
+            // Retrieve handle
+            Move aDynamicObjectsInMemory[iHandleIndex].hoObj to hoObj            
+        End
+        Else Begin
+            // Create new handle
+            Move (BinarySearchInsertPos()) to iIndex
+            Move sDynamicObjectId to tObject.sDynamicObjectId
+            
+            Get CreateNamed of hoParent iClassId ("#" + sDynamicObjectId) to hoObj
+            Move hoObj to tObject.hoObj
+            
+            Move (InsertInArray(aDynamicObjectsInMemory, iIndex, tObject)) to aDynamicObjectsInMemory
+        End  
+        
+        Set paDynamicObjectsInMemory to aDynamicObjectsInMemory
+    End_Procedure
+    
+    
+    // ==========================================
+    // SYNCHRONIZED PROPERTY HANDLING (3RD LEVEL)
+    // ==========================================
+    
+    // Dynamic objects have three levels of properties. The first level contains properties that
+    // are set in the subclass definition of the object. The second level properties (called 
+    // dynamic properties) can be different for individual instances of objects. Two dynamic
+    // buttons of the same class can have different initial properties. The third and final 
+    // level contains properties that are changed at runtime. This is done using regular
+    // WebGet/WebSet operations.
+    
+    
+    // Sets a synchronized property.
+    { Visibility=Private }
+    Procedure OwnerSetSyncProp Handle hoObj tWebPropMetaData ByRef pubProp Variant vPropValue
+        Integer iPubPropIndex
+        String sObjName sDynamicObjectId
+        Boolean bIsRendered bAdvanced bIsAjaxWebObject
+        tWebNameValue tProp
+        tWebAdvSyncProp tAdvProp
+        tQueuedSyncProp tQueuedProp
+        tQueuedSyncProp[] aSyncPropsQueue
+
+                
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObj to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, Name(hoObj), "WebSet " + pubProp.sName, C_NewLine+C_NewLine))
+            Procedure_Return
+        End
+               
+        
+        Get WebObjectName of hoObj to sObjName
+        Get psDynamicObjectId of hoObj to sDynamicObjectId
+        Move False to bAdvanced
+        
+        // Check if property is advanced
+        If (pubProp.eType = cArgArray or pubProp.eType = cArgStruct) Begin
+            Move True to bAdvanced
+        End
+        
+        // If the object has not been rendered yet, it is not known to the client.
+        // Therefore, all properties set before an object is rendered will be added
+        // to a special queue, so they are initialized when the object is created.
+        Get IsRendered sDynamicObjectId to bIsRendered
+        If (not(bIsRendered) and (pubProp.eMode = wptClient or pubProp.eMode = wptClientProtected)) Begin
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            Move sObjName to tQueuedProp.sO
+            Move pubProp.sName to tQueuedProp.sP
+            
+            If (bAdvanced) Begin
+                Move True to tQueuedProp.bA
+                ValueTreeSerializeParameter vPropValue to tQueuedProp.tVT  
+            End
+            Else Begin
+                Move False to tQueuedProp.bA
+                Get ConvertToTransport of hoObj pubProp.hmGetter vPropValue pubProp.eType to tQueuedProp.sV
+            End
+            
+            Move tQueuedProp to aSyncPropsQueue[SizeOfArray(aSyncPropsQueue)]
+            WebSet paSyncPropsQueue to aSyncPropsQueue
+            
+            If (pubProp.eMode = wptClient) ;
+                Procedure_Return
+        End
+        
+        // This function accepts both advanced and regular properties.        
+        If (bAdvanced) Begin
+            ValueTreeSerializeParameter vPropValue to tAdvProp.tV
+            Move sObjName to tAdvProp.sO
+            Move pubProp.sName to tAdvProp.sP
+            
+            If (pubProp.eMode = wptClientProtected) Begin
+                Send SetAdvPropInWrapper wptClient (&tAdvProp)
+                Send SetAdvPropInWrapper wptServerPage (&tAdvProp)
+            End
+            Else Begin
+                Send SetAdvPropInWrapper pubProp.eMode (&tAdvProp)
+            End
+        End
+        Else Begin
+            Move pubProp.sName to tProp.sN
+            Get ConvertToTransport of hoObj pubProp.hmGetter vPropValue pubProp.eType to  tProp.sV
+           
+            If (pubProp.eMode = wptClientProtected) Begin
+                If (bIsRendered) ;
+                    Send SetPropInWrapper wptClient sObjName (&tProp)
+                Send SetPropInWrapper wptServerPage sObjName (&tProp)
+            End
+            Else Begin
+                Send SetPropInWrapper pubProp.eMode sObjName (&tProp)
+            End
+           
+        End 
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure SetPropInWrapper Integer eMode String sObjectName tWebNameValue ByRef newProp
+        tWebSyncPropsWrapper wrapper
+        tWebSyncProps objProps
+        Integer iObjectIndex iPropIndex
+        
+        If (eMode = wptClient) Begin
+            WebGet ptSyncPropsWrapper to wrapper
+            Move (SortArray(wrapper.aSyncProps, False)) to wrapper.aSyncProps
+        End
+        Else If (eMode = wptServerPage) Begin
+            WebGet ptSyncServerPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerSession) Begin
+            WebGet ptSyncServerSessionPropsWrapper to wrapper 
+        End
+        
+        
+        Move sObjectName to objProps.sO
+        
+        // First find the object containing all properties for a dynamic object            
+        Move (BinarySearchArray(objProps, wrapper.aSyncProps, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin
+            Move (BinarySearchArray(newProp, wrapper.aSyncProps[iObjectIndex].aP, False)) to iPropIndex
+            If (iPropIndex <> -1) Begin
+                // Update property value
+                Move newProp.sV to wrapper.aSyncProps[iObjectIndex].aP[iPropIndex].sV
+            End
+            Else Begin
+                // Add new property
+                Move (BinarySearchInsertPos()) to iPropIndex
+                
+                Move (InsertInArray(wrapper.aSyncProps[iObjectIndex].aP, iPropIndex, newProp)) to wrapper.aSyncProps[iObjectIndex].aP
+            End
+        End
+        Else Begin
+            // Object has no synchronized properties yet, so add an entry for this object
+            Move (BinarySearchInsertPos()) to iObjectIndex
+            
+            Move newProp to objProps.aP[0]
+            
+            Move (InsertInArray(wrapper.aSyncProps, iObjectIndex, objProps)) to wrapper.aSyncProps
+        End
+        
+        If (eMode = wptClient) Begin
+            WebSet ptSyncPropsWrapper to wrapper
+            Move (SortArray(wrapper.aSyncProps, False)) to wrapper.aSyncProps
+        End
+        Else If (eMode = wptServerPage) Begin
+            WebSet ptSyncServerPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerSession) Begin
+            WebSet ptSyncServerSessionPropsWrapper to wrapper 
+        End        
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure SetAdvPropInWrapper  Integer eMode tWebAdvSyncProp ByRef newProp
+        tWebAdvSyncPropsWrapper wrapper
+        Integer iPropIndex
+        
+        If (eMode = wptClient) Begin
+            WebGet ptAdvSyncPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerPage) Begin
+            WebGet ptAdvServerSyncPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerSession) Begin
+            WebGet ptAdvServerSessionSyncPropsWrapper to wrapper 
+        End
+
+        
+        
+        // First find the object containing all advanced properties for a dynamic object            
+        Move (SearchArray(newProp, wrapper.aAdvSyncProps, Self, RefFunc(CompareAdvProp))) to iPropIndex
+        Move newProp to wrapper.aAdvSyncProps[iPropIndex]
+        
+        If (eMode = wptClient) Begin
+            WebSet ptAdvSyncPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerPage) Begin
+            WebSet ptAdvServerSyncPropsWrapper to wrapper
+        End
+        Else If (eMode = wptServerSession) Begin
+            WebSet ptAdvServerSessionSyncPropsWrapper to wrapper 
+        End
+    End_Procedure
+    
+    
+    
+    // Gets a synchronized property.
+    { Visibility=Private }
+    Function OwnerGetSyncProp Handle hoObj tWebPropMetaData ByRef pubProp Returns String
+        String sResult
+        Integer iObjectIndex iPropIndex 
+        String sObjName sDynamicObjectId
+        Boolean bExists bIsRendered bIsAjaxWebObject
+        tWebNameValue tProp tCompareProp
+        tWebValueTree tVT
+        tWebSyncProps tCompareSyncProps
+        tWebSyncProps[] aSyncProps
+        tWebSyncPropsWrapper wrapper
+        tQueuedSyncProp tQueuedProp
+        tQueuedSyncProp[] aSyncPropsQueue 
+        
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObj to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, Name(hoObj), "WebSet " + pubProp.sName, C_NewLine+C_NewLine))
+            Procedure_Return
+        End
+        
+        
+        Get WebObjectName of hoObj to sObjName
+        Get psDynamicObjectId of hoObj to sDynamicObjectId
+        
+        
+        // If the object has not been rendered yet, it is not known to the client.
+        // Therefore, all properties set before an object is rendered are added
+        // to a special queue, so they are initialized when the object is created.
+        Get IsRendered sDynamicObjectId to bIsRendered
+        If (not(bIsRendered) and pubProp.eMode = wptClient) Begin
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            Move sObjName to tQueuedProp.sO
+            Move pubProp.sName to tQueuedProp.sP
+            Move (SearchArray(tQueuedProp, aSyncPropsQueue, (Self), (RefFunc(CompareQueuedSyncProps)))) to iPropIndex
+            If (iPropIndex <> -1) Begin
+                Move aSyncPropsQueue[iPropIndex].sV to sResult
+                
+                Function_Return sResult
+            End
+            
+            // This code is only reached if the property is not synchronized. Therefore, 
+            // return the default value of the property.
+            Get pubProp.hmGetter of hoObj to sResult
+            Function_Return sResult  
+        End
+        
+        // This function accepts only scalar properties
+        If (pubProp.eMode = wptClient) Begin
+            WebGet ptSyncPropsWrapper to wrapper
+            Move (SortArray(wrapper.aSyncProps, False)) to wrapper.aSyncProps
+        End
+        Else If (pubProp.eMode = wptServerPage or pubProp.eMode = wptClientProtected) Begin
+            WebGet ptSyncServerPropsWrapper to wrapper
+        End
+        Else If (pubProp.eMode = wptServerSession) Begin
+            WebGet ptSyncServerSessionPropsWrapper to wrapper 
+        End
+        
+        Move sObjName to tCompareSyncProps.sO
+        
+        // Check if object has any synchronized properties
+        Move (BinarySearchArray(tCompareSyncProps, wrapper.aSyncProps, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin    
+            Move pubProp.sName to tCompareProp.sN
+                  
+            // Check if object has given synchronized property
+            Move (BinarySearchArray(tCompareProp, wrapper.aSyncProps[iObjectIndex].aP, False)) to iPropIndex
+            If (iPropIndex <> -1) Begin
+                Get ConvertFromTransport of hoObj pubProp.hmGetter wrapper.aSyncProps[iObjectIndex].aP[iPropIndex].sV pubProp.eType to sResult
+                Function_Return sResult
+            End
+        End
+        
+        // This code is only reached if the property is not synchronized. Therefore, 
+        // return the default value of the property.
+        Get pubProp.hmGetter of hoObj to sResult
+        Function_Return sResult             
+    End_Function
+   
+   
+    // Gets a synchronized property.
+    { Visibility=Private }
+    Function OwnerGetAdvSyncProp Handle hoObj tWebPropMetaData ByRef pubProp Returns Variant
+        Variant vResult
+        Integer iPropIndex iPubPropIndex iGetterIndex
+        String sObjName sDynamicObjectId
+        Boolean bExists bIsRendered bIsAjaxWebObject
+        tWebAdvSyncProp tCompareAdvProp 
+        tWebAdvSyncPropsWrapper wrapper
+        tQueuedSyncProp tQueuedProp
+        tQueuedSyncProp[] aSyncPropsQueue 
+                
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObj to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, Name(hoObj), "WebSet " + pubProp.sName, C_NewLine+C_NewLine))
+            Procedure_Return
+        End
+        
+        
+        Get WebObjectName of hoObj to sObjName
+        Get psDynamicObjectId of hoObj to sDynamicObjectId
+            
+        // If the object has not been rendered yet, it is not known to the client.
+        // Therefore, all properties set before an object is rendered are added
+        // to a special queue, so they are initialized when the object is created.
+        Get IsRendered sDynamicObjectId to bIsRendered
+        If (not(bIsRendered) and pubProp.eMode = wptClient) Begin
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            Move sObjName to tQueuedProp.sO
+            Move pubProp.sName to tQueuedProp.sP
+            Move (SearchArray(tQueuedProp, aSyncPropsQueue, (Self), (RefFunc(CompareQueuedSyncProps)))) to iPropIndex
+            If (iPropIndex <> -1) Begin
+                Get pubProp.hmGetter of hoObj to vResult
+                ValueTreeDeserializeParameter aSyncPropsQueue[iPropIndex].tVT to vResult
+            
+                Function_Return vResult
+            End
+            
+            // This code is only reached if the property is not synchronized. Therefore, 
+            // return the default value of the property.
+            Get pubprop.hmGetter of hoObj to vResult
+            Function_Return vResult  
+        End
+        
+        // This function accepts only non-scalar(advanced)
+        If (pubProp.eMode = wptClient) Begin
+            WebGet ptAdvSyncPropsWrapper to wrapper
+            Move (SortArray(wrapper.aAdvSyncProps, False)) to wrapper.aAdvSyncProps
+        End
+        Else If (pubProp.eMode = wptServerPage or pubProp.eMode = wptClientProtected) Begin
+            WebGet ptAdvServerSyncPropsWrapper to wrapper
+        End
+        Else If (pubProp.eMode = wptServerSession) Begin
+            WebGet ptAdvServerSessionSyncPropsWrapper to wrapper 
+        End
+        
+        Move sObjName to tCompareAdvProp.sO
+        Move pubProp.sName to tCompareAdvProp.sP
+        
+        // Check if object has any advanced synchronized properties
+        Move (SearchArray(tCompareAdvProp, wrapper.aAdvSyncProps, Self, (RefFunc(CompareAdvProp)))) to iPropIndex
+        If (iPropIndex <> -1) Begin 
+            
+            Get pubProp.hmGetter of hoObj to vResult
+            ValueTreeDeserializeParameter wrapper.aAdvSyncProps[iPropIndex].tV to vResult
+        
+            Function_Return vResult
+        End
+        
+        
+        // This code is only reached if the property is not synchronized. Therefore, 
+        // return the default value of the property.
+        Get pubProp.hmGetter of hoObj to vResult
+        Function_Return vResult             
+    End_Function
+    
+    // =====================================
+    // DYNAMIC PROPERTY HANDLING (2ND LEVEL)
+    // =====================================
+    
+    // Sets a dynamic property.
+    { Visibility=Private }
+    Procedure SetDynamicProp Handle hoObj tWebPropMetaData pubProp Variant vPropValue
+        Integer iObjectIndex iPropIndex iSize iIndex
+        String sDynamicObjectId sName
+        Boolean bAdvanced
+        Handle hmGetter
+        tWebNameValue   tCompareProp
+        tWebAdvSyncProp tCompareAdvProp
+        tWebValueTree tVT
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        Get WebObjectName to sName
+        WebGet paDynamicObjects to aDynamicObjects
+        Get psDynamicObjectId of hoObj to sDynamicObjectId
+
+        
+        If (pubProp.eType = cArgArray or pubProp.eType = cArgStruct) Begin
+            Move True to bAdvanced
+        End
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin    
+            If (bAdvanced) Begin         
+                Move pubProp.sName to tCompareAdvProp.sP
+                ValueTreeSerializeParameter vPropValue to tVT
+                
+                // Then find the advanced property we are looking for
+                Move (BinarySearchArray(tCompareAdvProp, aDynamicObjects[iObjectIndex].aAdvProps, Self, RefFunc(CompareAdvPropNames))) to iPropIndex
+                If (iPropIndex <> -1) Begin
+                    // Update property value
+                    Move tVT to aDynamicObjects[iObjectIndex].aAdvProps[iPropIndex].tV
+                End
+                Else Begin
+                    // Add new property     
+                    Move (BinarySearchInsertPos()) to iIndex
+                    
+                    Move pubProp.sName to tCompareAdvProp.sP
+                    Move tVT       to tCompareAdvProp.tV
+                    Move (InsertInArray(aDynamicObjects[iObjectIndex].aAdvProps, iIndex, tCompareAdvProp)) to aDynamicObjects[iObjectIndex].aAdvProps
+                End
+                
+                WebSet paDynamicObjects to aDynamicObjects
+            End
+            Else Begin              
+                Move pubProp.sName to tCompareProp.sN
+                
+                // Find the property we are looking for
+                Move (BinarySearchArray(tCompareProp, aDynamicObjects[iObjectIndex].aProps, False)) to iPropIndex
+                If (iPropIndex <> -1) Begin
+                    // Update prop value
+                    Move pubProp.sName to aDynamicObjects[iObjectIndex].aProps[iPropIndex].sN
+                    Move (String(vPropValue)) to aDynamicObjects[iObjectIndex].aProps[iPropIndex].sV
+                End
+                Else Begin
+                    // Add new property                   
+                    Move (BinarySearchInsertPos()) to iIndex
+                    
+                    Move pubProp.sName to tCompareProp.sN
+                    Move (String(vPropValue)) to tCompareProp.sV
+                    Move (InsertInArray(aDynamicObjects[iObjectIndex].aProps, iIndex, tCompareProp)) to aDynamicObjects[iObjectIndex].aProps
+                End
+                
+                WebSet paDynamicObjects to aDynamicObjects
+            End
+        End
+    End_Procedure
+    
+    
+    // Updates the given object with all set dynamic properties
+    { Visibility=Private }
+    Procedure ApplyDynamicProps String sDynamicObjectId Handle hoObj
+        String sPropName sPropValue sObject
+        Integer iObjectIndex icProps iProp iPubPropIndex
+        Variant vPropValue
+        Handle hmSetter hmGetter
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        String[] aParams
+        tWebPropMetaData pubProp
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin           
+            // Apply regular props
+            Move (SizeOfArray(aDynamicObjects[iObjectIndex].aProps)) to icProps
+            For iProp from 0 to (icProps - 1) 
+                Move aDynamicObjects[iObjectIndex].aProps[iProp].sN to sPropName
+                Move aDynamicObjects[iObjectIndex].aProps[iProp].sV to sPropValue
+                
+                Get FindWebPropertyMetaByName of hoObj sPropName to pubProp
+                Set pubProp.hmSetter of hoObj to sPropValue
+            Loop
+            
+            // Apply advanced props
+            Move (SizeOfArray(aDynamicObjects[iObjectIndex].aAdvProps)) to icProps
+            For iProp from 0 to (icProps - 1)
+                Move aDynamicObjects[iObjectIndex].aAdvProps[iProp].sP to sPropName
+                Get FindWebPropertyMetaByName of hoObj sPropName to pubProp
+                
+                If (pubProp.hmGetter <= 0) Begin
+                    Get Object_Label of hoObj to sObject
+                    Error DFERR_PROGRAM (SFormat(C_$WebAppPropertyNotPublished, "WebSet", sPropName, sObject, C_NewLine+C_NewLine))        
+                    Function_Return
+                End
+                
+                // This step is important, as otherwise the system won't know
+                // the actual type of the variant.
+                Get pubProp.hmGetter of hoObj to vPropValue
+                ValueTreeDeserializeParameter aDynamicObjects[iObjectIndex].aAdvProps[iProp].tV to vPropValue
+                Set pubprop.hmSetter of hoObj to vPropValue
+            Loop
+        End
+    End_Procedure   
+    
+    
+    // =========================
+    // DYNAMIC OBJECTS RENDERING
+    // =========================
+   
+    // This function either loads all dynamic objects for the first time, 
+    // or it performs an incremental update by inserting a new object.
+    Procedure Activate
+        Boolean bActivated
+        Integer iIndex
+        String[] aEmptyArray aChildren
+        Handle hoQueuedSyncPropsJson hoObjectsJson
+        tQueuedSyncProp[] aSyncPropsQueue
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        
+        WebGet pbActivated to bActivated
+        
+        If (not(bActivated)) Begin
+            Send ConnectRadioButtons
+            
+            Get SerializeContainer to hoObjectsJson 
+            WebGet paSyncPropsQueue to aSyncPropsQueue
+            
+            // Send objects to client
+            Get Create (RefClass(cJsonObject)) to hoQueuedSyncPropsJson
+            Send DataTypeToJson of hoQueuedSyncPropsJson aSyncPropsQueue 
+
+            Send ClientActionEx "loadQueuedSyncProps" aEmptyArray hoQueuedSyncPropsJson
+            Send ClientActionEx "loadDynamicObjects" aEmptyArray hoObjectsJson
+            
+            Send Destroy of hoQueuedSyncPropsJson
+            Send Destroy of hoObjectsJson
+              
+            // Finish rendering
+            WebGet paDynamicObjects to aDynamicObjects
+            Move "" to tDynamicObject.sId
+            
+            Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+            If (iIndex <> -1) Begin
+                Move aDynamicObjects[iIndex].aChildren to aChildren
+                Send FinishRendering aChildren
+            End
+        End
+    End_Procedure
+    
+    
+    // Checks if the given object is currently rendered.
+    Function IsRendered String sDynamicObjectId Returns Boolean
+        Integer iObjectIndex
+        Boolean bReturn
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[]  aDynamicObjects
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin
+            Move aDynamicObjects[iObjectIndex].bRendered to bReturn
+        End
+        
+        Function_Return bReturn
+    End_Function
+    
+    
+    // Marks the given dynamic object as rendered client-side.
+    { Visibility=Private }
+    Procedure SetRendered String sDynamicObjectId Boolean bRendered tWebDynamicObject[] ByRef aDynamicObjects Boolean bChildren 
+        Integer iObjectIndex iChild icChildren
+        tWebDynamicObject tDynamicObject
+        
+        Move sDynamicObjectId to tDynamicObject.sId
+        
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iObjectIndex
+        If (iObjectIndex <> -1) Begin
+            Move bRendered to aDynamicObjects[iObjectIndex].bRendered
+        End
+        
+        If (bChildren) Begin
+            Move (SizeOfArray(aDynamicObjects[iObjectIndex].aChildren)) to icChildren
+            For iChild from 0 to (icChildren - 1)
+                Send SetRendered aDynamicObjects[iObjectIndex].aChildren[iChild] bRendered (&aDynamicObjects) bChildren
+            Loop
+        End
+    End_Procedure
+    
+    
+    // Serializes the container to a tWebValueTree.
+    { Visibility=Private }
+    Function SerializeContainer Returns Handle
+        Integer iIndex icObjects iObject icBuffers iBuffer iSize
+        String sDynamicObjectId
+        Handle hoObj
+        tWebDynamicObject tDynamicObject
+        tWebDynamicObject[] aDynamicObjects
+        String[] aObjectList
+        
+        Handle[] aClasses
+        Handle hjWrapper hjClasses hjObjects hjObjectDef
+        
+        
+        Get Create (RefClass(cJsonObject)) to hjWrapper
+        Get Create (RefClass(cJsonObject)) to hjClasses
+        Get Create (RefClass(cJsonObject)) to hjObjects
+        Send InitializeJsonType of hjWrapper jsonTypeObject
+        Send InitializeJsonType of hjClasses jsonTypeArray
+        Send InitializeJsonType of hjObjects jsonTypeArray
+        
+        WebGet paDynamicObjects to aDynamicObjects
+        
+        Move "" to tDynamicObject.sId
+        Move (BinarySearchArray(tDynamicObject, aDynamicObjects, False)) to iIndex
+        If (iIndex <> -1) Begin
+            Move aDynamicObjects[iIndex].aChildren to aObjectList
+            
+            Move (SizeOfArray(aObjectList)) to icObjects
+            For iObject from 0 to (icObjects - 1)
+                Get DynamicObject aObjectList[iObject] to hoObj
+                Get DoSerializeObject of hoObj hjClasses (&aClasses) to hjObjectDef 
+                Send AddMember of hjObjects hjObjectDef
+                Send Destroy of hjObjectDef
+            Loop
+        End
+        
+        Send SetMember of hjWrapper "aClasses" hjClasses
+        Send SetMember of hjWrapper "aObjects" hjObjects
+        Send Destroy of hjClasses
+        Send Destroy of hjObjects
+        
+        Function_Return hjWrapper
+    End_Function
+    
+    
+    // Serializes the given dynamic object.
+    { Visibility=Private }
+    Function SerializeDynamicObject Handle hoObj tWebDynamicObject[] aDynamicObjects Returns Handle
+        Handle hjObjectDef
+        
+        Get SerializeObject of hoObj to hjObjectDef
+
+        Function_Return hjObjectDef
+    End_Function
+    
+    
+    // =============
+    // RADIO BUTTONS
+    // =============
+    
+    // Radio buttons require some additional logic to work properly.
+    
+    { Visibility=Private }
+    Procedure AddRadio Handle hoRadio
+        // We just want to interrupt the delegation of this procedure here. The actual
+        // registration of the radio object happens in cWebDynamicObjectContainer:CreateLocal(1).
+        Procedure_Return
+    End_Procedure  
+    
+    
+    // Registers the passed cWebRadio object. The object's group is determined and the radio
+    // is registered with the rest of the objects in that group. If this is the first radio
+    // object in the group then it will become the "master" radio object for that group.
+    { Visibility=Private }
+    Procedure RegisterRadio Handle hoRadio
+        String sGroupName sName
+        Integer iGroup icGroup icRadio iSize iIndex
+        String[] aRadioGroupNames
+        String[] aRegisteredRadios
+        String[] aConnectQueue
+        tWebDynamicRadioGroup[] aRadioGroups
+        
+        Get psDynamicObjectId of hoRadio to sName
+        
+        Get psGroupName of hoRadio to sGroupName
+        WebGet paRadioGroups to aRadioGroups
+        WebGet paRadioGroupNames to aRadioGroupNames
+        
+        // Is this a new group?....
+        Move (SearchArray(sGroupName, aRadioGroupNames, Desktop, RefFunc(DFSTRICMP))) to iGroup   // case insensitive search
+        
+        If (iGroup = -1) Begin
+            // Create a new group and make this radio button the master....
+            Move (SizeOfArray(aRadioGroups)) to icGroup
+
+            Move sName      to aRadioGroups[icGroup].sMaster
+            Move sName      to aRadioGroups[icGroup].aRadioButtons[0]
+            Move sGroupName to aRadioGroups[icGroup].sGroupName
+            Move sGroupName to aRadioGroupNames[icGroup]
+            
+            // Save the changes....
+            WebSet paRadioGroups to aRadioGroups
+            WebSet paRadioGroupNames to aRadioGroupNames
+        End
+        Else Begin
+            Move (SearchArray(sName, aRadioGroups[iGroup].aRadioButtons, Desktop, RefFunc(DFSTRICMP))) to iIndex
+            
+            If (iIndex <> -1) ;
+                Procedure_Return
+            
+            // Add this radio to the existing group....
+            Move sName to aRadioGroups[iGroup].aRadioButtons[-1]
+            
+            // Save the changes....
+            WebSet paRadioGroups to aRadioGroups
+            
+            // Save current group name
+            Move aRadioGroupNames[iGroup] to sGroupName
+        End 
+        
+        // Add the group name to the list of groups that are to be connected
+        WebGet paRadioConnectQueue to aConnectQueue
+        Move (SearchArray(sGroupName, aConnectQueue)) to iIndex
+        If (iIndex = -1) Begin
+            Move sGroupName to aConnectQueue[-1]
+            WebSet paRadioConnectQueue to aConnectQueue
+        End
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure ConnectRadioButtons
+        // Radio button Helper:
+        //
+        // Iterate all of the registered radio groups and connect the cWebRadio objects to their master
+        // radio buttons.
+        String sValue sTemp sMaster sRadio sMasterFullName
+        String[] aConnectQueue aRadioGroupNames
+        Handle hoRadio hoMaster
+        Integer iGroup icGroup iQueuedGroup
+        Integer iRadio icRadio
+        tWebDynamicRadioGroup[] aRadioGroups
+        
+        WebGet paRadioGroups to aRadioGroups
+        WebGet paRadioConnectQueue to aConnectQueue
+        WebGet paRadioGroupNames to aRadioGroupNames
+        Move (SizeOfArray(aConnectQueue)) to icGroup
+        
+        For iQueuedGroup from 0 to (icGroup - 1)
+            Move (SearchArray(aConnectQueue[iQueuedGroup], aRadioGroupNames)) to iGroup
+            If (iGroup <> -1) Begin
+                Move (SizeOfArray(aRadioGroups[iGroup].aRadioButtons)) to icRadio
+                Move "" to sValue
+                Move aRadioGroups[iGroup].sMaster to sMaster 
+                Get DynamicObject aRadioGroups[iGroup].sMaster to hoMaster
+                
+                For iRadio from 0 to (icRadio - 1)
+                    // Set the master radio....
+                    Move aRadioGroups[iGroup].aRadioButtons[iRadio] to sRadio
+                    Get DynamicObject sRadio to hoRadio
+                    
+                    WebSet psMasterRadio of hoRadio to aRadioGroups[iGroup].sMaster
+                    If (sRadio <> aRadioGroups[iGroup].sMaster) Begin
+                        Get WebObjectName of hoMaster to sMasterFullName
+                        WebSet psMasterName of hoRadio to sMasterFullName
+                    End
+                    
+                    // Get the last non-null psValue setting....
+                    WebGet psValue of hoRadio to sTemp
+                    If (sTemp <> "") Begin
+                        Move sTemp to sValue
+                    End
+                Loop
+                
+                // If there is no psValue setting then set it to the psRadioValue value of the master radio....
+                If (sValue = "") Begin
+                    Get DynamicObject aRadioGroups[iGroup].sMaster to hoMaster
+                    WebGet psRadioValue of hoMaster to sValue
+                End
+                
+                // Synchronize all radios in this group to the same psValue...
+                If (sValue <> "") Begin
+                    For iRadio from 0 to (icRadio-1)
+                        Move aRadioGroups[iGroup].aRadioButtons[iRadio] to sRadio
+                        Get DynamicObject sRadio to hoRadio
+                        
+                        WebSet psValue of hoRadio to sValue
+                    Loop
+                End
+            End
+        Loop
+        
+        WebSet paRadioConnectQueue to (ResizeArray(aConnectQueue, 0))
+    End_Procedure
+    
+    
+    // Finds and returns the radiogroup to which the given radio belongs.
+    { Visibility=Private }
+    Function FindRadioGroup String sDynamicObjectId Boolean ByRef bFound Returns tWebDynamicRadioGroup
+        Integer icGroups iGroup iRadioIndex
+        tWebDynamicRadioGroup tRadioGroup
+        tWebDynamicRadioGroup[] aRadioGroups
+        
+        WebGet paRadioGroups to aRadioGroups
+        
+        Move (SizeOfArray(aRadioGroups)) to icGroups
+        For iGroup from 0 to (icGroups - 1)
+            Move (SearchArray(sDynamicObjectId, aRadioGroups[iGroup].aRadioButtons)) to iRadioIndex
+            If (iRadioIndex <> -1) Begin
+                Move True to bFound
+                Move aRadioGroups[iGroup] to tRadioGroup
+            End
+            
+            If (bFound) ;
+                Break
+        Loop
+        
+        Function_Return tRadioGroup
+    End_Function
+    
+    // Called by cWebNavPathHelper
+
+    // This will never really happen, but just in case someone tries to register a path from a dynamic object.
+    { Visibility=Private }
+    Procedure OwnerNavRegisterPath Boolean ByRef bCancel Integer ByRef eNavMode Handle ByRef hoView Handle ByRef hoInvokingObject String ByRef sName
+        Move True to bCancel
+        Error DFERR_PROGRAM "Registering navigation paths from dynamic objects is not supported"
+    End_Procedure
+    
+    // Called by cWebObject_mixin
+    
+    // This allows the owner to customize the web object name. In case of the dynamic object container we insert the "$" instead of a ".".
+    { Visibility=Private }
+    Procedure OwnerMangleWebObjectName Handle hoWebObject String ByRef sObjectName
+        String sOwnerName sContainer
+        
+        Get Name to sOwnerName
+        
+        Move (Remove(sObjectName, 1, Length(sOwnerName))) to sObjectName
+        If (Left(sObjectName, 1) = ".") ;
+            Move (Remove(sObjectName, 1, 1)) to sObjectName
+        
+        Get WebObjectName to sContainer
+        Move (sContainer + "$" + sObjectName) to sObjectName
+    End_Procedure
+End_Class

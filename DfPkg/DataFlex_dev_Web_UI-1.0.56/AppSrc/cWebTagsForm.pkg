@@ -1,0 +1,352 @@
+﻿Use cWebBaseSelectionForm.pkg
+
+Enum_List
+    Define wbtgAdded for 0
+    Define wbtgRemoved for 1
+End_Enum_List
+
+{ DesignerJSClass=df.WebTagsForm }
+Class cWebTagsForm is a cWebBaseSelectionForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty=Client}
+        { Category="Behavior" }
+        Property Integer piTagTruncateAt                60 // The maximum length of text in a tag.
+        {WebProperty=Client}
+        { Category="Behavior" }
+        Property Boolean pbTagOnSpace                   False
+        {WebProperty=Client}
+        { Category="Server Events" }
+        Property Boolean pbServerOnTagClick             False
+        {WebProperty=Client}
+        { Category="Client Events" }
+        Property String  psClientOnTagClick             ""
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnAddTag               False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnAddTag                ""
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnRemoveTag            False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnRemoveTag             ""
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAllowTagSelection            True
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psSeparator                     ","
+
+        Set psCSSClass to ""
+        Set psJSClass to "df.WebTagsForm"
+        Set pbAllowCreate to True
+    End_Procedure
+    
+    {Visibility=Private}
+    Function StrSplitToArrayUnescapedWithTrim String sStr String sDel Returns String[]
+        Integer iCounter iLast iLength iDelLength iEscapedLength
+        String sEscapedDel
+        String[] aValues
+        
+        Move 1 to iLast
+        Move (Length(sStr)) to iLength
+        Move (Length(sDel)) to iDelLength
+        Move ("\" + sDel) to sEscapedDel
+        Move (Length(sEscapedDel)) to iEscapedLength
+        
+        If (iLength = 0) Begin
+             Function_Return aValues
+        End
+        
+        For iCounter from 1 to iLength
+            If (Mid(sStr, iDelLength, iCounter) = sDel and ;
+                Mid(sStr, iEscapedLength, iCounter - 1) <> sEscapedDel) Begin
+                Move (Trim(Replaces(sEscapedDel, Mid(sStr, iCounter - iLast, iLast), sDel))) to aValues[SizeOfArray(aValues)]
+                Move (iCounter + 1) to iLast
+            End
+        Loop
+        Move (Trim(Replaces(sEscapedDel, Mid(sStr, iCounter - iLast, iLast), sDel))) to aValues[SizeOfArray(aValues)]
+        Function_Return aValues
+    End_Function
+    
+    {Visibility=Private}
+    Function StrReplacesUnescaped String sReplace String sStr String sWith Returns String
+        Integer iCounter iLast iDelLength iEscapedLength
+        String sEscapedDel sPre sPost
+        
+        Move 1 to iLast
+        Move (Length(sReplace)) to iDelLength
+        Move ("\" + sReplace) to sEscapedDel
+        Move (Length(sEscapedDel)) to iEscapedLength
+        
+        If ((Length(sStr)) = 0) Begin
+            Function_Return sStr
+        End
+        
+        While (iCounter <= Length(sStr))
+            If (Mid(sStr, iDelLength, iCounter) = sReplace and Mid(sStr, iEscapedLength, iCounter - 1) <> sEscapedDel) Begin
+                Move (Left(sStr, iCounter - iDelLength) + sWith + Mid(sStr, (Length(sStr)) - iCounter, iCounter + 1)) to sStr
+                Move (iCounter + iEscapedLength - 1) to iCounter
+                Move (iCounter + 1) to iLast
+            End
+            Increment iCounter
+        Loop
+        Function_Return sStr
+    End_Function
+    
+    {Visibility=Private}
+    Procedure OnPostCreate tSelectionItem oNewItem
+        String[] aParams
+        Send ClientAction "createTag" aParams oNewItem
+    End_Procedure
+    
+    // Client event called from: suggestSelect()
+    {Visibility=Private}
+    Procedure privateOnAddTag
+        tSelectionItem oTag
+        Handle hoJson
+        
+        Get phoActionJsonData to hoJson
+        If (hoJson) Begin
+            Get JsonToDataType of hoJson to oTag
+            Send OnAddTag oTag
+        End
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnAddTag tSelectionItem Tag
+        // Stub
+    End_Procedure
+    
+    // Client event called from: removeTag()
+    {Visibility=Private}
+    Procedure privateOnRemoveTag
+        tSelectionItem oTag
+        Handle hoJson
+        
+        Get phoActionJsonData to hoJson
+        If (hoJson) Begin
+            Get JsonToDataType of hoJson to oTag
+            Send OnRemoveTag oTag
+        End
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnRemoveTag tSelectionItem Tag
+        // Stub
+    End_Procedure
+    
+    // Client event called from: inline-addTag()
+    { Visibility=Private }
+    Procedure privateOnTagClick
+        tSelectionItem oTag
+        Handle hoJson
+        
+        Get phoActionJsonData to hoJson
+        If (hoJson) Begin
+            Get JsonToDataType of hoJson to oTag
+            Send OnTagClick oTag
+        End
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnTagClick tSelectionItem Tag
+        // Stub
+    End_Procedure
+    
+    Function GetTags Returns String[]
+        String sValue sSeparator
+        
+        WebGet psValue to sValue
+        WebGet psSeparator to sSeparator
+        
+        Function_Return (StrSplitToArrayUnescapedWithTrim(Self, sValue, sSeparator))
+    End_Function
+    
+    Procedure UpdateTags String[] aTags
+        Integer iCounter iCounter2
+        String sSeparator sEscapedSeparator
+        
+        WebGet psSeparator to sSeparator
+        Move ("\" + sSeparator) to sEscapedSeparator
+        
+        For iCounter from 0 to (SizeOfArray(aTags) - 1)
+            Move (StrReplacesUnescaped(Self, sSeparator, aTags[iCounter], sEscapedSeparator)) to aTags[iCounter]
+        Loop
+        
+        WebSet psValue to (StrJoinFromArray(aTags, sSeparator))
+    End_Procedure
+    
+    Procedure RemoveTag String sTag
+        String[] aTags
+        Boolean bCaseSensitive
+        Integer i
+        
+        Get GetTags to aTags
+        Get pbCaseSensitive to bCaseSensitive
+        
+        If (not(bCaseSensitive)) ;
+            Move (Uppercase(sTag)) to sTag
+            
+        For i from 0 to (SizeOfArray(aTags) - 1)
+            If ((bCaseSensitive and aTags[i]= sTag) or (not(bCaseSensitive) and Uppercase(aTags[i]) = sTag)) Begin
+                Move (RemoveFromArray(aTags, i)) to aTags
+                Decrement i
+            End
+        Loop
+        
+        Send UpdateTags aTags
+    End_Procedure
+    
+    Procedure AddTag String sTag
+        String[] aTags
+        
+        Send RemoveTag sTag
+        
+        Get GetTags to aTags
+        Move sTag to aTags[SizeOfArray(aTags)]
+        Send UpdateTags aTags
+    End_Procedure
+        
+    Procedure InsertTagBefore String sNextTag String sInsertTag
+        Send InsertTagRelative sNextTag True sInsertTag
+    End_Procedure
+    
+    Procedure InsertTagAfter String sPrevTag String sInsertTag
+        Send InsertTagRelative sPrevTag False sInsertTag
+    End_Procedure
+        
+    { Visibility=Private }
+    Procedure InsertTagRelative String sRelativeTag Boolean bToLeft String sInsertTag
+        Integer iIndex iOffset
+        Boolean bAdded bCaseSensitive
+        String sNormalizedInsertTag sNormalizedCacheTag
+        String[] asTags
+        Handle hoSelectionSource
+        
+        // We need to trim both parameters to be sure we comply to the client parsing.
+        Move (Trim(sRelativeTag)) to sRelativeTag
+        Move (Trim(sInsertTag)) to sInsertTag
+        
+        Get phoSelectionSource to hoSelectionSource
+        
+        // Lower if specified.
+        Get pbCaseSensitive of hoSelectionSource to bCaseSensitive
+        If (not(bCaseSensitive)) Begin
+            Move (Uppercase(sRelativeTag)) to sRelativeTag
+            Move (Uppercase(sInsertTag)) to sNormalizedInsertTag
+        End
+        Else ;
+            Move sInsertTag to sNormalizedInsertTag
+        
+        // Skip if both are the same or if any is empty.
+        If (sRelativeTag = sNormalizedInsertTag or ;
+            Length(sRelativeTag) = 0 or ;
+            Length(sNormalizedInsertTag) = 0) ;
+            Procedure_Return
+            
+        // Set the offset
+        Move (If(bToLeft, 0, 1)) to iOffset
+        
+        // Initialize the tags
+        Move False to bAdded
+        Get GetTags to asTags
+        
+        // Loop the tags till we find our target; if not found we insert it at the end [not(bBreak)].
+        While (iIndex < SizeOfArray(asTags))
+            // Normalize current tag; the relative is already normalized.
+            Move asTags[iIndex] to sNormalizedCacheTag
+            If (not(bCaseSensitive)) ;
+                Move (Uppercase(sNormalizedCacheTag)) to sNormalizedCacheTag
+            
+            // If it is the tag we insert it and skip the inserted tag and the next othrwise it would cause recursion.
+            If (sNormalizedCacheTag = sRelativeTag) Begin
+                Move (InsertInArray(asTags, iIndex + iOffset, sInsertTag)) to asTags
+                Move True to bAdded
+                Move (iIndex + 2) to iIndex
+            End
+            // If we find the same instances we remove it since the client would do it either way.
+            Else If (sNormalizedCacheTag = sNormalizedInsertTag) Begin
+                Move (RemoveFromArray(asTags, iIndex)) to asTags
+            End
+            Else ;
+                Increment iIndex
+        Loop
+        
+        If (not(bAdded)) ;
+            Move sInsertTag to asTags[SizeOfArray(asTags)]
+            
+        // Update the tags.
+        Send UpdateTags asTags
+    End_Procedure
+    
+    Procedure SetTagCssClass String sTag String sCssClassName
+        String[] aParams
+        Move sTag to aParams[0]
+        Move sCssClassName to aParams[1]
+        Send ClientAction "setTagCssClass" aParams
+    End_Procedure
+    
+    Function DragData Returns Variant
+        tWebTagsFormDragData DragData
+        Handle hoJsonData
+        
+        Get phoJsonDragData to hoJsonData
+        
+        If (hoJsonData <> C_WebUnresolvedObject) Begin
+            Get JsonToDataType of hoJsonData to DragData
+        End
+        
+        Function_Return DragData
+    End_Function
+    
+    Function DropData Returns Variant
+        tWebTagsFormDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDragAction Integer eAction Returns Boolean
+        If (eAction = C_WebDragTagsFormTag) Begin
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDropAction Integer eAction Returns Boolean
+        Boolean bSupported
+        
+        Forward Get SupportsDropAction eAction to bSupported
+        
+        If (not(bSupported)) Begin
+            If (eAction = C_WebDropTagsFormInput) Begin
+                Move True to bSupported
+            End
+        End
+        
+        Function_Return bSupported
+    End_Function
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        WebPublishProcedure privateOnAddTag
+        WebPublishProcedure privateOnRemoveTag
+        WebPublishProcedure privateOnTagClick
+    End_Procedure
+
+End_Class

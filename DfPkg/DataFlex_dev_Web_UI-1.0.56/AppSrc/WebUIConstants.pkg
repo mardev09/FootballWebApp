@@ -1,0 +1,287 @@
+﻿// Constants for Web Application Framework
+Use WebAppConstants.pkg
+
+Define C_WebUnresolvedObject for 0   // represents an unknown cWebControl object handle
+
+Define C_WebDefault for -1           // represents an unassigned Base DEO property e.g. pbCapslock. These properties are normally assigned by the DDO during DDO attachment. The DDO assignment is only aplied to "unassigned" properties (i.e. matching to this constant).
+
+// Panel Region constants:
+// (see Property Integer peRegion)
+Enum_List
+    Define prCenter
+    Define prLeft
+    Define prRight
+    Define prTop
+    Define prBottom
+End_Enum_List
+
+// Control label positions:
+// (see Property Integer peLabelPosition)
+Enum_List
+    Define lpLeft
+    Define lpTop
+    Define lpRight
+    Define lpFloat
+End_Enum_List
+
+// Control alignments:
+// (see Property Integer peLabelAlign, peAlign)
+Enum_List
+    Define alignLeft    // 0
+    Define alignCenter  // 1
+    Define alignRight   // 2
+End_Enum_List
+
+// Layout types:
+// (see Property Integer peLayoutTYpe)
+Enum_List
+    Define ltInherit // 0
+    Define ltFlow    // 1
+    Define ltGrid    // 2
+End_Enum_List
+
+// AutoFind Modes:
+// (See Function AutoFindMode)
+Enum_List
+    Define amNoAutoFind
+    Define amAutoFindEQ
+    Define amAutoFindGE
+End_Enum_List
+
+
+// URL Destination Target:
+// Determines the browser target of a URL to be loaded.
+// (See NavigateToPage)
+Enum_List
+    Define btCurrentWindow  // 0
+    Define btNewTab         // 1
+    Define btNewWindow      // 2
+End_Enum_List
+
+
+// Image display modes:
+// (see property peMode of cWebImage)
+Enum_List
+    Define wiActual
+    Define wiStretch
+    Define wiStretchHoriz
+    Define wiCenter
+    Define wiFit
+    Define wiCover
+End_Enum_List
+
+
+//  Combo sorting modes:
+//  (see peSortItems of cWebCombo)
+Enum_List
+    Define csUnsorted
+    Define csDescription
+    Define csValue
+End_Enum_List
+
+
+// Server call modes
+// (see SetServerCallMode of cWebObject)
+Enum_List
+    Define scModeDefault    for 1
+    Define scModeWait
+    Define scModeProgress
+End_Enum_List
+
+// Client action modes
+Enum_List
+    Define ctExecDefault    for 0
+    Define ctExecEarly      for 1
+    Define ctExecViewLoad   for 2
+End_Enum_List
+
+// Drill-down view stack Navigate From Types
+Enum_List
+    Define nfUndefined for 0    // Undefined navigation type
+    Define nfFromMain for 1     // Used when navigating from one view to another that share the same main file
+    Define nfFromParent for 2   // used when navigating from a view whose main file is a parent of the new view's main file
+    Define nfFromChild for 3    // used when navigating from a view whose main file is a child of the new view's main file
+End_Enum_List
+
+
+// Drill-down view stack View Types
+Enum_List
+    Define vtUndefined for 0   // Undefined view type
+    Define vtZoom for 1        // Zoom view (display's 1-record at a time, e.g. Customer Maintenance)
+    Define vtSelect for 2      // Select view (usually displays a list of records and allows selecting of one of these records)
+End_Enum_List
+
+
+// choices when closing a view
+Enum_List
+    Define cveConfirmSaveClearCancel // confirm with  "Save, Clear, Cancel"
+    Define cveConfirmAbandonChanges  // confirm with "Abandon Changes"
+    Define cveSave                   // attempt auto-save
+    Define cveAbandonChanges         // just close
+End_Enum_List
+
+
+
+
+// Property types as they are passed for web properties from FMAC
+Define cArgStr          for 0   // S      String
+Define cArgNum          for 1   // N      Number
+Define cArgDate         for 2   // D      Date
+Define cArgInt          for 3   // I      Integer
+Define cArgBigint       for 4   // H      BigInt
+Define cArgReal         for 5   // R      Real
+Define cArgBool         for 6   // B      Logical - this is actually only used for indicators
+Define cArgMem          for 7   // X      Binary
+Define cArgTime         for 8   // T      Time
+Define cArgDateTime     for 9   // M      DateTime
+Define cArgFloat        for 10  // F      Float
+Define cArgByte         for 11  // Y      Char
+Define cArgUbyte        for 12  // C      UChar
+Define cArgShort        for 13  // W      Short
+Define cArgUshort       for 14  // U      UShort
+Define cArgUlong        for 15  // V      UInteger
+Define cArgBit          for 16  // Z      Boolean (This is what you Use for Boolean)
+Define cArgBiguint      for 17  // G      UBigInt
+Define cArgCurrency     for 18  // O      Currency  (Visual Basic Decimal)
+Define cArgStruct       for 19  // K      Struct
+Define cArgTimeSpan     for 20  // P      Timepsan (PERIOD)
+Define cArgArray        for 21  // a      Array
+Define cArgDecimal      for 22  // Q      Decimal (Very large Decimal)
+
+
+
+// Breadcrumb Styles
+Enum_List
+    Define crumbHorizontal   // Horizontal Breadcrumb style "caption > caption > current view"
+    Define crumbDropDown     // Displays the current view's caption only, with a drop down button to list the full view stack.
+    Define crumbCaption      // Displays the current view's caption only with no on click navigation support.
+End_Enum_List
+
+//  Action bar display options (peActionDisplay of cWebMenuItem)
+Enum_List
+    Define adActionBar  for 1
+    Define adMenu       for 2
+    Define adBoth       for 3
+End_Enum_List
+
+// Responsive mode constants
+// Note: It is important to keep them in order as this determines the rule precedence (setting a tablet rule also applies to mobile unless overridden on mobile)
+Enum_List
+    Define rmDesktop         for 10     // This is the default mode (i.e. desktop mode). This mode is not normally explicitly used.
+    Define rmTablet          for 20     // Default Tablet mode
+    Define rmTabletLandscape for 21     // Tablet mode when in landscape orientation
+    Define rmTabletPortrait  for 22     // Tablet mode when in portrait
+    Define rmMobile          for 30     // Default Mobile mode
+    Define rmMobileLandscape for 31     // Mobile mode when in landscape
+    Define rmMobilePortrait  for 32     // Mobile mode when in portrait
+End_Enum_List
+
+//  Web property types
+Enum_List
+    Define wptOff for 0 // must be 0 for the FMAC Property command
+    Define wptClient
+    Define wptServerPage
+    Define wptServerSession
+    Define wptClientProtected
+End_Enum_List
+
+//  Word break options (peWordBreak of cWebColumn)
+Enum_List
+    Define wbNone for 0     // No wrapping, no line breaks
+    Define wbWrap           // Wrap on words, no line breaks
+    Define wbPre            // No wrapping, line breaks
+    Define wbPreWrap        // Word wrapping and line breaks
+    Define wbEllipsis       // No wrapping and "..." when clipping
+End_Enum_List
+
+//  Vertical align options (peVerticalAlign of cWebColumn)
+Enum_List
+    Define vaTop for 0
+    Define vaCenter
+    Define vaBottom
+End_Enum_List
+
+// History options for (peApplicationStateMode(cWebApp))
+Enum_List
+    Define asmOff for 0
+    Define asmHistoryOnly
+    Define asmHistoryAndUrls
+End_Enum_List
+
+// History options per view (peStateMode(cWebView))
+Enum_List
+    Define vsmDefault for 0
+    Define vsmOff
+    Define vsmRecord
+    Define vsmCustom
+End_Enum_List
+
+// login modes for (peLoginMode(cWebApp))
+Enum_List
+    Define lmLoginRequired   // you must login to access the system
+    Define lmLoginSupported  // you may login to gain extra rights. Login is not automatic
+    Define lmLoginNone       // login is not supported at all
+End_Enum_List
+
+//  Accessibilty numbers (cWebBaseUIObject GetAccessible)
+Enum_List
+    Define C_UIA_InSync for 1
+    Define C_UIA_Enabled for 2
+    Define C_UIA_Rendered for 4
+    Define C_UIA_Visible for 8
+    Define C_UIA_All for 15
+End_Enum_List
+
+//  Navigation types (WebRegisterPath)
+Enum_List 
+    Define ntNavigateForward
+    Define ntNavigateForwardCustom
+    Define ntNavigateBegin
+End_Enum_List
+
+
+// define Request_Find modes(only applies to data aware, dynamic grids)
+#IFNDEF rfmFindAll
+Enum_List
+    Define rfmFindAll         // allow main finds and parent finds
+    Define rfmFindMainOnly    // only main finds, no parent changing
+    Define rfmFindMainSuper   // allow main and super-find (prompt list mode)
+    Define rfmFindNone        // no finds at all
+    Define rfmFindParentOnly  // only parent finds. Can be useful with data entry grids  
+End_Enum_List
+#ENDIF
+
+// Selected Row Operation status modes
+// selected row operations can fail, succeed or awaiting confirmation
+Enum_List
+    Define sroFail      // did not succeed
+    Define sroSucceed   // did succeed
+    Define sroPending   // unknown because confirmation is required
+End_Enum_List
+
+// WebList data loading styles (peDbGridType(cWebList))
+Enum_List
+    Define gtAutomatic
+    Define gtAllData
+    Define gtManual
+End_Enum_List
+
+// WebList data grouping options (peGrouping(cWebList))
+Enum_List
+    Define grpDisabled
+    Define grpCustom
+    Define grpAutomatic
+End_Enum_List
+
+// System theme preference
+Enum_List
+    Define spLightMode
+    Define spDarkMode
+End_Enum_List
+
+// User theme preference
+Enum_List
+    Define tpLightMode
+    Define tpDarkMode
+    Define tpSystemPreference
+End_Enum_List

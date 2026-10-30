@@ -1,0 +1,155 @@
+﻿Use cWebModalDialog.pkg
+Use WebWidgetStructs.pkg
+Use cWebWidget.pkg
+
+Class cWebWidgetConfigurationWizard is a cWebModalDialog
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty = Server}
+        {Visibility=Private}
+        Property String psCurrentWidgetDynID
+        
+        {WebProperty = Server}
+        {Visibility=Private}
+        Property tWidgetConfigPropValue[] paParkedPropValues
+        
+        Set piWidth to 400
+    End_Procedure 
+    
+    // Park a WidgetConfigPropValue for later use
+    // Useful for storing sObjName & sPropName as reference for when returning values from the wizard
+    Procedure ParkPropValue String sObjName String sPropName String sValue
+        Integer iProp
+        tWidgetConfigPropValue[] aPropValues
+        
+        WebGet paParkedPropValues to aPropValues
+        
+        For iProp from 0 to (SizeOfArray(aPropValues) - 1)
+            If (aPropValues[iProp].sObjName  = sObjName and aPropValues[iProp].sPropName = sPropName) Begin
+                Move sValue to aPropValues[iProp].sValue
+                WebSet paParkedPropValues to aPropValues
+                Procedure_Return
+            End
+        Loop
+        
+        Move (SizeOfArray(aPropValues)) to iProp
+        Move sObjName to aPropValues[iProp].sObjName
+        Move sPropName to aPropValues[iProp].sPropName
+        Move sValue to aPropValues[iProp].sValue
+        
+        WebSet paParkedPropValues to aPropValues
+    End_Procedure
+    
+    // Retrieve a parked WidgetConfigPropValue value based on sObjName & sPropName
+    Function RetrieveParkedPropValue String sObjName String sPropName Returns String
+        Integer iProp
+        tWidgetConfigPropValue[] aPropValues
+        
+        WebGet paParkedPropValues to aPropValues
+        
+        For iProp from 0 to (SizeOfArray(aPropValues) - 1)
+            If (aPropValues[iProp].sObjName  = sObjName and aPropValues[iProp].sPropName = sPropName) Begin
+                Function_Return aPropValues[iProp].sValue
+            End
+        Loop
+        
+        Function_Return ""
+    End_Procedure
+    
+    /*
+    Helper function for updating a property value in the config value array.
+    */
+    Procedure SetPropValue tWidgetConfigPropValue[] ByRef aPropValues String sObjName String sPropName String sValue
+        Integer iProp
+        
+        For iProp from 0 to (SizeOfArray(aPropValues) - 1)
+            If (aPropValues[iProp].sObjName  = sObjName and aPropValues[iProp].sPropName = sPropName) Begin
+                Move sValue to aPropValues[iProp].sValue
+                Procedure_Return
+            End
+        Loop
+        
+        Move (SizeOfArray(aPropValues)) to iProp
+        Move sObjName to aPropValues[iProp].sObjName
+        Move sPropName to aPropValues[iProp].sPropName
+        Move sValue to aPropValues[iProp].sValue
+    End_Procedure
+    
+    /*
+    Helper function for getting a property value from a config value array.
+    */
+    Function GetPropValue tWidgetConfigPropValue[] aPropValues String sObjName String sPropName Returns String
+        Integer iProp
+        
+        For iProp from 0 to (SizeOfArray(aPropValues) - 1)
+            If (aPropValues[iProp].sObjName  = sObjName and aPropValues[iProp].sPropName = sPropName) Begin
+                Function_Return aPropValues[iProp].sValue
+            End
+        Loop
+        
+        Function_Return ""
+    End_Function
+    
+    {Visibility=Private}
+    Procedure InitWizard Handle hoWidgetContainer String sWidgetDynId
+        Boolean bIsWidget
+        tWidgetConfigProp[] aConfigurableProps
+        tWidgetConfigPropValue[] aCurVals
+        Handle hoWidget
+        Integer iClass iWidgetClass
+        
+        Get DynamicObject of hoWidgetContainer sWidgetDynId to hoWidget
+        
+        // Sanity check
+        Move (RefClass(cWebWidget)) to iWidgetClass
+        Get ObjectClass of hoWidget to iClass
+        
+        Get IsClassOfClass iClass iWidgetClass to bIsWidget
+        
+        If (not(bIsWidget)) Begin
+            Procedure_Return
+        End
+        
+        
+        WebSet psCurrentWidgetDynID to sWidgetDynId 
+        Get GetConfigurableProps of hoWidget to aConfigurableProps
+        Get GetConfigurablePropValues of hoWidget to aCurVals
+        
+        Send PopulateWizard aConfigurableProps aCurVals
+        
+        Send Popup hoWidgetContainer
+    End_Procedure
+    
+    {Visibility=Private}
+    Procedure PopulateWizard tWidgetConfigProp[] aConfigurableProps tWidgetConfigPropValue[] aPropValues
+        // Currently just send to the augmentable event, this method exists to potentially add stuff later if needed
+        Send OnPopulateWizard aConfigurableProps aPropValues
+    End_Procedure
+
+    
+    Function GetConfigValues Returns tWidgetConfigPropValue[]
+        tWidgetConfigPropValue[] aPropValues
+        
+        Send OnGetConfigValues (&aPropValues)
+        
+        Function_Return aPropValues
+    End_Function
+    
+    { MethodType=Event }
+    Procedure OnPopulateWizard tWidgetConfigProp[] aConfigurableProps tWidgetConfigPropValue[] aCurPropValues
+        // Augment to initialize controls in the wizard
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnGetConfigValues tWidgetConfigPropValue[] ByRef aNewPropValues
+        // Augment to get values from controls inside the wizard (and eventually return them)
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

@@ -1,0 +1,5 @@
+Object
+    Set psCaption to "button"
+    Set psButtonCaption to "button"
+    Set piWidth to 50
+End_Object

@@ -1,0 +1,7 @@
+﻿
+Struct tOnViewAccessDenied
+    Handle hoView               //  View that access is denied to
+    Boolean bRestoreState       //  Indicates if the error comes from restoring a state hash (the user navigating to a URL)
+    Boolean bHandled            //  Set to true if OnViewAccessDenied handled the situation and no further handling is required
+    Handle hoNavigateToView     //  Set to a view / dialog that should be navigated to (like a login view)
+End_Struct

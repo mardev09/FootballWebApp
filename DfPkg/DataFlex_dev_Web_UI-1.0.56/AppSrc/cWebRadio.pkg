@@ -1,0 +1,214 @@
+﻿Use cWebBaseDEO.pkg
+Use cWebObjectOwner_mixin.pkg
+
+// cWebRadio objects act in a co-ordinated way with other radio button objects as a collective "group"
+// 1 or more groups of radio buttons can live together in the same container object.
+//
+// In a radio button group there is always one button object that is the "master" and the "slaves" in that group
+// are connected to it. Which radio button is the master should be irrelevant to the developer.
+// 
+// The psValue property of every radio button in a group is synchronized.
+//
+// A group is defined by creating a master radio button and connecting slave buttons to it. Any button can be
+// the master. The master button defines a group name and\or a data binding. The Data Binding and group name
+// is copied to each slave.
+// 
+// A slave can be connected to a master button by...
+// a) Setting the slave's phoMasterRadio property to the master's object handle.
+// b) Seting the slave's psGroupName to the same group name as the master radio button.
+//
+// A radio button cannot change radio groups dynamically. Radio groups are configured at design time and connected
+// at object creation time. Once established, a radio group should not be changed.
+//
+// An empty\null psGroupName is allowed. A null group name will be converted into the object name of the radio's
+// container web panel object. All radio buttons with a null psGroupName in the same Web Panel belong to the same group.
+//
+// Setting a radio button's data binding automatically set's its group name to "table_name.column_name".
+//
+// Groups are scoped to their view (or dialog). Button objects of the same group can be defined anywhere within
+// the same view. Buttons in one view cannot be grouped to buttons of another view.
+{ OverrideProperty=peAlign WebProperty=False Visibility=Private }
+{ OverrideProperty=piMaxLength WebProperty=False Visibility=Private }
+{ OverrideProperty=piPrecision WebProperty=False Visibility=Private }
+{ OverrideProperty=psMask WebProperty=False Visibility=Private }
+{ HelpTopic=cWebRadio }
+{ DesignerJSClass=df.WebRadio }
+Class cWebRadio is a cWebBaseDEO    
+    // Construct_Object:
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {  WebProperty=Client,
+           Visibility=Private }
+        Property String psMasterRadio            // Name of the master radio button in this group (can be self). This is either advanced or private interface.
+
+        { Visibility=Private }
+        Property Handle phoMasterRadio 0         // Object handle to the master radio button in this group (can be self). This is either advanced or private interface.
+
+        // Published Properties....
+        { Visibility=Private }
+        { WebProperty=Client } 
+        Property String psMasterName ""
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psGroupName ""           // All radio buttons in a view with this group name belong to the same radio button group
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psRadioValue ""          // This is the unique value for this radio button in its group. When the group's psValue matches psRadioValue then this radio button is selected.  
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnSelect False  // Determines is the client will initiate an OnSelect event to the server when this radio button is selected.
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnSelect ""      // Client event listner to fire for when this radio object is selected.
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebRadio"
+    End_Procedure
+    
+    
+    Procedure SetSelected
+        // Sets this object as the currently selected radio object in its group.
+        //
+        // Note: during WebApp initialization (while all the Web Objects are being created) then this
+        // message will set the design-time psValue, at all other times it will WebSet the client's
+        // synchronized psValue.
+        String sValue
+        Boolean bInitWebApp
+        
+        Get Initializing of (Host(Self)) to bInitWebApp
+        If (bInitWebApp) Begin
+            Get psRadioValue to sValue
+            Set psValue to sValue
+        End
+        Else Begin
+            WebGet psRadioValue to sValue
+            WebSet psValue to sValue
+        End
+    End_Procedure
+    
+    
+    Function GetSelected Returns Boolean
+        // Returns True if this radio button is the currently selected radio in its group.
+        //
+        // Note: during WebApp initialization (while all the Web Objects are being created) this
+        // message will get the design-time psValue, at all other times it will WebGet the client's
+        // synchronized psValue.
+        String sSelected sValue
+        Boolean bInitWebApp
+        
+        Get Initializing of (Host(Self)) to bInitWebApp
+        If (bInitWebApp) Begin
+            Get psRadioValue to sSelected
+            Get psValue to sValue
+        End
+        Else Begin
+            WebGet psRadioValue to sSelected
+            WebGet psValue to sValue
+        End
+        
+        Function_Return (sValue = sSelected)        
+    End_Function
+    
+
+    { MethodType=Event }
+    Procedure OnSelect
+        // Sent to the radio button that has just been selected by the user at the client. Not sent if the
+        // radio button is selected programatically.
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Function GetSyncProp Handle hoObject Handle hmSetter String sPropName Returns Variant
+        // Overridden to re-direct WebGet psValue to the master radio button.
+        Handle hoMasterRadio
+        Variant vResult
+        String sResult sMasterRadio sDynamicObjectId
+        Boolean bDynamic bFound
+        tWebDynamicRadioGroup tRadioGroup
+        
+        Get phoMasterRadio to hoMasterRadio
+        Get IsDynamicObject to bDynamic
+        
+        If (bDynamic) Begin
+            Get psDynamicObjectId to sDynamicObjectId
+            
+            Get FindRadioGroup sDynamicObjectId (&bFound) to tRadioGroup
+
+            If (bFound) Begin
+                Get DynamicObject tRadioGroup.sMaster to hoMasterRadio
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat("Radio button %1 was not found.", sDynamicObjectId))
+            End
+        End
+        If ((hmSetter = RefProcSet(psValue) or hmSetter = RefProcSet(pbChanged)) and hoMasterRadio <> Self) Begin
+            Get GetSyncProp of hoMasterRadio hoMasterRadio hmSetter sPropName to sResult  // get it from the master radio
+            Function_Return sResult
+        End
+        Else Begin
+            Forward Get GetSyncProp hoObject hmSetter sPropName to vResult
+        End
+        
+        Function_Return vResult
+    End_Function
+
+
+    { Visibility=Private }
+    Procedure SetSyncProp Handle hoObject Handle hmSetter String sPropName Variant vPropValue
+        // Overridden to re-direct WebGet psValue to the master radio button.
+        Handle hoMasterRadio
+        String sResult sMasterRadio sDynamicObjectId
+        Boolean bDynamic bFound
+        tWebDynamicRadioGroup tRadioGroup
+        
+        Get phoMasterRadio to hoMasterRadio
+        Get IsDynamicObject to bDynamic
+        
+        If (bDynamic) Begin
+            Get psDynamicObjectId to sDynamicObjectId
+
+            Get FindRadioGroup sDynamicObjectId (&bFound) to tRadioGroup
+
+            If (bFound) Begin
+                Get DynamicObject tRadioGroup.sMaster to hoMasterRadio
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat("Radio button %1 was not found.", sDynamicObjectId))
+            End
+        End
+        
+        If ((hmSetter = RefProcSet(psValue) or hmSetter = RefProcSet(pbChanged)) and hoMasterRadio <> Self) Begin
+            Send SetSyncProp of hoMasterRadio hoMasterRadio hmSetter sPropName vPropValue
+        End
+        Else Begin
+            Forward Send SetSyncProp hoObject hmSetter sPropName vPropValue
+        End
+    End_Procedure
+    
+    
+    Procedure End_Construct_Object
+        String sGroupName
+        
+        // Publish the event methods....
+        WebPublishProcedure OnSelect
+        
+        // Set the default psGroupName to the parent container object name....
+        Get psGroupName to sGroupName
+        If (Trim(sGroupName) = "") Begin
+            Delegate Get ContainerName to sGroupName
+            Set psGroupName to sGroupName
+        End
+        
+        // Register this radio button with the View\Dialog. This will ultimately
+        // link together all radio buttons in the radio group....
+        Delegate Send AddRadio Self
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

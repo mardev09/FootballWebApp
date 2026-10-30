@@ -1,0 +1,34 @@
+﻿Struct tWebCell
+    String sValue
+    String sTooltip
+    String sCssClassName
+    String[] aOptions
+End_Struct
+
+Struct tWebRow
+    String sRowId
+    String sCssClassName
+    tWebCell[] aCells
+    Integer iGroupHeaderIndex
+End_Struct
+
+Struct tWebGroupConfig
+    Integer iColumnId
+    String sLabel
+    Boolean bReverse
+End_Struct
+
+Struct tWebGroupHeader
+    Integer iGroupIndex
+    Integer iParentHeaderIndex
+    String sItem
+    Integer iItems
+    String sTotal    
+    Boolean bCollapsed
+End_Struct
+
+Struct tWebListData
+    tWebRow[] aRows
+    tWebGroupHeader[] aGroupHeaders
+    tWebGroupConfig[] aGroups
+End_Struct

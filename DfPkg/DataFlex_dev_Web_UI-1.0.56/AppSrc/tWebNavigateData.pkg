@@ -1,0 +1,15 @@
+﻿// Used when navigating to a view in a drill-down view stack.
+// Passes the necessary data Between views 
+
+Use tNameValuePair.pkg
+
+Struct tWebNavigateData
+    String sRowID          // RowId of current value in iTable member
+    Integer iTable         // Table number for ridRowID member
+    Integer iColumn        // Focused column number fot the iTable member
+    Integer eNavigateType  // drill-down navigate from type (e.g. nfFromMain, nfFromParent)
+    Boolean bNewRecord     // Used when navigating to a zoom with the intention of creating a new record
+    Boolean bReadOnly      // Used when navigating to a zoom to instruct the zoom to initially display itself Read-Only
+    Boolean bSaveBeforeNavigate // if set true, the view is saved before forward navigation
+    tNameValuePair[] NamedValues   
+End_Struct

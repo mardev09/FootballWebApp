@@ -1,0 +1,750 @@
+﻿Use VdfBase.pkg
+Use tWebViewInfo.pkg
+Use cWebView.pkg
+Use cWebObjectHost_mixin.pkg
+Use cWebViewHost_mixin.pkg
+Use tOnViewAccessDenied.pkg
+Use GlobalFunctionsProcedures.pkg
+
+// cWebView API:
+Register_Function psStateViewName Returns String
+Register_Function peStateMode Returns Handle
+
+Class cWebNavigationHost_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebNavigationHost_mixin
+        { Category="Behavior" }
+        Property Boolean pbStateRestoreRecord True                  // If true then the desktop-style will add record id's to the state hash
+        { Category="Behavior" }
+        { EnumList="asmOff, asmHistoryOnly, asmHistoryAndUrls" }
+        Property Integer peApplicationStateMode asmOff              // Configures if history management is used and if the state should be part of the url
+        { Category="Behavior" }
+        Property Boolean pbStateAsUrlHash True                      // Determines if the state hash is expected to be the location hash of the url (behind the # symbol)
+        { Category="Behavior" }
+        Property Boolean pbStateHashInvalidError True               // Determines if entering an invalid URL will cause an error, if false no error will be shown and the URL is corrected to the starting point
+        
+        { WebProperty=Server Visibility=Private }
+        Property String psCurrentAppState ""                        // Stores the current page hash when asmHistoryOnly is used
+        
+        { WebProperty=Server Category="Behavior" }
+        Property String psBaseHref ""                               // The base url for the application, if set this will be used when setting history states in the browser
+    End_Procedure
+    
+    // Finds a view by its state hash name (psStateViewName(cWebView)) by iterating the web 
+    // business objects filtering out all views and checking their names.
+    //
+    // Params:
+    //      sName   State hash name of the searched view.
+    // Returns:
+    //      Handle to the view (C_WebUnresolvedObject if not found).
+    { Visibility=Private }
+    Function ViewByStateHashName String sName Returns Handle
+        Integer iItem 
+        tWebControlMapItem[] aViews
+        
+        Get paViews to aViews
+        Move (Lowercase(sName)) to sName
+        
+        For iItem from 0 to (SizeOfArray(aViews) - 1)
+            If (Lowercase(psStateViewName(aViews[iItem].hoObj)) = sName) Begin
+                Function_Return aViews[iItem].hoObj
+            End
+        Loop
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    // Restores the based on the passed state hash. Depending on the application style it continues
+    // into the drill-down or desktop-style track.
+    //
+    // Params:
+    //      sStateHash      String containing the full state hash.
+    //      bOptManualEnter (optional) True if the hash is entered manually by the user, false if 
+    //                      it comes from history. Determines if the record will be found for 
+    //                      desktop style (on back navigation we do not do that).
+    Procedure RestoreState String sStateHash Boolean bOptManualEnter
+        Integer eAppStyle
+        Boolean bManualEnter
+        
+        Move True to bManualEnter
+        If (num_arguments > 1) Begin
+            Move bOptManualEnter to bManualEnter
+        End
+        
+        Get peApplicationStyle to eAppStyle
+        
+        If (eAppStyle = wvsDesktop) Begin
+            Send RestoreState_Desktop sStateHash bManualEnter
+        End
+        Else Begin
+            Send RestoreState_DrillDown sStateHash bManualEnter
+        End
+    End_Procedure
+    
+    // Server-Action
+    //
+    // Overrides cWebHostAPI_Mixin and extends it with navigation logic
+    //
+    // Triggered by the client when a history popstate event occurs. This is a browser back 
+    // navigation to an item that was added to the history stack using HistoryPushState. The 
+    // ptActionData contains the tWebValueTree struct with data passed to HistoryPushItem.
+    //
+    // Params:
+    //      sTitle      Page title for the history item.
+    //      sUrl        URL for the history item.
+    { Visibility=Private }
+    Procedure HistoryPopState String sTitle String sUrl
+        String sStateHash
+        tWebValueTree stateData
+        
+        Get ptActionData to stateData
+        
+        If (peApplicationStateMode(Self) = asmHistoryOnly) Begin
+            WebSet psCurrentAppState to stateData.v
+            Send RestoreState stateData.v False 
+        End
+        
+        If (peApplicationStateMode(Self) = asmHistoryAndUrls) Begin
+            Get StateHash to sStateHash
+            Send RestoreState sStateHash False
+        End
+        
+        //  Trigger public event
+        Send OnHistoryPopState sTitle sUrl stateData
+    End_Procedure
+    
+    // Performs a NavigateBegin to the specified view using the last registered NavigateBegin path 
+    // for this view. Use this procedure when doing a NavigateBegin from inside a view (invoking
+    // objects inside a view are not allowed any more on NavigateBegin requests). The invoking
+    // object will be determined dynamically, if a path is registered from the WebApp then that
+    // will be used, else it will use the first registered path it finds.
+    //
+    // Params:
+    //      hoNavigateToView    Handle to the view to navigate into.
+    //      bUnconditional      If true no unsaved changes warnings will be given.
+    Procedure NavigatePathBegin Handle hoNavigateToView Boolean bUnconditional
+        Handle hoInvokingObject
+        
+        Get FindNavPathInvokingObj Self hoNavigateToView ntNavigateBegin to hoInvokingObject
+        
+        If (hoInvokingObject <> C_WebUnresolvedObject) Begin
+            Send NavigateBegin of hoNavigateToView hoInvokingObject bUnconditional
+        End
+        Else Begin
+            Error DFERR_PROGRAM "No navigate begin path defined for the view"
+        End
+    End_Procedure
+    
+    // Callback method passed to the ShowView function that is asynchronous. Will continue 
+    // restoring the state after the view is loaded.
+    //
+    // Params:
+    //      hoView  Handle to the loaded view (not actually used).
+    { Visibility=Private }
+    Procedure RestoreState_Desktop_Callback Handle hoView
+        String sStateHash sView sRecordId
+        Integer iPos
+        
+        Get StateHash to sStateHash
+        
+        Send ParseViewStateHash sStateHash (&sView) (&sRecordId)
+        Send RestoreViewState_Desktop of hoView sRecordId False
+    End_Procedure
+    
+    // Callback method passed to the ShowView function that is asynchronous. Will continue 
+    // restoring the state after the view is loaded. This is the 'ManualEnter' callback.
+    //
+    // Params:
+    //      hoView  Handle to the loaded view (not actually used).
+    { Visibility=Private }
+    Procedure RestoreState_Desktop_Callback_ManualEnter Handle hoView
+        String sStateHash sView sRecordId
+        Integer iPos
+        
+        Get StateHash to sStateHash
+        
+        Send ParseViewStateHash sStateHash (&sView) (&sRecordId)
+        Send RestoreViewState_Desktop of hoView sRecordId True
+    End_Procedure
+    
+    // Desktop-style implementation of the restorestate logic. It finds out which view should be
+    // shown and calls ShowView, the callback messages will do further processing. If the state 
+    // hash is empty we show the default view.
+    //
+    // Params:
+    //      sStateHash      The full state hash.
+    //      bManualEnter    If true the state hash is entered by the user and a record should be 
+    //                      found.
+    { Visibility=Private }
+    Procedure RestoreState_Desktop String sStateHash Boolean bManualEnter
+        Boolean bDefault
+        Integer iPos
+        String sView
+        Handle hoView
+        
+        Move True to bDefault
+        
+        If (Trim(sStateHash) <> "") Begin
+            Send ParseViewStateHash sStateHash (&sView)
+            
+            Get ViewByStateHashName sView to hoView
+            
+            If (hoView > 0) Begin
+                If (bManualEnter) Begin
+                    Send Showview hoView (RefProc(RestoreState_Desktop_Callback_ManualEnter)) Self
+                End
+                Else Begin
+                    Send Showview hoView (RefProc(RestoreState_Desktop_Callback)) Self
+                End
+                Move False to bDefault
+            End
+            Else Begin
+                If (pbStateHashInvalidError(Self)) Begin
+                    Error DFERR_WEBAPP_INVALID_URL
+                End
+                Else  Begin
+                    Get GetDefaultView to hoView
+                    If (hoView > 0) Begin
+                        Send Show of hoView
+                        Send UpdateStateHash of hoView True
+                    End
+                End
+                Procedure_Return
+            End
+        End
+        
+        //  Else we just show the default view
+        If (bDefault) Begin
+            Get GetDefaultView to hoView
+            If (hoView > 0) Begin
+                Send Show of hoView
+            End
+        End
+    End_Procedure
+    
+    // Drill-down version of the restorestate implementation. It parses the state hash into the 
+    // separate pieces and restores the entire view stack. It loops over the views in the state
+    // hash and checks if they are already properly initialized, if not it will reinitialize the
+    // view and rest of the stack from that point on,  if it is properly initialized it won't do
+    // anything for this step.
+    //
+    // Params:
+    //      sStateHash      Full state hash string.
+    //      bManualEnter    True if the string is manually entered (not used in drill-down).
+    { Visibility=Private }
+    Procedure RestoreState_DrillDown String sStateHash Boolean bManualEnter
+        String sViewName sState sMainID sCustomState
+        String[] asStates asViews asMainIDs asCustomStates asParams
+        Integer iState iNavType iPos iStack iStateTo eViewStyle eTopViewStyle iCount iLastViewIndex iFirstDialogIndex
+        Handle hoView hoStackView hoTopView hoPrevView hoDefaultView hoInvoking hjObjectDef
+        Handle[] ahViews ahInvokingObjects
+        Integer[] aeNavType
+        Boolean bAllowAccess bOverrideState bReinitialize bOK bIsLoaded bViewShown bErr bSuccess bIsTopView bHandled
+        tWebViewInfo[] aViewStack
+        
+        Move False to bViewShown
+        Move False to bReinitialize
+        Move False to bErr
+        Move 0 to iStack
+        WebGet paViewStack of (ViewStack(Self)) to aViewStack    
+        
+        Get GetDefaultView to hoDefaultView
+        
+        //  Split into separate view state hashes
+        Get ParseStateHash sStateHash to asStates
+        
+        //  Resize arrays (for performance and byref calls)
+        Move (ResizeArray(asViews, SizeOfArray(asStates))) to asViews
+        Move (ResizeArray(asMainIDs, SizeOfArray(asStates))) to asMainIDs
+        Move (ResizeArray(asCustomStates, SizeOfArray(asStates))) to asCustomStates
+        Move (ResizeArray(ahViews, SizeOfArray(asStates))) to ahViews
+        Move (ResizeArray(ahInvokingObjects, SizeOfArray(asStates))) to ahInvokingObjects
+        Move (ResizeArray(aeNavType, SizeOfArray(asStates))) to aeNavType
+        
+        //  Start at global level
+        Move Self to hoInvoking
+        If (hoDefaultView <> C_WebUnresolvedObject and peStateMode(hoDefaultView) = vsmOff) Begin
+            Move hoDefaultView to hoInvoking
+            
+            Get AllowViewAccess hoDefaultView to bAllowAccess
+            
+            If (not(bAllowAccess)) Begin
+                Get ViewAccessDenied hoDefaultView True to bHandled
+                If (bHandled) ;
+                    Procedure_Return
+                    
+                Move (ResizeArray(asStates, 0)) to asStates
+            End
+        End
+                
+        //  Parse URL and validate view names
+        Move (SizeOfArray(asStates) - 1) to iStateTo
+        For iState from 0 to iStateTo
+            Send ParseViewStateHash asStates[iState] (&asViews[iState]) (&asMainIDs[iState]) (&asCustomStates[iState])
+            
+            //  Search on previous view
+            Get FindNavPathByKey of hoInvoking asViews[iState] (&ahInvokingObjects[iState]) (&aeNavType[iState]) to ahViews[iState]
+            
+            //  The exception for the default view
+            If (ahViews[iState] = C_WebUnresolvedObject and iState <= 1 and hoInvoking = hoDefaultView) Begin
+                Get FindNavPathByKey of Self asViews[iState] (&ahInvokingObjects[iState]) (&aeNavType[iState]) to ahViews[iState]
+                Move Self to hoInvoking
+            End
+            
+            //  If not found we have an invalid URL
+            If (ahViews[iState] = C_WebUnresolvedObject) Begin
+                //  Gracefull error and fallback to default view
+                Get Reset of (ViewStack(Self)) False True to bOK
+                If (hoDefaultView > 0) Begin
+                    Get NavigateInitialize of hoDefaultView Self True "" ntNavigateBegin to bSuccess
+                End
+                
+                If (pbStateHashInvalidError(Self)) Begin
+                    Error DFERR_WEBAPP_INVALID_URL
+                End
+                Else If (hoDefaultView > 0) Begin
+                    Send UpdateStateHash of hoDefaultView True
+                End
+                Procedure_Return
+            End
+            
+            Get AllowViewAccess ahViews[iState] to bAllowAccess
+            
+            If (not(bAllowAccess)) Begin
+                Get ViewAccessDenied hoDefaultView True to bHandled
+                If (bHandled) ;
+                    Procedure_Return
+                    
+                Move (ResizeArray(asStates, 0)) to asStates
+                Move -1 to iStateTo
+            End
+            
+            Move ahViews[iState] to hoInvoking
+        Loop    
+        
+        
+        //  Loop over parsed states and compare to view stack
+        For iState from 0 to iStateTo
+            Move hoView to hoPrevView
+            
+            Move ahViews[iState] to hoView    
+            Move asMainIDs[iState] to sMainID
+            Move asCustomStates[iState] to sCustomState
+            Get peWebViewStyle of hoView to eViewStyle
+            
+            If (eViewStyle <> wvsDialog) Begin
+                Move iState to iLastViewIndex
+            End
+            Else If (eViewStyle = wvsDialog and iFirstDialogIndex = 0) Begin
+                Move iState to iFirstDialogIndex
+            End
+            
+            //  If we where not reinitializing yet we check if we can get away with doing nothing
+            If (not(bReinitialize)) Begin
+                Move True to bReinitialize
+                
+                //  If the default view has vsmOff set then it will be on the stack but not in the hash, so we jump one step
+                If (hoDefaultView > 0 and peStateMode(hoDefaultView) = vsmOff and iStack = 0 and SizeOfArray(aViewStack) > 0) Begin
+                    Get WebObjectByName aViewStack[iStack].sViewName to hoStackView
+                    If (hoStackView = hoDefaultView) Begin
+                        Increment iStack
+                        Move hoDefaultView to hoPrevView
+                    End
+                End
+                
+                //  Check if stack matches hash
+                If (iStack < SizeOfArray(aViewStack)) Begin
+                    Get WebObjectByName aViewStack[iStack].sViewName to hoStackView
+                    
+                    If (hoView = hoStackView) Begin
+                        Get NeedReinitialize of hoView sMainID to bReinitialize
+                    End
+                    
+                    //  If it didn't we need to close stuff to the level where it matched
+                    If (bReinitialize) Begin
+                        Get TopViewHandle of (ViewStack(Self)) to hoTopView
+                        
+                        //  We just rudely close views here, no checks, this is what entering the new URL would basically do as well!
+                        Send Hide of hoTopView
+                        Send PopDownToView of (ViewStack(Self)) hoPrevView
+                    End
+                End
+            End
+            
+            //  If the stack didn't match the state hash we need to reinitialize.
+            If (bReinitialize) Begin
+                If (iStack = 0) Begin
+                    Get Reset of (ViewStack(Self)) False True to bOK
+                    
+                    If (hoDefaultView <> hoView and hoDefaultView > 0) Begin
+                        Get NavigateInitialize of hoDefaultView Self (SizeOfArray(asStates) <= 0) "" ntNavigateBegin to bSuccess
+                    End
+                    
+                End
+                
+                // Check if this is the top view
+                If (iState = (SizeOfArray(asStates) -1)) Begin
+                    Move True to bIsTopView
+                    
+                    //If the top view is a dialog we should render the first actual view too
+                    If (eViewStyle = wvsDialog) Begin
+                        Move iLastViewIndex to iCount
+                        //We need to know what view should be rendered behind the dialog
+                        While (iCount < iState)
+                            Send ShowView to (Host(Self)) ahViews[iCount]
+                            Increment iCount
+                        Loop    
+                    End
+                    
+                End
+                Else Begin
+                    Move False to bIsTopView
+                End
+                
+                //  Actually initialize the view
+                Get NavigateInitialize of hoView ahInvokingObjects[iState] bIsTopView asStates[iState] aeNavType[iState] to bSuccess
+                If (not(bSuccess)) Begin
+                    //  Fallback to default view (error is already shown)
+                    Get Reset of (ViewStack(Self)) False True to bOK
+                    If (hoDefaultView > 0) Begin
+                        Get NavigateInitialize of hoDefaultView Self True "" ntNavigateBegin to bSuccess
+                    End
+                    
+                    If (hoDefaultView > 0) Begin
+                        Send UpdateStateHash of hoDefaultView True
+                    End
+                    Procedure_Return
+                End
+            End
+            
+            Move True to bViewShown
+            Increment iStack
+      
+        Loop    
+        
+        //  If no view is shown we show the default view..
+        If (not(bViewShown)) Begin
+            Get Reset of (ViewStack(Self)) False True to bOK
+            Get NavigateInitialize of hoDefaultView Self (SizeOfArray(asStates) <= 0) "" ntNavigateBegin to bSuccess
+        End
+        
+        //  We only serialize the last view in the stack right away
+        If (hoView <> C_WebUnresolvedObject) Begin
+            
+            If (not(bReinitialize)) Begin
+                Get TopViewHandle of (ViewStack(Self)) to hoTopView
+                If (hoView <> hoTopView) Begin
+                    If (hoTopView > 0) Begin
+                        Send Hide of hoTopView
+                        Get peWebViewStyle of hoTopView to eTopViewStyle
+                    End
+                    Send PopDownToView of (ViewStack(Self)) hoView
+                    Send UpdateInvokingViewDrillDownStyle of hoView
+                    
+                    Get pbOverrideStateOnShow of hoView to bOverrideState
+                    Set pbOverrideStateOnShow of hoView to False
+                    
+                    Get peWebViewStyle of hoView to eViewStyle
+                    // When navigating from a regular view to a dialog we should restore more views
+                    // Restore everything up untill the first actual view
+                    If (eTopViewStyle = wvsDrillDown and eViewStyle = wvsDialog) Begin
+                        Move iLastViewIndex to iCount
+                        //Start from the last actual view and move up from there on.
+                        While (iCount <= iStateTo)
+                            Send ShowView to (Host(Self)) ahViews[iCount]
+                            Increment iCount
+                        Loop
+                    End
+                    Else Begin
+                        Send ShowView to (Host(Self)) hoView        // Send ShowView so we do not clear the entire viewstack    
+                    End
+                                    
+                    Set pbOverrideStateOnShow of hoView to bOverrideState
+                End
+            
+            End
+            Else Begin
+                Get IsViewLoaded hoView to bIsLoaded
+                If (not(bIsLoaded)) Begin
+                    Set phoLoadView to hoView   //  Set phoLoadView as ClientActions sent by OnLoad must be marked as load view client actions
+                    
+                    Get SerializeObject of hoView to hjObjectDef
+                    Send ClientActionEarly "createView" asParams hjObjectDef               
+                    Send Destroy of hjObjectDef
+                    Set phoLoadView to C_WebUnresolvedObject
+                End
+            End
+        End    
+    End_Procedure
+    
+    // Splits a view state hash string into the different pieces that it can contain.
+    //
+    // Params:
+    //      sStateHash              Complete view state hash.
+    //      ByRef sView             Will receive the view name.
+    //      Byref sOptRecordId      (optional) Will receive the record id.
+    //      ByRef sOptCustomHash    (optional) Will receive the custom hash.
+    Procedure ParseViewStateHash String sStateHash String ByRef sView String ByRef sOptRecordId String ByRef sOptCustomHash
+        String[] asParts
+        
+        //  Cut off possible "/" prefix
+        If (Left(sStateHash, 1) = "/") Begin
+            Move (Right(sStateHash, Length(sStateHash) - 1)) to sStateHash
+        End
+        
+        Move "" to sView
+        Move (StrSplitToArray(sStateHash, "-")) to asParts
+        
+        If (num_arguments > 3) Begin        
+            Move "" to sOptCustomHash
+
+            If (SizeOfArray(asParts) > 2) Begin 
+                Get UnescapeViewStatePartial asParts[2] to sOptCustomHash
+            End
+        End
+        
+        If (num_arguments > 2) Begin
+            Move "" to sOptRecordId
+            
+            If (SizeOfArray(asParts) > 1) Begin
+                Get UnescapeViewStatePartial asParts[1] to sOptRecordId
+            End
+        End
+        If (SizeOfArray(asParts) > 0) Begin
+            Get UnescapeViewStatePartial asParts[0] to sView
+        End
+        
+    End_Procedure
+    
+    // Concatenates the different parts of a view state hash into a single string. Some characters 
+    // will be escaped.
+    //
+    // Params:
+    //      sView       The view name.
+    //      sRecordId   The record id.
+    //      sCustomHash Custom hash part.
+    Function ConcatViewStateHash String sView String sRecordId String sCustomHash Returns String
+        String sResult
+        
+        Get EscapeViewStatePartial sView to sView
+        Move sView to sResult
+        
+        If (sRecordId <> "" or sCustomHash <> "") Begin
+            Get EscapeViewStatePartial sRecordId to sRecordId
+            Move (sResult + "-" + sRecordId) to sResult
+            
+            If (sCustomHash <> "") Begin
+                Get EscapeViewStatePartial sCustomHash to sCustomHash
+                Move (sResult + "-" + sCustomHash) to sResult
+            End
+        End
+        
+        Function_Return sResult
+    End_Function
+    
+    // Splits a drill-down style state hash into an array of separate view state hashes.
+    //
+    // Params:
+    //      sStateHash  Full state hash.
+    // Returns:
+    //      Array of view state hashes.
+    { Visibility=Private }
+    Function ParseStateHash String sStateHash Returns String[]
+        String[] aViewStateHashes
+        Integer i
+        
+        Move (StrSplitToArray(sStateHash, "/")) to aViewStateHashes
+        
+        //  Remove empty parts
+        For i from 0 to (SizeOfArray(aViewStateHashes) - 1)
+            If (Trim(aViewStateHashes[i]) = "") Begin
+                Move (RemoveFromArray(aViewStateHashes, i)) to aViewStateHashes
+            End
+        Loop
+        
+        Function_Return aViewStateHashes
+    End_Function
+    
+    // Appends a view state hash to a drill-down style state hash.
+    //
+    // Params:
+    //      sStateHash      Existing state hash.
+    //      sViewStateHash  View state hash to append.
+    // Returns:
+    //      The extended state has string.
+    { Visibility=Private }
+    Function AppendStateHash String sStateHash String sViewStateHash Returns String
+        If (sStateHash <> "") Begin
+            Move (sStateHash + "/" + sViewStateHash) to sStateHash
+        End
+        Else Begin
+            Move sViewStateHash to sStateHash
+        End
+        
+        Function_Return sStateHash
+    End_Function
+    
+    //  Escapes disallowed characters in a view state partial with their hexadecimal values between
+    //  ~ characters. The / and - are escaped because they are used to concatenate the different 
+    // pieces.
+    //
+    // Params:
+    //      sHash   The partial hash to escape.
+    // Returns:
+    //      The escaped partial view state hash.
+    { Visibility=Private }
+    Function EscapeViewStatePartial String sHash Returns String
+        //  Encode characters used elsewhere in URLs
+        Move (Replaces("-", Replaces("/", sHash, "~2f~"), "~5f~")) to sHash
+        
+        Move (UrlEncode(sHash, True)) to sHash
+        
+        Function_Return sHash
+    End_Function    
+    
+    // Unescapes a view state partial that has been escaped by EscapeViewStatePartial.
+    //
+    // Params:
+    //      sHash   The partial hash to unescape.
+    // Returns:
+    //      The unescaped partial view state hash.
+    { Visibility=Private }
+    Function UnescapeViewStatePartial String sHash Returns String
+        Move (UrlDecode(sHash)) to sHash
+        
+        //  Decode characters used elsehwere in urls
+        Move (Replaces("~5f~", Replaces("~2f~", sHash, "/"), "-")) to sHash
+        
+        Function_Return sHash
+    End_Function 
+    
+    // Converts a state hash into a URL. By default the hash is added to the URL a location hash 
+    // (behind the #). Override when a customized URL format is used.
+    //
+    // Params:
+    //      ByRef sHashUrl      Contains the hash when coming in, should contain the URL when going out.    
+    Procedure StateHashToUrl String ByRef sHashUrl
+        String sBaseHref
+        
+        If (pbStateAsUrlHash(Self)) Begin
+            If (Left(sHashUrl, 1) <> "#") Begin
+                Move ("#" + sHashUrl) to sHashUrl 
+            End
+        End
+        
+        WebGet psBaseHref to sBaseHref
+        Move (sBaseHref + sHashUrl) to sHashUrl
+    End_Procedure
+    
+    // Updates the state hash by pushing a new history item or replacing the existing one. Looks at
+    // peApplicationStateMode to see what it should do.
+    //
+    // Params:
+    //      sStateHash      New state hash.
+    //      sTitle          New page title.
+    //      bReplace        If true the current state is replaced, if false a new history item is 
+    //                      pushed.
+    Procedure SetStateHash String sStateHash String sTitle Boolean bReplace
+        tWebValueTree vt
+       
+        If (peApplicationStateMode(Self) = asmHistoryOnly) Begin
+            Move sStateHash to vt.v
+            
+            If (bReplace) Begin
+                Send HistoryReplaceState "" sTitle vt
+            End
+            Else Begin
+                Send HistoryPushState "" sTitle vt
+            End
+            WebSet psCurrentAppState to sStateHash
+        End
+        
+        If (peApplicationStateMode(Self) = asmHistoryAndUrls) Begin
+            Send StateHashToUrl (&sStateHash)
+            If (bReplace) Begin
+                Send HistoryReplaceState sStateHash sTitle
+            End
+            Else Begin
+                Send HistoryPushState sStateHash sTitle
+            End
+        End
+    End_Procedure
+
+    // Determines the current state hash. Depending on peApplicationState it looks at the location 
+    // hash or a property.
+    //
+    // Returns:
+    //      The current application state hash (since it was last updated).
+    Function StateHash Returns String
+        String sStateHash
+        
+        // When the hash is not part of the URL but we do support history then the state hash is
+        // stored in a web property unad updated by SetStateHash and HistoryPopState.
+        If (peApplicationStateMode(Self) = asmHistoryOnly) Begin
+            WebGet psCurrentAppState to sStateHash
+        End
+        
+        // When the hash is part of the URL we can always read it from the URL. Note that this 
+        // doesn't reflect changes made during this request.
+        If (peApplicationStateMode(Self) = asmHistoryAndUrls) Begin
+            WebGet psLocationHash to sStateHash
+            
+            If (Left(sStateHash, 1) = "#") Begin
+                Move (Right(sStateHash, Length(sStateHash) - 1)) to sStateHash
+            End
+        End 
+        Function_Return sStateHash
+    End_Function
+    
+    // Restores the passed state hash and updates the history.
+    //
+    // Params:
+    //  sStateHash  State hash to restore.
+    //  bReplace    If true the current history item is replaced (instead of adding a new history item).
+    Procedure NavigateToStateHash String sStateHash Boolean bReplace
+        Send SetStateHash sStateHash "" bReplace
+        Send RestoreState sStateHash
+    End_Procedure
+    
+    // Server-Action
+    //
+    //  This overrides LocationHasChange in cWebHostAPI_mixin!
+    //
+    // Called by the client when the location hash changes (hashchange browser event) and triggers
+    // a restorestate if needed and calls OnLocationHashChange.
+    // 
+    // Params:
+    //      sHash       New location hash.
+    { Visibility=Private }
+    Procedure LocationHashChange String sHash
+        String sStateHash
+        
+        If (peApplicationStateMode(Self) = asmHistoryAndUrls and pbStateAsUrlHash(Self)) Begin
+            Get StateHash to sStateHash
+            Send RestoreState sStateHash True
+        End
+        
+        Send OnLocationHashChange sHash
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebNavigationHost_mixin
+        Handle hoView
+        
+        WebPublishProcedure RestoreState_Desktop_Callback
+        WebPublishProcedure RestoreState_Desktop_Callback_ManualEnter
+        
+        
+        Get phoDefaultView to hoView
+        If (hoView <> C_WebUnresolvedObject) Begin
+            Send RegisterNavigateForwardPath ntNavigateBegin hoView Self ""
+        End
+        Get phoLoginView to hoView
+        If (hoView <> C_WebUnresolvedObject) Begin
+            Send RegisterNavigateForwardPath ntNavigateBegin hoView Self ""
+        End
+        Send ProcessNavPaths
+        Send ProcessAllNavPaths
+        
+    End_Procedure
+End_Class

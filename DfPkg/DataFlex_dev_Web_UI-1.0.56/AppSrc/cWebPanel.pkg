@@ -1,0 +1,26 @@
+﻿Use cWebBaseContainer.pkg
+Use WebUIConstants.pkg
+
+// Adds support for...
+// - panel layout region,
+// - panel sizing,
+{ HelpTopic=cWebPanel }
+{ DesignerJSClass=df.WebPanel }
+Class cWebPanel is a cWebBaseContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published properties....        
+        { WebProperty=Client } 
+        { EnumList="prCenter, prLeft, prRight, prTop, prBottom"}
+        { Category="Appearance" }
+        Property Integer peRegion prCenter    // location of panel in its parent container
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbResizable False
+        
+        Set psJSClass to "df.WebPanel"
+    End_Procedure
+
+End_Class

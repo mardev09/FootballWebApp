@@ -1,0 +1,186 @@
+END USER LICENSE AGREEMENT FOR DATAFLEX SOFTWARE PRODUCTS
+
+Software Products: DataFlex Studio; DataFlex Studio Personal; DataFlex Windows Client; DataFlex Web Client; DataFlex Win/Web Combo, DataFlex WebApp Server; DataFlex SPLF Server. 
+
+IMPORTANT - READ CAREFULLY: This End User License Agreement (EULA) is a binding legal agreement between You and Data Access Europe ("DAE" or us) that defines your entitlements, obligations, limitations and other terms and conditions upon which you may use the Software Products. Subject to an Agreement with Data Access Corporation (DAC), DAE is the developer and exclusive worldwide licensor for the Software Products identified above, which includes computer software and associated media, and may include "online", electronic or printed documentation and associated materials. By accepting this agreement, installing, copying, or using a Software Product or any part thereof, 1) you warrant that you have the authority to enter into this EULA and to be legally bound by its terms and conditions, the limited warranties, limitations of liability and restrictions herein and 2) subject to the Privacy Policy defined below, you consent to the collection and transmission of information during activation and use of the Software Product(s). If you do not accept and agree to all terms, conditions, obligations and restrictions of this EULA, you are not authorized to install or use the Software Product(s). 
+
+DEFINITIONS
+
+For the purposes of this License Agreement, the following definitions apply: 
+
+Application Software A compiled End-User application software program developed with the proprietary DataFlex language and/or DataFlex Studio and any of its components, resources or libraries.
+
+Business - A Business is an individual person or a legal entity operating as any form of business, proprietorship, partnership, corporation, organization, school, institution, government agency, non-governmental organization, for-profit or not-for-profit entity of any kind whatsoever.
+
+DataFlex Security, Performance, Load Balancing and Failover (SPLF) Server Proprietary DataFlex server software the purpose of which is to enhance the security and performance of one or more DataFlex WebApp application servers while also providing load balancing and failover benefits. 
+
+DataFlex Web Client a user counted license to use the DataFlex WebApp Server as defined herein.
+
+DataFlex WebApp Server Proprietary DataFlex server software, the presence of which is required for the execution and use of web, mobile or other forms of internet, intranet, web services or other internet-based Application Software. 
+
+DataFlex Windows Client Proprietary user counted DataFlex software, the presence of which is required for the execution and use of Windows Desktop Application Software.
+ 
+DataFlex Windows/Web Combo Client The inseparable combination of a DataFlex Windows Client and a DataFlex Web Client licensed as a single Software Product.
+ 
+End User A person who uses Application Software and its required Software Product(s).
+
+Named End User A specific, individual, named person that uses Application Software and its required Software Product(s). Each Named End User must be included in compliance tests for the Number of Named End Users licensed for a particular Software Product.
+
+Number of End Users / Number of Named End Users The count of the total number of End Users or Named End Users licensed to use a Software Product under the terms and conditions of this EULA. 
+
+Number of Web Applications The number of web, mobile or internet Application Software programs licensed for use on a DataFlex WebApp Server. To determine the Number of Web Applications licensed on a server instance, visit: www.dataaccess.eu/pricing.
+
+Privacy Policy Your privacy is important to us. DAE publishes a Privacy Policy (www.dataaccess.com/privacy) that defines how we collect, use, share and protect information. Features in some Software Products send information to or receive information from us during product activation or use. All such collection, sending and receiving of information is performed according to DAEs published Privacy Policy. 
+
+Private Person - A Private Person is a private, individual person not acting as or on behalf of a public or private business, organization, school, for-profit or not-for-profit entity of any kind whatsoever.
+
+Server Instance A network operating system environment installed a) directly on a physical hardware server or b) on a virtual server, including a cloud server instance, that is configured to share resources among multiple End Users computers or devices that are connected to it. Non-running, stored virtual Server Instances require licenses as defined in the Software Product Price List or Product Information Document. A specific connection technology is not consequential to the definition of a Server Instance; the existence of multiple End User device connections and the sharing of resources are the essence of a Server Instance for the purposes of this EULA. For licensing purposes, every installation of a Software Product on any Server Instance requires an individual, unique, Software Product serial number and registration code even if multiple virtual Server Instances are installed on the same physical hardware server.
+
+SOFTWARE PRODUCT LICENSE
+
+The Software Products are protected by copyright laws and international copyright treaties, as well as other intellectual property laws and treaties. The Software Products are licensed, not sold. Subject to the terms and conditions hereof, this LICENSE grants you the following limited, non-exclusive entitlements for the Software Products listed below:
+
+1. GRANT OF LICENSE FOR DATAFLEX STUDIO
+ 
+DataFlex Studio is used to create Application Software
+
+1.1 SINGLE USER COMMERCIAL LICENSE FOR DATAFLEX STUDIO: You may install DataFlex Studio on any computer or server instance on which you develop or test Application Software provided that You use DataFlex Studio on only one computer at a time. You may not share or otherwise allow another person to use your DataFlex Studio license, or a DataFlex Studio license designated solely for your use. You may use DataFlex Studio to design, write, compile and test Application Software. 
+
+1.1.1 A DataFlex Studio license includes a three-user DataFlex Windows/Web Combo License defined below to deploy Application Software solely within your Business. The three-user Windows/ Web Combo license included with a DataFlex Studio license may not be deployed to or used by any third party. More than three Application Software End Users in your Business requires the purchase of additional deployment licenses. 
+
+1.1.2 You may distribute to third parties compiled Application Software you create with DataFlex Studio if you purchase for the End Users or the End User Business purchases licenses for the DataFlex Windows Clients, DataFlex Web Clients or DataFlex WebApp Server(s) as appropriate to the requirements of your Application Software. 
+
+1.1.3 The License for DataFlex Studio includes entitlement to deploy and use a limited functionality DataFlex WebApp Testing Server (Testing Server) solely for development and testing use; production deployment and/or use of the Testing Server is not licensed. You may install the DataFlex WebApp Testing Server on a Server Instance accessible by End User testers to assess the quality and suitability for production use of your Application Software. The number of End User testers that access the Testing Server is not restricted. You are responsible for the limited, correct, and compliant use of the Testing Server and the purchase of Web Clients or WebApp Servers for post-testing, production Application Software deployment and use.
+
+1.1.4 A Business may designate one named person to use DataFlex Studio license per serial number and registration code. The designation of a named person to exercise the licensed rights and entitlements of the Studio license does not create a separate, additional, private-use license for the designated user; licensee rights and responsibilities are non-transferrable and remain in the Business. 
+
+1.1.5 A Business may install and use DataFlex Studio as an Evaluation License as defined below. 
+
+1.1.6 Solely with respect to electronic documents included with the Software Product, You may make copies (either in hardcopy or electronic form), provided that such copies are only for your use with the Software Product and are not republished or distributed to any third party.
+
+1.2  SINGLE USER PERSONAL LICENSE FOR DATAFLEX STUDIO - a no cost edition of DataFlex Studio licensed for the specific, limited uses defined below:
+
+1.2.1 Personal use a free license for a Private Person to install and use DataFlex Studio Personal on one computer of which he/she is the primary user to create Application Software for private, personal, non-commercial use. Use of DataFlex Studio Personal is prohibited if such use is in any form or manner associated with a commercial or financial relationship including professional service or consulting fees, voluntary payments or donations or in-kind exchange of goods or services between the Application Softwares developer and its End User(s).
+
+1.2.2 Extended Evaluation use - a Business may install a free DataFlex Studio Personal on one computer to extend the term of a DataFlex Studio Evaluation License as defined below provided that the Business makes no commercial, production use whatsoever of Application Software created with DF Studio Personal.
+
+1.2.3 High school, secondary school, college, or university students may use DataFlex Studio Personal in classroom learning environments of not-for-profit educational institutions provided that each student acquires his/her own DataFlex Studio Personal license, serial number and registration code and otherwise abides by the terms and conditions of the Personal license. Administrative use of DataFlex Studio Personal by educational institutions is prohibited.
+
+1.2.4 DataFlex Studio Personal includes a three-user Windows Client Engine License with Connectivity Kit for use by personal, non-commercial end users. You may distribute to third parties Application Software You create solely for their personal, non-commercial use. 
+
+1.2.5 DataFlex Studio Personal includes a limited functionality DataFlex WebApp Server. You may install and use the included DataFlex WebApp Server on one Server Instance accessible to third parties via the internet provided that your Application Software is strictly for personal, non-commercial use. You may not distribute the DataFlex Studio Personal Web Application Server to third parties in any form or manner whatsoever. 
+
+If you have questions about the appropriate use of DataFlex Studio Personal, contact info@dataaccess.eu.
+
+2. GRANT OF LICENSE FOR DATAFLEX DEPLOYMENT SOFTWARE PRODUCTS
+
+2.1 COMMERCIAL LICENSE FOR DATAFLEX WINDOWS CLIENT: DataFlex Windows Clients are required to deploy and execute desktop Microsoft Windows Application Software. This license entitles you to install and use a DataFlex Windows Client on Your Businesss Personal Computers or one Server Instance provided that no more than the licensed Number of End Users use the Software Product. The DataFlex Windows Client is licensed solely for the execution of Windows desktop Application Software. The DataFlex Windows Client is not licensed for any form of use in which non-DataFlex programs or processes or third-party products requests and/or responses originate over the Internet or where data is served by the DataFlex Windows Client over the Internet. Notwithstanding the foregoing, the use of Microsoft Windows Remote Desktop Services, Citrix Virtual Apps and Desktop and similar remote desktop application environments that enable End Users to remotely access Windows desktop Application Software over the internet is licensed.
+
+2.2 COMMERCIAL LICENSE FOR DATAFLEX WEB CLIENT: DataFlex Web Clients are required to deploy and execute internet-based Application Software on desktop web browsers and mobile devices. This license entitles a specific Number of Named End Users to access and use web Application Software on a DataFlex WebApp Server. Web Client licenses may not be shared among End Users each Named End User of the web Application Software must have an individually assigned Web Client license. In its sole discretion, DAE may grant licenses for multiple instances of DataFlex WebApp Server to support a large Numbers of Named End Users. Each installed DataFlex WebApp Server used with DataFlex Web Clients must have a unique serial number and registration code provided by DAE. Contact DAE to request additional DataFlex WebApp Server licenses for high-demand Web Client environments.
+
+2.3 COMMERCIAL LICENSE FOR DATAFLEX WINDOWS/WEB COMBO CLIENT: The DataFlex Windows/Web Combo Client license is an entitlement for a defined Number of Named End Users to use both a Windows Client and a Web Client according to their respective license definitions, entitlements and limitations. Windows/Web Combo Clients may not be shared among users each End User must be uniquely named and must have an individually assigned Combo Client license. Windows/Web Combo Client Licenses are inseparable and may not be unbundled to enable the licenses to be used by different End Users.
+
+2.4 COMMERCIAL LICENSE FOR DATAFLEX COUNTED WEB APPLICATIONS: The license for counted Web Applications entitles You to install a DataFlex WebApp Server on one Server Instance to execute the licensed Number of Applications. The Number of Web Applications installed on a DataFlex WebApp Server must not exceed the Number of Web Applications licensed on your Software Product invoice. 
+
+2.4.1 NOTWITHSTANDING ANY OTHER PROVISION OF THIS LICENSE AGREEMENT, A DATAFLEX COUNTED WEB APPLICATION LICENSE DOES NOT INCLUDE ENTITLEMENT TO HOST, OPERATE OR OFFER MULTI-TENANT SOFTWARE AS A SERVICE (SAAS) WEB APPLICATION SOFTWARE WHERE END USERS PAY RECURRING FEES TO USE HOSTED WEB APPLICATIONS OR THE SERVICES OF SUCH APPLICATIONS. SAAS LICENSING TERMS, CONDITIONS AND PRICING ARE AVAILABLE. CONTACT DAE OR YOUR DATA ACCESS CHANNEL PARTNER FOR DETAILS. DataFlex Application Counted Web Application Servers licensed to individual end user customers can be used to deploy your Web Application Software licensed as SaaS.
+
+
+2.5 COMMERCIAL DATAFLEX SPLF SERVER CONNECTION LICENSE The DataFlex SPLF Server Connection License is an add-on entitlement for a DataFlex WebApp Server. The license entitles a DataFlex WebApp Server to connect to the security, performance, load balancing and failover resources of an SPLF server. Each WebApp application server connected to an SPLF Server requires its own SPLF Server Connection License. 
+
+To increase the Number of End Users, Number of Named End Users of Number of Applications contact your Application Softwares developer, a Data Access Channel Partner or DAE.
+
+3.     SOFTWARE PRODUCT EVALUATION LICENSES 
+
+3.1 An EVALUATION LICENSE grants You entitlement to install and use a particular Software Product for sixty days on one computer of which You are the primary user solely to evaluate the Software Products suitability for Your requirements. You may not deploy or otherwise distribute to third parties Application Software you create with an Evaluation License except when providing the results of your work to others directly involved in the evaluation process. For testing and evaluation only, you may install and use a DataFlex WebApp Testing Server as defined above. 
+
+3.1.1 DataFlex Evaluation Licenses may be extended once for an additional sixty days via a dialog displayed on-screen at the end of the initial evaluation period. 
+
+3.1.2 NOTICE: DataFlex Personal and Evaluation Licenses may have specifications that vary from released commercial Software Product licenses purchased at retail and may have internal controls that cause them to cease to operate after a certain date. Your license to use a Personal or Evaluation License expires on the first to occur of the following: a date defined in this EULA or otherwise in writing by DAE or the action of an internal control that causes operation of the Software Product to cease. You accept full responsibility to know and understand the limits of your License and to ensure that the terms and conditions of the license, its specifications and time limitations, if any, are appropriate to your use of the Software Product.
+
+3.1.3 At any time, you may purchase a Commercial Software Product to replace a Personal or Evaluation Software Product. Regardless of the effect of any internal controls that may or may not be present in the Software Product, if your non-Commercial License expires, your rights to use the Software Product cease upon expiration. Contact DAE for more information.
+
+4.  RESERVATION OF RIGHTS. 
+Except as expressly granted herein, DAC retains all right, title and interest in and to the Software Products and any copies of the Software Products, regardless of location or the form in which the copies may exist. The Software Products design, structure, organization, and source code are valuable trade secrets protected under E.U., U.S. and other international copyright and trade secret laws.
+
+5.  COPYRIGHT. 
+3.1 All copyrights in and to the Software Products, in all forms, and all copies of the Software Products wherever situated are owned by DAC or its suppliers. The Software Products are protected by copyright laws and international treaty provisions. You must treat the Software Products like any other copyrighted material except that you may make one copy of a properly licensed Software Product solely for inactive backup or archival purposes. 
+
+6.  OTHER SOFTWARE PRODUCT RIGHTS AND LIMITATIONS.
+
+6.1 You may not sublicense, reproduce, distribute, transmit, market, sell, assign, transfer, disclose, translate, modify, disassemble, or reverse engineer any Software Product by any means or in any form, or create derivative works based on the Software Products, or any portions thereof, or obtain possession of any source code or other technical material relating to Software Products. 
+
+6.2 You agree not to remove, alter, or obscure any copyright notices or proprietary legends contained on the media or included in the Software Products and their installation programs. 
+
+6.3 You agree that the Number of End Users, Number of Named End Users, Number of Applications, or other specifications written on the invoice, product label or other documents applicable to defining the Software Products use and limitations of use is incorporated into this EULA for the purpose of defining the limits of your use. You agree not to allow more than the licensed Number of End Users or Number of Named End Users to use the Software Product. You agree not to install or use more than the licensed Number of Applications on DataFlex WebApp Server. You agree not to interfere with or remove any technical limitations on the Number of End Users, Number of Named End Users, Number of Applications, number of terminals, workstations or personal computers, devices or other restrictions that may be incorporated into the Software Product. You further agree that although the Software Product may be restricted by technical means, that the terms, restrictions, and limitations of use defined in this EULA shall take precedence over any physical mechanism that restricts or attempts to restrict the use of the Software Product.
+
+6.4 You agree not to use any component or sub-component of a Software Product for any purpose other than the use licensed herein. 
+
+6.5 If Software Product incorporates Codejock Software ActiveX controls, said controls shall be subject to the same terms and conditions, restrictions, and limitations as the Software Product. Use of any incorporated Codejock Software ActiveX controls with any product other than DataFlex is a violation of this EULA and is NOT licensed hereunder. If the Software Product includes the software of any third party, the third-party software shall be subject to the same terms, conditions, restrictions and limitations as the Software Product. 
+
+6.6 DataFlex Studio and DataFlex Studio Personal include the DataFlex Reports Demo Runtime solely for the purpose of executing demonstration reports supplied with DataFlex Studio, including sample applications and demo workspaces. The DataFlex Reports Demo Runtime includes the DataFlex Reports OCX/ActiveX control and related runtime components required for that limited purpose. The DataFlex Reports Demo Runtime is subject to the same terms, conditions, restrictions, and limitations as the DataFlex Studio with which it is installed. It may not be extracted, copied, registered, distributed, deployed, or used as a stand-alone component or as part of Your own Application Software. Use of the DataFlex Reports Demo Runtime for any purpose other than executing the supplied demonstration reports is a violation of this EULA and is NOT licensed hereunder. 
+
+7. TERMS AND CONDITIONS FOR APPLICATION SOFTWARE
+
+7.1  DAE makes no claims upon Application Software you create. Subject to the provisions and limitations of this EULA, you may distribute DataFlex Deployment Software Products with Application Software you create if you purchase a valid license for each End User of your Application Software or for the Number of Applications installed on a DataFlex WebApp Server. If you do not distribute DataFlex Deployment Software Products with your Application Software, your End Users must purchase the required Deployment Software Product. 
+
+7.2 You further confirm and agree that your Application Software bears your valid copyright notice and the words Portions Copyright Data Access Corporation in the same location, type size and style as your copyright notice. 
+
+7.3 You understand and agree that neither DAC nor DAE make any representations or provide any warranty of any kind whatsoever for your Application Software. You accept full responsibility for all aspects of your Application Software including but not limited to its specification, design, implementation, operation, function, support and maintenance. You agree that neither DAC nor DAE nor their partners, affiliates, officers, directors, representatives, employees, or shareholders have or shall have any responsibilities or liabilities whatsoever to End Users of your Application Software. 
+
+7.4 You agree to indemnify and hold harmless DAC and DAE, their partners, affiliates, officers, directors, representatives, employees, shareholders, and suppliers from and against any claims or liabilities arising from or as a result of any use of your Application Software anywhere in the world. You agree not to create or distribute Application Software that provides End Users or other third parties with the general capability to create Application Software or to create and deploy databases of their own design.
+
+8. DESCRIPTION OF ADDITIONAL SOFTWARE SUBJECT TO THIS EULA
+
+8.1  By installing and using any Software Product accompanied by this EULA, You agree that the terms and conditions of this EULA replace and supersede the terms and conditions of any prior License Agreement or EULA applicable to prior revisions of the Software Products still in use by the licensee.
+
+9.  TERMINATION. 
+
+9.1  This EULA terminates automatically upon your failure to comply with its terms or conditions. Without prejudice to any other rights, DAE may terminate this EULA immediately if you fail to comply with the terms and conditions hereof. In the event of termination, you agree to immediately cease all use of the Software Products, to cease use and/or distribution of Application Software created with the Software Products licensed herein and to destroy all copies of the Software Products in your possession. 
+
+10. EXPORT.
+
+10.1 You will not ship, transfer, or export, directly or indirectly, electronically or otherwise, the Software Products to any country subject to export controls defined by the European Union or the United States of America Export Administration Act, nor will you use the Software Products for any purpose prohibited by the laws of the European Union or the United States of America or the country in which you are located.
+
+11.  U.S. GOVERNMENT RESTRICTED RIGHTS. 
+
+11.1  The Software Products and accompanying documentation are deemed to be "Commercial Computer Software" and "Commercial Computer Software Documentation," respectively, as defined in Federal Acquisition Regulation (FAR) 2.101 and Defense Federal Acquisition Regulation Supplement (DFARS) 252.227-7014. Any use, modification, reproduction, release, performance, display, or disclosure of the Software and documentation by the U.S. Government shall be governed solely by the terms of this Agreement and shall be prohibited except to the extent expressly permitted herein. All other rights are reserved by Licensor, and nothing herein shall be construed to grant the Government any rights not expressly provided in this agreement. Licensor is Data Access Europe BV / Lansinkesweg 4, 7553 AE Hengelo, The Netherlands.
+
+12.  MISCELLANEOUS 
+
+12.1  This EULA is the entire agreement between You and DAE and supersedes any proposal or prior agreement, offer, oral or written, in hardcopy or electronic in any form, and any other communications relating to the subject matter of this EULA.
+
+12.2  All fees and payments due to DAE shall be exclusive of foreign, state and local use, sales, property, internet and electronic commerce taxes, whether current or future. You agree to pay all such taxes.
+
+12.3  This EULA and any dispute or claim arising out of or in connection with it or its subject matter or formation (including non-contractual disputes or claims) shall be governed by and construed in accordance with the laws of the Netherlands. The United Nations Convention on Contracts for the International Sale of Goods shall not apply to this EULA. The courts of The Hague, the Netherlands, shall have exclusive jurisdiction to settle any dispute or claim arising out of or in connection with this EULA (including any non-contractual disputes or claims), provided that DAE may apply for injunctive or other urgent or equitable relief in any court of competent jurisdiction, wherever located.
+
+12.4  If you have any questions concerning this EULA, or if you desire to contact Data Access Europe for any reason, please email info@dataaccess.eu or write to: Data Access Europe, Lansinkesweg 4, 7553AE, Hengelo, The Netherlands. 
+
+13. GENERAL LIMITED WARRANTY
+
+13.1 For a period of thirty days from the date of invoice, DAE warrants that the licensed Software Product will perform substantially in accordance with the accompanying documentation. Some jurisdictions do not allow limitations on duration of an implied warranty, so the above limitation may not apply to you. To the extent allowed by applicable law, implied warranties on the Software Products are limited to ninety days. The general limited warranty varies according to specific Software Products as follows:
+
+13.1.1 DataFlex Personal is provided as-is, without warranty of any kind.
+
+13.1.2 All DataFlex Deployment Software Products are provided as-is, without warranty of any kind.
+
+
+13.1.3 Evaluation Software Products are provided as-is, without warranty of any kind.
+
+
+13.2 CUSTOMER REMEDIES. Regardless of the form or action, whether in contract, negligence, strict liability, tort, products liability, or otherwise, you agree that DACs, DAE's and its suppliers' entire liability and your exclusive remedy shall be, at DAE's sole option, either (a) return of the license price paid, or (b)�repair or replacement of the Software Product that does not meet DAE's Limited Warranty as described above and which is returned to DAE with a copy of your purchase receipt. This Limited Warranty is void if failure of the Software Product has resulted from accident, abuse, or misapplication or if the Software Product has been modified in any way whatsoever or is not properly licensed or used according to the terms and conditions of this EULA. Any replacement Software Product that DAE may provide will be warranted for the remainder of the original warranty period or thirty (30) days, whichever is longer. Neither these remedies nor any product support services offered by DAE are available without proof of purchase from an authorized source. The parties acknowledge that these remedies are reasonable based on the nature of the Software Products and shall not be deemed unreasonable or to fail of their essential purpose.
+
+13.3 NO OTHER WARRANTIES OR CONDITIONS. 
+
+13.3.1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, DAC, DAE AND THEIR SUPPLIERS DISCLAIM ALL OTHER WARRANTIES AND CONDITIONS, WHETHER EXPRESS, STATUTORY, OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, IMPLIED WARRANTIES AND CONDITIONS OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE WITH REGARD TO THE SOFTWARE PRODUCTS AND ANY OTHER PRODUCTS OR GOODS PROVIDED BY DAE OR DAC. THIS LIMITED WARRANTY GIVES YOU SPECIFIC LEGAL RIGHTS. YOU MAY HAVE OTHERS, WHICH VARY FROM JURISDICTION TO JURISDICTION. 
+
+13.4 NO LIABILITY FOR CONSEQUENTIAL DAMAGES. 
+
+13,4,1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL DAC, DAE OR THEIR SUPPLIERS, OFFICERS, DIRECTORS, SHAREHOLDERS OR EMPLOYEES BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT, OR CONSEQUENTIAL DAMAGES WHATSOEVER (INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION, LOSS OF GOODWILL OR ANY OTHER PECUNIARY LOSS) ARISING OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE PRODUCTS, APPLICATION SOFTWARE CREATED WITH OR DEPLOYED ON THE SOFTWARE PRODUCTS, OR ANY OTHER DAE OR DAC PRODUCTS OR GOODS OR SERVICES OR ANY PORTION THEREOF, EVEN IF DAE OT DAC HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. BECAUSE SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES, THE ABOVE LIMITATION MAY NOT APPLY TO YOU. 
+
+DataFlex is a registered trademark of Data Access Corporation
+
+
+Revised: March 2025
+
+
+

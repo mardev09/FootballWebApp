@@ -1,0 +1,84 @@
+﻿Use WebUIConstants.pkg
+Use cWebBaseUIObject.pkg
+
+// Menu items for WebApp menubars. Menu items form the containers for each outer level
+// menu (e.g. "File", "Edit", "Views" etc). They can also be nested inside an outer level
+// menu to form the items of those menus (e.g. ("Save", "Next", "Previous" etc).
+//
+// cWebToolBar objects also use cWebMenuItems for the toolbar buttons.
+//
+// Note: to delegate events to the focus object Get FocusObject of ghoWebApp.
+// This returns the VDF object handle of the server-side object that represents the current
+// focused object on the client. If Focus = C_WebUnresolvedObject then there is no focus object.
+//
+// Adds support for...
+// - caption, visual properties, etc.
+// - menu events, onClick etc.
+{ DesignerClass=cDTCWebMenuItem }
+{ DesignerJSClass=df.WebMenuItem }
+{ HelpTopic=cWebMenuItem }
+{ Navigable=OnClick }
+Class cWebMenuItem is a cWebBaseUIObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbBeginGroup False      // If True, then a group divider is drawn above (or left of) this item.   
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psGroupCaption ""        // Some menu styles support separate captions for groups (see pbBegingroup)
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick C_WebDefault   // Set to true to trigger server OnClick event
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnClick ""       // Name of client side Onclick event handler
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property String psCaption ""             // The value that is displayed in the control.
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psImage ""               // Name of image file that contains the image/icon to be shown in this item.
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psToolTip ""             // Tooltip when class is used as a toolbar button
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        { EnumList="adActionBar, adMenu, adBoth" }
+        Property Integer peActionDisplay adBoth
+        
+        Set psJSClass to "df.WebMenuItem"
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure NotifyChangeRights
+        Broadcast Send NotifyChangeRights
+        Send OnChangeRights
+    End_Procedure
+
+    
+    { MethodType=Event }
+    Procedure OnChangeRights
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnClick
+        // On click event stub.
+    End_Procedure
+
+    
+    Procedure End_Construct_Object
+        // Publish the event methods....
+        WebPublishProcedure OnClick       
+        
+        Forward Send End_Construct_Object
+        
+        If (pbServerOnClick(Self) = C_WebDefault) Begin
+            Set pbServerOnClick to (SizeOfArray(paChildWebControls(Self)) = 0)
+        End
+    End_Procedure
+End_Class

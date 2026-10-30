@@ -1,0 +1,132 @@
+﻿Use VdfBase.pkg
+Use cWebResourceManagerProxy_mixin.pkg
+
+// cWebObject_Mixin functions
+Use cWebObject_API.pkg
+
+Class cWebFileUploadMixin is a Mixin
+    
+    {Visibility = Private}    
+    Procedure DefineWebFileUploadMixin
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psUploadUrl ""
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbShowDialog True
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psAccept ""
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbCapture False
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnUploadFinished True
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnUploadFinished ""
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure PreSerializeObject
+        String sUploadUrl
+        
+        Get psUploadUrl to sUploadUrl
+        If (Trim(sUploadUrl) = "") Begin
+            Get psUploadUrl of (ResourceManager(Self)) to sUploadUrl
+            Set psUploadUrl to sUploadUrl
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    // Index
+    // Filename
+    // Size
+    // Type
+    
+    // Index
+    // Key
+    Function DoStartUpload Returns String
+        String[][] aFiles 
+        String[][] aResult
+        //tWebRow[] aFiles aResult
+        String sPath sData
+        Integer iFile iTo
+        tWebValueTree tData
+        Handle hoJsonObj
+
+        //  Deserialize file details
+        Get ptActionData to tData
+        ValueTreeDeserializeParameter tData to afiles
+        
+        Move (SizeOfArray(aFiles) - 1) to iTo
+        
+        For iFile from 0 to iTo
+            Move aFiles[iFile][0] to aResult[iFile][0]
+            
+            Get OnFileUpload aFiles[iFile][1] aFiles[iFile][2] aFiles[iFile][3] to sPath
+            
+            If (sPath <> "") Begin
+                Get FileUploadKey of (ResourceManager(Self)) sPath to aResult[iFile][1]
+            End
+            Else Begin
+                Move "" to aResult[iFile][1]
+            End
+        Loop
+        
+        //  Serialize result
+        Get Create (RefClass(cJsonObject)) to hoJsonObj
+        Send DataTypeToJson of hoJsonObj aResult
+        Get Stringify of hoJsonObj to sData
+        Send Destroy of hoJsonObj
+        
+        Function_Return sData
+    End_Function
+    
+    { MethodType=Event }
+    Function OnFileUpload String sFileName BigInt iBytes String sMime Returns String
+        Function_Return ""
+    End_Function
+    
+    { MethodType=Event }
+    Procedure OnFileFinished String sFileName String sLocalPath
+    End_Procedure
+    
+    { Visibility=Private }
+    Function DoFileFinished String sFileName String sResourceId Returns String
+        String sLocalPath
+        
+        Get FileUploadKeyToPath of (ResourceManager(Self)) sResourceId to sLocalPath
+        
+        Send OnFileFinished sFileName sLocalPath
+        
+        Function_Return ""
+    End_Function
+    
+    { Visibility=Private }
+    Procedure DoHandleLocalFileUpload String sResourceId
+        Send HandleLocalFileUpload of (phoResourceProxy(Host(Self))) Self sResourceId    
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnLocalFileUpload String sUploadFilePath String sUploadToFilePath
+        Send PerformLocalFileUpload of (phoResourceProxy(Host(Self))) sUploadFilePath sUploadToFilePath
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnUploadFinished
+    End_Procedure
+    
+    {Visibility = Private}
+    Procedure PublishFileUploadMethods
+        WebPublishFunction DoStartUpload
+        WebPublishFunction DoFileFinished
+        WebPublishProcedure OnUploadFinished
+        WebPublishProcedure DoHandleLocalFileUpload
+    End_Procedure
+  
+End_Class

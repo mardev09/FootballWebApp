@@ -1,0 +1,290 @@
+﻿Use VdfBase.pkg
+
+Use cWebBasePropHandler.pkg
+Use cWebClientProtectedPropHandler.pkg
+
+// Singleton object that is the central manager for all web properties handlers. It is accessed by
+// the cWebApp class when needed and WebSet and WebGet are handled here. It has forwards these 
+// operations to the handler objects for the different web property types. These handlers are 
+// created by this class and all share a generic API (cWebBasePropertyHandler). These different types 
+// are Client (web properties stored and used on the client), Server (web properties stored on the 
+// server bound to the page scope) and ServerSession (web properties stored on the server bound to 
+// the session lifetime).
+//
+
+
+
+{ ClassLibrary=WebApp }
+Class cWebPropertyHost_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebPropertyHost_mixin
+        
+        { Visibility=Private }
+        { WebProperty=Client }
+        Property String psSPKey ""                     // Web property storing the identifier key for server-side properties with a page lifetime
+        
+        //  Initialize and store handles to the three different handlers
+        { Visibility=Private }
+        Property Handle phoClientHandler C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoServerHandler C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoSessionHandler C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoClientProtectedHandler C_WebUnresolvedObject
+        
+        Send InitPropertyManager
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure InitPropertyManager
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    //
+    //  Clear web properties between requests!
+    //
+    { Visibility=Private }
+    Procedure Call_ClearPropertyHost
+        Send ClearData of (phoClientHandler(Self))
+        Send ClearData of (phoServerHandler(Self))
+        Send ClearData of (phoSessionHandler(Self))
+    End_Procedure
+    
+    
+    //
+    //  Central WebGet handler for non-scalar (advanced) web properties.
+    //  Forwards the request to the handler for the specific web property type (Client, Server, ServerSession).
+    //
+    { Visibility=Private }
+    Function OwnerGetAdvSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns Variant
+        Handle hoHandler
+        Boolean bIsAjaxWebObject
+        String sObject 
+        Variant vReturn
+        
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObject to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Get Object_Label of hoObject to sObject
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, sObject, "WebGet " + pubProp.sName, C_NewLine+C_NewLine))
+            Function_Return
+        End
+        
+        //  Get and call handler
+        Get PropertyHandler hoObject pubProp.eMode to hoHandler
+        If (hoHandler = -1) Begin
+            Get Object_Label of hoObject to sObject
+            Error DFERR_PROGRAM (SFormat("Property '%2' of object '%1' is not a valid web property for %3.%4Check the web property meta value.", pubProp.sName, sObject, "WebGet", C_NewLine+C_NewLine))        
+            Function_Return
+        End
+        
+        Get GetAdvSyncProp of hoHandler hoObject (&pubProp) to vReturn  
+        Function_Return vReturn  
+    End_Function
+    
+    
+    //
+    //  Central WebGet handler for scalar web properties.
+    //  Forwards the request to the handler for the specific web property type (Client, Server, ServerSession).
+    //
+    { Visibility=Private }
+    Function OwnerGetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns String
+        Handle hoHandler
+        Boolean bIsAjaxWebObject
+        String sObject sReturn
+        
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObject to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Get Object_Label of hoObject to sObject
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, sObject, "WebGet " + pubProp.sName, C_NewLine+C_NewLine))
+            Function_Return
+        End
+        
+        //  Get and call handler
+        Get PropertyHandler hoObject pubProp.eMode to hoHandler
+        If (hoHandler = -1) Begin
+            Get Object_Label of hoObject to sObject
+            Error DFERR_PROGRAM (SFormat("Property '%2' of object '%1' is not a valid web property for %3.%4Check the web property meta value.", pubProp.sName, sObject, "WebGet", C_NewLine+C_NewLine))        
+            Function_Return
+        End
+        
+        Get GetScalarSyncProp of hoHandler hoObject (&pubProp) to sReturn  
+        Function_Return sReturn  
+    End_Function
+    
+    //
+    //  Central WebSet handler.
+    //  Forwards the request to the handler of the specific web property type (Client, Server, ServerSession).
+    //
+    { Visibility=Private }
+    Procedure OwnerSetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Variant vPropValue
+        Handle hoHandler
+        Boolean bIsAjaxWebObject
+        String sObject
+        
+        Get Object_Label of hoObject to sObject
+        
+        // Test that the target object is a cWebObject....
+        Get IsAjaxWebObject of hoObject to bIsAjaxWebObject
+        
+        If (not(bIsAjaxWebObject)) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppNotWebObject, sObject, "WebSet " + pubProp.sName, C_NewLine+C_NewLine))
+            Procedure_Return
+        End
+        
+        //  Get and call handler
+        Get PropertyHandler hoObject pubProp.eMode to hoHandler
+        If (hoHandler = -1) Begin
+            Error DFERR_PROGRAM (SFormat("Property '%2' of object '%1' is not a valid web property for %3.%4Check the web property meta value.", pubProp.sName, sObject, "WebSet", C_NewLine+C_NewLine))        
+            Procedure_Return
+        End
+        Send SetSyncProp of hoHandler hoObject (&pubProp) vPropValue
+    End_Procedure   
+    
+    //
+    //  Looks up the web property type based on the object handle and the index and returns the right handler.
+    //
+    { Visibility=Private }
+    Function PropertyHandler Handle hoObject Integer eMode Returns Handle
+        Handle hoHandler hoNeighborhood
+        Handle[] aHandlers
+        
+        Move -1 to hoHandler
+        
+        If (eMode = wptClient) Begin
+            Get phoClientHandler to hoHandler    
+        End
+        Else If (eMode = wptServerPage) Begin
+            Get phoServerHandler to hoHandler
+        End
+        Else If (eMode = wptServerSession) Begin
+            //  The server properties with page lifetime are stored per neighborhood (per view..)
+            Get phoSessionHandler to hoHandler
+        End
+        Else If (eMode = wptClientProtected) Begin
+            Get phoClientProtectedHandler to hoHandler
+        End
+        
+        Function_Return hoHandler
+    End_Function
+    
+    
+
+    
+    
+    //
+    // Called by the cWebApp when a new request comes in to initialize the client web properties. 
+    // Forwards the request to the client handler.
+    //
+    { Visibility=Private }
+    Procedure Call_PreWebProps tWebCallContext ByRef cctx
+        Handle hoHandler
+        
+        Get phoServerHandler to hoHandler
+        Send InitializeCall of hoHandler cctx.request.Header.aSyncProps cctx.request.Header.aAdvSyncP
+        
+        Get phoSessionHandler to hoHandler
+        Send InitializeCall of hoHandler cctx.request.Header.aSyncProps cctx.request.Header.aAdvSyncP
+        
+        Get phoClientHandler to hoHandler
+        Send InitializeCall of hoHandler cctx.request.Header.aSyncProps cctx.request.Header.aAdvSyncP
+    End_Procedure
+    
+    
+    //
+    // Special feature of client web properties that during a LoadView some properties already on 
+    // the client are sent and are marked as synchronized. Forwards this request to the client
+    // handler.
+    //
+    { Visibility=Private }
+    Procedure ProcessLoadViewClientSyncProps Handle hoView
+        Handle hoHandler
+        
+        Get phoClientHandler to hoHandler
+        
+        Send ProcessLoadViewClientSyncProps of hoHandler hoView
+    End_Procedure
+    
+    
+    //
+    // Called by the cWebApp class when the processing of a request is finished. All handlers are
+    // triggered to store their properties and the client ahndler puts the in the passed arrays so 
+    // they are sent back to the client.
+    //
+    { Visibility=Private }
+    Procedure Call_PostWebProps tWebCallContext ByRef cctx
+        Handle hoHandler
+
+        //  Handle server properties (note that this might change client properties like psSPKey of ghoWebApp
+        Get phoServerHandler to hoHandler
+        Send FinishedCall of hoHandler (&cctx.response.Header.aSyncProps) (&cctx.response.Header.aAdvSyncP)
+        
+        Get phoSessionHandler to hoHandler
+        Send FinishedCall of hoHandler (&cctx.response.Header.aSyncProps) (&cctx.response.Header.aAdvSyncP)
+        
+        //  Load client web properties
+        Get phoClientHandler to hoHandler
+        Send FinishedCall of hoHandler (&cctx.response.Header.aSyncProps) (&cctx.response.Header.aAdvSyncP)
+    End_Procedure
+End_Class
+
+// Returns the value of the named Web Property belonging to the named object.
+// Displays an appropriate message if the property cannot be reached.
+//
+// Only use this function in the Debugger Watches window to watch Web 
+// Property values. Should never be used to get a Web Property value in 
+// your application. Use WebGet instead.
+
+{ Visibility=Private }
+Function _wp Global Handle hoObject String sPropName Returns Variant
+    Boolean bIsAjaxWebObject bInScope
+    String sObject
+    Handle hoHandler hoOwner
+    Variant vReturn
+    tWebPropMetaData pubProp
+    
+    //  Test ig target object is WO
+    Get IsAjaxWebObject of hoObject to bIsAjaxWebObject
+    Get Object_Label of hoObject to sObject
+    
+    If (not(bIsAjaxWebObject)) Begin
+        Function_Return ("Object " + sObject + " does not support web properties")
+    End
+    
+    //  Find property index
+    Get FindWebPropertyMetaByName of hoObject sPropName to pubProp
+    If (pubProp.hmGetter = 0) Begin
+        Function_Return (sPropName + " is not a web property of " + sObject) 
+    End
+    
+    //  Get handler
+    Get Owner of hoObject to hoOwner
+    If (hoOwner = -1) Begin
+        Function_Return (SFormat("Object '%1' is not a valid web web object for %2.", sObject, "WebGet"))        
+    End
+    
+    Get PropertyHandler of hoOwner hoObject pubProp.eMode to hoHandler
+    If (hoHandler = -1) Begin
+        Function_Return (SFormat("Property '%2' of object '%1' is not a valid web property for %3, check the web property meta value.", sPropName, sObject, "WebGet"))        
+    End
+    
+    // Test if handler is active....
+    If (not(pbActive(hoHandler))) Begin
+        Function_Return "Web property handler is inactive"
+    End
+    
+    // Test if in scope
+    Get IsObjectInCallActionScope of hoHandler hoObject to bInScope
+    If (not(bInScope)) Begin
+        Function_Return ("Object " + sObject + " is out of scope. Web property " + sPropName + " not available")
+    End
+    
+    // Now call the actual handler (now if something goes wrong it is a proper error)
+    Get GetScalarSyncProp of hoHandler hoObject (&pubProp) to vReturn
+    
+    Function_Return vReturn
+End_Function

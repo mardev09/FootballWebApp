@@ -1,0 +1,4 @@
+﻿Struct tWebValueTree    // The ValueTree. This is used to shuttle data between our variables and XML soap documents
+    String       v      // data value. Value only exists if there are no children
+    tWebValueTree[] c      // child values. If a struct or array, we have children and no value
+End_Struct

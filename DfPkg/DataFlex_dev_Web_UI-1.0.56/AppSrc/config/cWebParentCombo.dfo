@@ -1,0 +1,4 @@
+Object
+    Set piColumnSpan to 0
+    Set psLabel to "parent combo"
+End_Object

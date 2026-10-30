@@ -1,0 +1,395 @@
+﻿Use cWebGroup.pkg
+Use cWebDDOSync_Mixin.pkg
+Use WebWidgetStructs.pkg
+
+//  Function from cWebDynamicObjectContainer
+Register_Function TruncateName String sObjectName Returns String
+
+//Struct tWidget
+//    String sId
+//    tWidgetDef WidgetDef
+//End_Struct
+
+{ ComponentType=WebWidgetClass }
+{ ClassLibrary=WebApp }
+Class cWebWidget is a cWebGroup
+    
+    Procedure Construct_Object
+        Boolean bAlwaysShowConfigureButton
+
+        Forward Send Construct_Object
+        
+        Property Integer piDefaultColSpan 1
+        Property Integer piDefaultRowSpan 1
+        
+        { WebProperty=Client }
+        { Visibility=Private }
+        Property String psDynamicWidgetId                   // Set by the container to easily find this widget for dynamic configuration
+        
+        {WebProperty = Client}
+        Property String psWidgetName
+        
+        Property String psWidgetCaption ""
+        Property String psWidgetDescription ""
+        
+        {WebProperty = ClientProtected}
+        Property Boolean pbAllowConfiguration True
+        
+        {Visibility = Private}
+        {WebProperty = Client}
+        Property Boolean pbConfigurable False
+
+        {WebProperty = Client}
+        {Category = "Behavior"}
+        Property Boolean pbAlwaysShowConfigureButton False
+
+        Delegate Get pbAlwaysShowConfigureButton to bAlwaysShowConfigureButton
+        Set pbAlwaysShowConfigureButton to bAlwaysShowConfigureButton
+
+        Property Handle phoConfigWizard C_WebUnresolvedObject
+        
+        // Default to flow to make the designer work with the widgetcontainer and because we do not want widgets to inherit whatever is set at the dashboard view
+        Set peLayoutType to ltFlow
+        Set pbFillHeight to True
+        Set pbScroll to True
+        
+        Set psJSClass to 'df.WebWidget'
+        
+        Send Define_cWebDDOSync_mixin
+    End_Procedure
+    
+    Import_Class_Protocol cWebDDOSync_mixin
+    
+    Function IsWebWidget Returns Boolean
+        Function_Return True
+    End_Function
+    
+    { Visibility=Private }
+    Procedure InitWidget
+        Boolean bConfigurable
+        
+        Get IsConfigurable to bConfigurable
+        WebSet pbConfigurable to bConfigurable
+        
+        Send OnInitializeWidget
+    End_Procedure
+    
+    { Visibility=Private }
+    Function ConfigurablePropExists tWidgetConfigProp WidgetConfigProp Returns Boolean
+        Boolean bExists
+        tWidgetConfigProp[] aConfigurableProps 
+        
+        Get GetConfigurableProps to aConfigurableProps
+        
+        Get ConfigurablePropExistsEx aConfigurableProps WidgetConfigProp to bExists
+        
+        Function_Return bExists
+    End_Function
+    
+    { Visibility=Private }
+    Function ConfigurablePropExistsEx tWidgetConfigProp[] aConfigurableProps tWidgetConfigProp WidgetConfigProp Returns Boolean
+        Integer i iProps
+        String sTrimmedObjName
+        
+        Get TrimDynamicObjectName WidgetConfigProp.sObjName to sTrimmedObjName
+        
+        Move ((SizeOfArray(aConfigurableProps)) - 1) to iProps
+        
+        For i from 0 to iProps
+            If (aConfigurableProps[i].sObjName = sTrimmedObjName and aConfigurableProps[i].sPropName = WidgetConfigProp.sPropName) Begin
+                Function_Return True
+            End
+        Loop
+        
+        Function_Return False
+    End_Function
+    
+    // Gets the configurable props for this widget
+    // This is used by the configuration wizard to build a configuration dialog, based on the prop settings
+    Function GetConfigurableProps Returns tWidgetConfigProp[]
+        tWidgetConfigProp[] aConfigurableProps
+
+        Send OnGetConfigurableProps (&aConfigurableProps)
+        
+        Function_Return aConfigurableProps
+    End_Function
+    
+    { Visibility=Private }
+    Function IsConfigurable Returns Boolean
+        Boolean bAllowConfig
+        tWidgetConfigProp[] aConfigurableProps
+        
+        Move ( ((phoConfigWizard(Self)) <> C_WebUnresolvedObject) and (pbAllowConfiguration(Self)) ) to bAllowConfig
+        
+        Send OnDetermineConfigurableState (&bAllowConfig)
+        
+        Function_Return bAllowConfig
+    End_Function
+    
+    Function GetConfigurablePropValues Returns tWidgetConfigPropValue[]
+        tWidgetConfigProp[] aProps
+        tWidgetConfigPropValue[] aValues
+        tWebPropMetaData PropMeta
+        Variant vValue
+        Integer i iProps iType
+        Boolean bValid
+        String sDynamicObjectId
+        Handle hoObj
+        tWidgetConfigPropValue CurValue EmptyValue
+        
+        // Get all config props
+        
+        Get GetConfigurableProps to aProps
+        
+        Move ((SizeOfArray(aProps)) - 1) to iProps
+        
+        For i from 0 to iProps
+            Delegate Get TruncateName aProps[i].sObjName to sDynamicObjectId
+            If (sDynamicObjectId <> "") Begin
+                WebGet psDynamicWidgetId to sDynamicObjectId
+                Move (sDynamicObjectId + '.' + aProps[i].sObjName) to sDynamicObjectId
+                
+                Get DynamicObject sDynamicObjectId to hoObj
+            End
+            Else Begin
+                Move (Self) to hoObj
+            End
+            
+            If (hoObj <> 0) Begin
+                Move EmptyValue to CurValue
+                
+                Get FindWebPropertyMetaByName of hoObj aProps[i].sPropName to PropMeta
+                If (PropMeta.hmGetter <> 0) Begin
+                    Get GetSyncProp of hoObj hoObj PropMeta.hmSetter PropMeta.sName to vValue
+                    
+                    Get VariantType vValue to iType
+                    If (iType = OLE_VT_Empty) Begin
+                        Move False to bValid
+                    End
+                    Else Begin
+                        Get VerifyConfigurablePropValue aProps[i] vValue to bValid
+                    End
+                    
+                    If (bValid) Begin
+                        Move sDynamicObjectId to CurValue.sObjName
+                        Move aProps[i].sPropName to CurValue.sPropName
+                        Move vValue to CurValue.sValue
+                        Move CurValue to aValues[-1]
+                    End
+                    Else Begin
+                        Function_Return EmptyValue
+                    End
+                End
+                Else Begin
+                    Function_Return EmptyValue
+                End
+            End
+        Loop
+        
+        Function_Return aValues
+    End_Function
+    
+    { Visibility=Private }
+    Function VerifyConfigurablePropValue tWidgetConfigProp ConfigProp Variant vValue Returns Boolean
+        // Check variant type
+        // check if variant within acceptable range of values
+        Integer iType iVals i
+        Number nCur
+        
+        If (not(ConfigProp.Settings.bOptValidateValue)) Begin
+            Function_Return True
+        End
+        
+        Get VariantType vValue to iType
+        Move ((SizeOfArray(ConfigProp.Settings.asOptValues)) -1) to iVals
+        
+        If (iType = OLE_VT_I4 or iType = OLE_VT_I8 or ;
+            iType = OLE_VT_R4 or iType = OLE_VT_I8) Begin
+            // compare min, max and allowed vals
+            If (vValue >= ConfigProp.Settings.iOptMinValue and vValue =< ConfigProp.Settings.iOptMaxValue) Begin
+                // check step size
+                If (ConfigProp.Settings.iOptStepSize > 0) Begin
+                    Move ConfigProp.Settings.iOptMinValue to nCur
+                    While (nCur <= ConfigProp.Settings.iOptMaxValue)
+                        If (vValue = nCur) Begin
+                            Function_Return True
+                        End
+                        Move (nCur + ConfigProp.Settings.iOptStepSize) to nCur
+                    Loop
+                End
+                Else Begin
+                    Function_Return True
+                End
+            End
+            
+            For i from 0 to iVals
+                If (vValue = ConfigProp.Settings.asOptValues[i]) Begin
+                    Function_Return True
+                End
+            Loop
+        End
+        If (iType = OLE_VT_Bstr) Begin
+            // compare allowed values
+            If (iVals <= 0) Begin
+                Function_Return True
+            End
+            
+            For i from 0 to iVals
+                If (vValue = ConfigProp.Settings.asOptValues[i]) Begin
+                    Function_Return True
+                End
+            Loop
+        End
+        
+        
+        
+        Function_Return False
+    End_Function
+    
+    // Performs the equivalent of a webget for objects within this widget
+    { Visibility=Private }
+    Function GetWidgetConfigurablePropValue String sObj String sProp Returns Variant
+        String sDynamicObjectId
+        Handle hoObj
+        tWebPropMetaData PropMeta
+        Variant vRet
+        
+        Delegate Get TruncateName sObj to sDynamicObjectId
+        Get DynamicObject sDynamicObjectId to hoObj
+        
+        If (hoObj <> 0) Begin
+            Get FindWebPropertyMetaByName of hoObj sProp to PropMeta
+            Get GetSyncProp of hoObj hoObj PropMeta.hmSetter PropMeta.sName to vRet
+        End
+        
+        Function_Return vRet
+    End_Function
+    
+    { Visibility=Private }
+    Function TrimDynamicObjectName String sObjName Returns String
+        String[] asObjName
+        String sRetName
+        
+        Delegate Get TruncateName sObjName to sObjName
+        
+        Move (StrSplitToArray(sObjName, psDynamicWidgetID(Self))) to asObjName
+        
+        If (SizeOfArray(asObjName) > 1) Begin
+            Move asObjName[1] to sRetName
+            // Get rid of initial '.' if we end up with such a name
+            If ((Pos('.', sRetName)) = 1) Begin
+                Move (Replace('.', sRetName, '')) to sRetName
+            End
+        End
+        
+        Function_Return sRetName
+    End_Function
+    
+    Function CreateConfigurableProp Handle hoObj Handle hmPropFunc Returns tWidgetConfigProp
+        tWidgetConfigProp WidgetConfigProp
+        tWebPropMetaData PropMeta
+        String sObjName
+        String[] asObjName
+        Boolean bIsDynamic
+        
+        Get IsDynamicObject of hoObj to bIsDynamic
+        If (bIsDynamic) Begin
+            Get TrimDynamicObjectName (WebObjectName(hoObj)) to WidgetConfigProp.sObjName
+        End
+        Else Begin
+            // Assume Default widget & top level prop (will correct itself when attempting to apply)
+            Move "" to WidgetConfigProp.sObjName
+        End
+
+        Get FindWebPropertyMetaByGetter of hoObj hmPropFunc to PropMeta
+        Move PropMeta.sName to WidgetConfigProp.sPropName
+
+        Function_Return WidgetConfigProp
+    End_Function
+    
+    {MethodType = Event}
+    Procedure OnInitializeWidget
+    End_Procedure
+    
+    {MethodType = Event}
+    Procedure OnGetConfigurableProps tWidgetConfigProp[] ByRef aConfigurableProps
+        // This event can be used to modify the initial set of configurable props based on for example permissions
+    End_Procedure
+    
+    {MethodType = Event}
+    Procedure OnWidgetPropsChanged
+    End_Procedure
+    
+    {MethodType = Event}
+    Procedure OnDetermineConfigurableState Boolean ByRef bAllow
+    End_Procedure
+    
+    {MethodType = Event}
+    Function AllowAccess Returns Boolean
+        // Override with your custom logic to determine if this widget should be rendered or not under certain circumstances
+        Function_Return True
+    End_Function
+    
+    // Used by AllowViewAccess to determine the name passed to the session manager.
+    { Visibility=Private }         
+    Function ViewName Returns String
+        Function_Return (psWidgetName(Self))
+    End_Function
+    
+    // DDO Sync logic
+    { Visibility=Private }
+    Procedure Call_PreSync
+        Boolean bAllow bOrigSync
+        
+        Get pbSynchronizing to bOrigSync
+        Set pbSynchronizing to True
+        
+        Get SyncDDOs to bAllow        
+         
+        Broadcast Recursive Send UpdateDataBinding
+        
+        Set pbSynchronizing to bOrigSync
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure Call_PostSync
+        Send StoreDDOStates
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure RegisterDDOStructure
+        // Override to do nothing
+    End_Procedure
+    
+    // Called by cWebDDOSync_mixin
+    { Visibility=Private }
+    Function IsDynamicConstraints Returns Boolean
+        Function_Return False
+    End_Function
+
+    // Override to not check parent, widgets should be encapsulated - we don't want to bleed the view's DDO's into them
+    { MethodType=Property }
+    Function Server Returns Integer
+        Integer hoServer
+        Get private_Server to hoServer
+//        If (hoServer = 0) Begin
+//            Function_Return (Locate_Server(parent(Self)))
+//        End
+        Function_Return hoServer
+    End_Function  
+
+    Function Widget Returns Handle 
+        Function_Return Self
+    End_Function
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send Attach_Deo_To_Server                       // Attach the DEO to the server DDs
+        Broadcast Recursive Send Attach_Deo_To_Server   // Make Child DEO's attach to their server
+        Broadcast Recursive Set In_Use_State to True    // Set each DDO's In_Use_State
+        Send WriteDDOCache                              // Store a cache of the DDO objects
+    End_Procedure
+   
+End_Class

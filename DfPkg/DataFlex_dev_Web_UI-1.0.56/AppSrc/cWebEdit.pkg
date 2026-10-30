@@ -1,0 +1,24 @@
+﻿Use cWebBaseForm.pkg
+
+// Models a client-side multi-line text entry control.
+{ OverrideProperty=psMask Visibility=Private }
+{ OverrideProperty=piMinHeight InitialValue=50 }
+{ HelpTopic=cWebEdit }
+{ DesignerJSClass=df.WebEdit }
+Class cWebEdit is a cWebBaseForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbStopOnSubmit False   //  Disables the OnSubmit on Enter so that it can be used to insert a newline.
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psPlaceHolder ""        //  Shows a short hint inside the control which is hidden as soon as data is entered / displayed (Internet Explorer 10+)
+
+        Set psJSClass to "df.WebEdit"
+        Set piMinHeight to 50
+    End_Procedure
+End_Class

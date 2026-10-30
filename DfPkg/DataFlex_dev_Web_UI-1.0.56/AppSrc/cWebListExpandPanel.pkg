@@ -1,0 +1,81 @@
+﻿Use cWebBaseContainer.pkg
+
+Enum_List
+    Define wleManual for 0                       // Manual                                  
+    Define wleOpenOnRowChange for 1              // Always open on current row              
+    Define wleOpenOnRowClick for 2               // Toggle on row click                     
+    Define wleOpenOnRowClickCloseOnChange for 3  // Toggle on row click, close on row change
+    Define wleOpenOnRowDoubleClick for 4         // Toggle on row double click
+    Define wleOpenOnRowDoubleClickCloseOnChange for 5  // Toggle on row double click, close on row change
+End_Enum_List
+
+{ DesignerJSClass=df.WebListExpandPanel }
+Class cWebListExpandPanel is a cWebBaseContainer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { EnumList="wleManual, wleOpenOnRowChange, wleOpenOnRowClick, wleOpenOnRowClickCloseOnChange, wleOpenOnRowDoubleClick, wleOpenOnRowDoubleClickCloseOnChange" }
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer peMode wleOpenOnRowClickCloseOnChange
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbShowLoading False
+        { WebProperty=Client }
+        { DesignTime=False }
+        Property String psExpandedRow ""
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbFocusOnShow True
+        
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnExpand True
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnExpand ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnCollapse False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnCollapse ""
+        
+        Set psJSClass to "df.WebListExpandPanel"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnExpand String sRowId
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnCollapse
+    End_Procedure
+    
+    Procedure ExpandRow String sRowId
+        String[] aParams
+        
+        Move sRowId to aParams[0]
+        
+        Send ClientAction "expand" aParams
+        
+        //  Update prematurely
+        WebSet psExpandedRow to sRowId
+    End_Procedure
+    
+    Procedure Collapse
+        Send ClientAction "collapse"
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        
+        WebPublishProcedure OnExpand
+        WebPublishProcedure OnCollapse
+    End_Procedure
+
+End_Class

@@ -1,0 +1,762 @@
+﻿Use VdfBase.pkg
+Use cWebNavigationHost_mixin.pkg
+Use cWebPropertyHost_mixin.pkg
+Use tWebControlMapItem.pkg
+
+Register_Function IsDialog Returns Boolean
+
+Class cWebViewHost_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebViewHost_mixin
+        
+        { Visibility=Private }
+        Property tWebControlMapItem[] paViews          // Collection of all views available within this host
+        
+        { Visibility=Private }
+        Property Handle[] paDDOViews                   // Collection of view object handles referenced in each member of the RequestHeader.aDDOs
+        
+        
+        
+        { Visibility=Private }
+        Property Handle phoLoadView C_WebUnresolvedObject       // handle to view to load during a CallAction to LoadView
+        
+        { DesignTime=False }
+        Property Handle phoLoginView C_WebUnresolvedObject      // handle of login view to load when application is loaded.
+        { DesignTime=False }
+        Property Handle phoDefaultView C_WebUnresolvedObject    // handle of the default view to load when web application is loaded (unless there is a login screen to be shown - see phoLoginView)
+        
+        { DesignTime=False }
+        Property Handle phoCommandBar C_WebUnresolvedObject     // handle to child cWebCommandbar object
+        
+        
+        { Category="Behavior" } 
+        { EnumList = "wvsDesktop, wvsDrillDown" }
+        Property Integer peApplicationStyle wvsDesktop 
+        
+        { Visibility=Private }
+        Property Boolean pbTestSyncDDO False // for testing only (s/b False on release)
+        
+        { WebProperty=Server }
+        { Visibility=Private }
+        Property String[] paLoadedViews     // List of all views loaded to the client (used by ShowView to determine if it should go back to the client)
+        
+        { WebProperty=Server }
+        { Visibility=Private }
+        Property String psCurrentView ""    // Name of the currently active view
+        { Visibility=Private }
+        Property Handle phoCurrentShowView  C_WebUnresolvedObject // Handle to the view currently being shown (used to check if OnNavigateForward calls another view during show
+        
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property String psApplicationTitle "DataFlex WebApp"        // The title shown in the browser title bar
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        Property Boolean pbUpdateApplicationTitle True              // If true the title in the title bar is automatically updated
+        
+        // When set to True all views will show an unhandled error when a refind record
+        // fails (usually some kind of FindByRowIdEx call). Normally this is False because
+        // refinds can fail in a multi-user environment and the framework will handle this
+        // as best it can. However, refind errors can also be caused by a programming error.
+        // If you set this true during debugging you will be notified of refind errors that
+        // may be a programming bug. This can work well because the multi-user can't refind
+        // error usually does not occur while debugging. If you set this True while testing,
+        // remember to set it back to False when deploying.  
+        { Category="Behavior" }    
+        Property Boolean pbShowAllRefindErrors False
+    End_Procedure
+    
+    // An object is only in-scope during a WebApp CallAction in the following cases:
+    // - It is a Global Object: cWebApp or its child objects (but not a cWebWindow child).
+    // - It is part of the stack of views\dialog in the cWebApp's paDDOViews property.
+    // - During a call to LoadView, it is part of the view being loaded.
+    { Visibility=Private }
+    Function OwnerIsInCallActionScope Handle hoWO Returns Boolean
+        Integer iViewIndex
+        Handle hoWebNeighborhood hoLoadView
+        Handle[] aDDOViews
+        
+        Get phoWebNeighborhood of hoWO to hoWebNeighborhood    // This property is set during object creation
+        
+        // Test if the neighborhood property is actually correctly set.
+        If (hoWebNeighborhood = C_WebUnresolvedObject) Begin
+            Function_Return False
+        End
+        
+        // is this in the cWebApp Neighborhood?
+        If (hoWebNeighborhood = Self) Begin
+            Function_Return True
+        End
+        
+        // is this a View that is being loaded?
+        Get phoLoadView to hoLoadView
+        If (hoWebNeighborhood = hoLoadView) Begin
+            Function_Return True
+        End
+        
+        // is this in the neighborhood of one of the focus windows?
+        Get paDDOViews to aDDOViews     // This property is set during CallAction
+        Move (SearchArray(hoWebNeighborhood, aDDOViews)) to iViewIndex
+        Function_Return (iViewIndex <> -1)
+    End_Function
+    
+    { Visibility=Private }
+    Procedure OwnerRegisterView Handle hoView
+        tWebControlMapItem new
+        tWebControlMapItem[] aViews
+        
+        Get paViews to aViews
+        
+        Move hoView to new.hoObj
+        Move (Uppercase(Name(hoView))) to new.sName
+        
+        If (BinarySearchArray(new, aViews, False) = -1) Begin
+            Move (InsertInArray(aViews, BinarySearchInsertPos(), new)) to aViews
+            Set paViews to aViews
+        End
+        Else Begin
+            Error DFERR_PROGRAM (SFormat("View with name '%1' already registered.", new.sName))
+        End
+    End_Function
+    
+    { Visibility=Private }
+    Function FindView String sViewName Boolean bSilent Returns Handle
+        tWebControlMapItem[] aViews
+        tWebControlMapItem search
+        Integer iPos
+        
+        Get paViews to aViews
+        Move (Uppercase(Trim(sViewName))) to search.sName
+        Move (BinarySearchArray(search, aViews, False)) to iPos
+        
+        If (iPos <> -1) Begin
+            Function_Return aViews[iPos].hoObj
+        End
+        
+        If (not(bSilent)) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound, sViewName))
+        End
+        
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    { Visibility=Private }
+    Function OwnerActionState Handle hoWO Returns Integer
+        Handle hoLoadView hoNeigborhood
+        
+        Get phoLoadView to hoLoadView
+        Get phoWebNeighborhood to hoNeigborhood
+        
+        If (hoLoadView <> C_WebUnresolvedObject and hoLoadView = hoNeigborhood) Begin
+            Function_Return ctExecViewLoad
+        End
+        
+        Function_Return ctExecDefault    //  Execute as a default client action (after synchronization of web properties)
+    End_Function
+    
+    // Called by LoadWebApp to load the initial view
+    { Visibility=Private }
+    Procedure Load_InitialView
+        Handle hoView
+        String sStateHash
+        Integer eAppStyle
+        String[] aLoadedViews
+        
+        WebGet paLoadedViews to aLoadedViews
+        If (SizeOfArray(aLoadedViews) > 0) ;
+            Procedure_Return
+        
+        //  Get forced initial view (login dialog or so)
+        Get ForcedInitialView to hoView
+        
+        //  Set initial page title (a login dialog might not set one)
+        Send UpdatePageTitle C_WebUnresolvedObject ""
+        
+        //  Send back default view unless a login dialog needs to be sent
+        If (hoView = C_WebUnresolvedObject) Begin
+            //  Restore application state
+            If (peApplicationStateMode(Self) <> asmOff) Begin
+                Get StateHash to sStateHash 
+                Send RestoreState sStateHash True
+            End
+            Else Begin //  Or return default view
+                Get GetDefaultView to hoView
+                If (hoView > 0) Begin
+                    Send Show of hoView
+                End
+            End
+        End
+        Else Begin
+            Get peApplicationStyle to eAppStyle
+            If (eAppStyle = wvsDrillDown) Begin
+               Send NavigateBegin of hoView Self True 
+            End
+            Else Begin
+                Send Show of hoView    
+            End
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Function ViewAccessDenied Handle hoView Boolean bRestoreState Returns Boolean
+        tOnViewAccessDenied deniedDetails
+        Integer eAppStyle
+        
+        Move hoView to deniedDetails.hoView
+        Move bRestoreState to deniedDetails.bRestoreState
+        Move False to deniedDetails.bHandled
+        Move C_WebUnresolvedObject to deniedDetails.hoNavigateToView
+        
+        Send OnViewAccessDenied (&deniedDetails)
+        If (deniedDetails.bHandled) ;
+            Function_Return True
+        
+        If (deniedDetails.hoNavigateToView <> C_WebUnresolvedObject) Begin
+            Get peApplicationStyle to eAppStyle
+            If (eAppStyle = wvsDrillDown) Begin
+                Send NavigatePathBegin deniedDetails.hoNavigateToView True
+            End
+            Else Begin
+                Send Show of deniedDetails.hoNavigateToView    
+            End 
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+    
+    // Event that is fired when the user tries to navigate into a view or dialog and access is denied. Implement this 
+    // procedure to customize behavior (for example show a login view). By default triggers the Access Denied error.
+    { MethodType=Event }
+    Procedure OnViewAccessDenied tOnViewAccessDenied ByRef details
+        Error DFERR_WEBAPP_ACCESS_DENIED
+    End_Procedure
+
+
+    // Client Action: Sends hideView to the client to hide the passed view. A hidden view can be re-shown without making
+    // a server call (see ShowView). Note, a hidden view and it's data is still present on the client. 
+    // If access to a view is to be securely restricted Use CloseView instead.
+    // See also "Hide" method of cWebView.
+    // See also "ShowView" 
+    { Visibility=Private }
+    Procedure HideView Handle hoView
+        String sView sCurrent sInvoking
+        String[] aParams
+
+        Get Object_Label of hoView to sView
+        
+        WebGet psCurrentView to sCurrent
+        If (sView = sCurrent) Begin
+            WebGet psInvokingView of hoView to sInvoking
+            WebSet psCurrentView to sInvoking
+        End
+        
+        Move sView to aParams[0]       // Pass the view name as the 1st parameter.
+        Move False to aParams[1]       // We do want to send OnHide if needed
+        Send ClientAction "hideView" aParams 
+    End_Procedure
+    
+    
+    //  Determines if a view loaded on the client by looking at paLoadedViews.
+    //
+    //  hoView      - Handle to the view object.
+    //  Returns true if the view is available on the client.
+    Function IsViewLoaded Handle hoView Returns Boolean
+        String [] aLoadedViews
+        String sView
+        
+        Get WebObjectName of hoView to sView
+        WebGet paLoadedViews to aLoadedViews
+        
+        Function_Return (SearchArray(UpperCase(sView), aLoadedViews) >= 0)
+    End_Function
+    
+    
+    //  Determines if a view is in sync using IsInCallActionScope.
+    //
+    //  hoView      - Handle to the view object.
+    //  Returns true if the view is currently in sync.
+    Function IsViewInSync Handle hoView Returns Boolean
+        Boolean bResult
+        
+        Get IsInCallActionScope of hoView to bResult
+        
+        Function_Return bResult
+    End_Function
+    
+    //  Determines the currently shown view.
+    //
+    //  Returns a handle to the currently shown view.
+    Function CurrentView Returns Handle
+        String sView
+        Handle hoView
+        
+        Move C_WebUnresolvedObject to hoView
+        
+        WebGet psCurrentView to sView
+        If (sView <> "") Begin
+            Get WebObjectByName sView to hoView
+        End
+        
+        Function_Return hoView
+    End_Function
+    
+    // Server-Action
+    //
+    // Part of the CallAction interface. Used to return a view's object definition to the client.
+    // Returns a structure of objects and properties for nested DDO and cWebObjects
+    // These are returned to the client as serialized JSON.
+    // sViewName     - Is the name of the view to be loaded
+    // sInvokingView - Is the name of the view that triggered the LoadView call. This is mostly used
+    //                 in the cWebDialog class when activating a modal dialog.
+    { Visibility=Private }
+    Function LoadView String sViewName String sInvokingView Returns Boolean
+        Handle hoView
+        Handle[] aDDOViews
+        String[] aLoadedViews asParams
+        Boolean bAllowAccess bLoaded bHandled
+        Handle hjObjectDef
+        tWebDDODef DDODef
+        String sPreLoad
+
+        // Get a handle to the view we are loading....
+        Get GetAjaxWebAppView of (phoWebControlLocator(Self)) sViewName to hoView
+        
+        If (hoView <> C_WebUnresolvedObject) Begin
+            
+            // Set up the web properties system to allow WebGet to access this view....
+            Set phoLoadView to hoView
+            Send ProcessLoadViewClientSyncProps hoView
+            
+            // Test AllowViewAcess here because this explicitly tests access to the view we are loading.
+            // That is not the case when testing AllowViewAccess from CallAction. In CallAction we only
+            // test AllowViewAccess of the view that is processing the call (this might be different).
+            Get AllowViewAccess hoView to bAllowAccess
+    
+            If (bAllowAccess) Begin
+                // Add to the list of views to synchronize back to the client....
+                Get paDDOViews to aDDOViews
+                If (SearchArray(hoView, aDDOViews) < 0) Begin
+                    Move hoView to aDDOViews[SizeOfArray(aDDOViews)]
+                End
+                Set paDDOViews to aDDOViews
+
+                //  Perform initialization (clear, set constraints)
+                Send InitForShow of hoView                    
+                
+                // we want view sync before OnLoad
+                Send NotifySyncWebApp of hoView
+                    
+                // Serialize the view to JSON....
+                Get SerializeObject of hoView to hjObjectDef
+                Send ClientActionEarly "createView" asParams hjObjectDef    
+                Send Destroy of hjObjectDef           
+
+                // Set the psInvokingView web property. We need this to be set already during LoadView
+                // if we are loading a Modal Dialog...
+                //WebSet psInvokingView of hoView to sInvokingView
+                Send InitInvokingView to hoView sInvokingView
+                
+                Set phoLoadView to C_WebUnresolvedObject
+                
+                //  Mark view as loaded
+                WebGet paLoadedViews to aLoadedViews
+                If (SearchArray(Uppercase(sViewName), aLoadedViews) = -1) Begin
+                    Move (Uppercase(sViewName)) to aLoadedViews[SizeOfArray(aLoadedViews)]
+                    WebSet paLoadedViews to aLoadedViews
+                End            
+                
+                Function_Return True
+            End
+            Else Begin
+                Get ViewAccessDenied hoView False to bHandled
+            End
+        End
+        
+        Function_Return False
+    End_Function
+    
+    //  Loads and initializes a view asynchronously (the loading is done via a separate round-trip).
+    //  This is used for performance reasons when restoring the application state from a URL path.
+    //
+    //  Note: Should only be used when the view is not loaded to the client!!
+    //  
+    //  - hoView        Handle to the view.
+    { Visibility=Private }
+    Procedure DelayLoadview Handle hoView
+        String[] aParams
+        Handle[] aDDOViews
+        
+        // Add to the list of views to synchronize back to the client....
+        Get paDDOViews to aDDOViews
+        If (SearchArray(hoView, aDDOViews) < 0) Begin
+            Move hoView to aDDOViews[SizeOfArray(aDDOViews)]
+        End
+        Set paDDOViews to aDDOViews
+
+        //  Add load view client action
+        Get WebObjectName of hoView to aParams[0]
+        Move 1 to aParams[1]
+        Send ClientAction "loadView" aParams
+        
+        //  Initialize view
+        Send InitForShow of hoView
+        WebSet pbPreLoaded of hoView to True
+
+        //  We want view sync before OnLoad
+        Send NotifySyncWebApp of hoView
+        
+
+    End_Procedure
+      
+    
+    //  Shows a view and loads it (if nessecary). If a view is loaded and synchronized it will be 
+    //  shown directly (when returned to the client) and processing can continue. If a view is 
+    //  loaded to the client but not synchronized it depends on pbOverrideStateOnShow what happens.
+    //  If pbOverrideStateOnShow is false it will go back to the client before it continues and this 
+    //  makes the message asynchronous. If pbOverridestateOnShow is true it will continue and 
+    //  instruct the client to reinitialize the view before rendering it. If the view is not loaded
+    //  it will load the view (add the definitions to the response) and show it directly. The
+    //  optional handler message needs to be published and the object needs to be a web object.
+    //
+    //  - hoView                Handle of the view to be shown.
+    //  - hmOptCallBackMsg      (optional) Callback message executed when the view is initialized.
+    //  - hoOptCallbackObj      (optional) Object to which the callback message should be sent.
+    { Visibility=Private }
+    Procedure ShowView Handle hoView Handle hmOptCallbackMsg Handle hoOptCallbackObj
+        Boolean bIsLoaded bInSync bAllowAccess bShowDirect
+        String sView
+        String[] aParams
+        tWebClientAction tClientAction
+        tWebClientAction[] aClientActions
+        Handle hmCallbackMsg hoCallbackObj
+        Boolean bHandled
+        
+        If (num_arguments > 2) Begin
+            Move hmOptCallbackMsg to hmCallbackMsg
+            Move hoOptCallbackObj to hoCallbackObj
+        End
+        
+        Move False to bShowDirect
+        
+        Get WebObjectName of hoView to sView
+                
+        // Test AllowViewAcess here because this explicitly tests access to the view we are loading.
+        // That is not the case when testing AllowViewAccess from CallAction. In CallAction we only
+        // test AllowViewAccess of the view that is processing the call (this might be different).
+        Get AllowViewAccess hoView to bAllowAccess
+        If (not(bAllowAccess)) Begin
+            Get ViewAccessDenied hoView False to bHandled
+            Procedure_Return
+        End
+        
+        Set phoCurrentShowView to hoView    // Property used to check if no other ShowView is called meanwhile (check is in ShowView_Exec)
+        Get IsViewLoaded hoView to bIsLoaded
+        If (not(bIsLoaded)) Begin
+            //  If the view is not loaded we load it now
+            Get LoadView sView 0 to bIsLoaded
+            If (bIsLoaded) Begin
+                Move True to bShowDirect
+            End
+        End
+        Else Begin
+            Get IsViewInSync hoView to bInSync
+            If (bInSync) Begin
+                Move True to bShowDirect
+            End
+            Else Begin
+                If (pbOverrideStateOnShow(hoView)) Begin
+                    //  If pbOverrideStateOnShow is true we can override it by unloading it on the client and simply loading it fresh (we used to do sneaky things here before 20.0)
+                    
+                    //  Add an early executed action to unload the view
+                    Move "unloadView"   to tClientAction.sName
+                    Move ""             to tClientAction.sTarget
+                    Move ctExecEarly    to tClientAction.eType
+                    Move sView          to tClientAction.aParams[0]
+                    
+                    Get paClientActions to aClientActions
+                    Move tClientAction to aClientActions[SizeOfArray(aClientActions)]
+                    Set paClientActions to aClientActions
+                    
+                    //  Load the view fresh and show when succesfull
+                    Get LoadView sView 0 to bIsLoaded
+                    If (bIsLoaded) Begin
+                        Move True to bShowDirect
+                    End
+                End
+                Else Begin
+                    //  We need to go to the client first
+                    Move sView to aParams[0]
+                    
+                    If (hmCallbackMsg > 0) Begin
+                        Get WebMethodName of hoCallbackObj hmCallbackMsg to aParams[1]
+                        Get WebObjectName of hoCallbackObj to aParams[2]
+                    End
+                    
+                    Send ClientAction "showView" aParams
+                End
+            End
+        End
+        
+        If (bShowDirect) Begin
+            // Do callback
+            If (hmCallbackMsg > 0) Begin
+                Send hmCallbackMsg of hoCallbackObj hoView
+            End
+            
+            // Directly show the view
+            Send ShowView_Exec hoView False
+        End    
+    End_Procedure
+    
+    
+    //  Actually shows the view by sending doShow and performing the renderView client action.
+    //
+    //  - hoView        Handle of the view object to the be shown.
+    //  - bStandalone   If true this is a standalone view (oWebApp.displayView(..)) and not 
+    //                  rendered by renderview.
+    { Visibility=Private }
+    Procedure ShowView_Exec Handle hoView Boolean bStandalone
+        String[] aParams
+        String sView
+        Handle hoInvokingView
+        
+        //  Check if the showview is not overriden by a different ShowView call inside OnNavigateForward, phoCurrentShowView should be set before this function is called
+        If (phoCurrentShowView(Self) = hoView or (phoCurrentShowView(Self) <> C_WebUnresolvedObject and IsDialog(phoCurrentShowView(Self)))) Begin
+            Send DoShow of hoView
+            Get WebObjectName of hoView to sView
+            
+            WebSet psCurrentView to sView
+            
+            If (not(bStandalone)) Begin
+                Move sView to aParams[0]
+                Send ClientAction "renderView" aParams
+            End
+            
+            Set phoCurrentShowView to C_WebUnresolvedObject
+        End
+    End_Procedure
+    
+    
+    //  Server-Action
+    //
+    //  Called by the JavaScript Engine to show a view. This can either be initiated by the server 
+    //  via ShowView (view was loaded to the client but not in sync) or be initiated from the 
+    //  client like with cWebMenuItemLoadView.
+    //
+    //  - sView         Name of the view.
+    //  - bStandalone   True if the view is shown separately (oWebApp.displayView).
+    //  - sOptCallbackMsg   (optional) String with the published procedure that needs to be called 
+    //                      when the view is initialized.
+    //  - sOptCallback      (optional) Name of the web object handling the callback message.
+    { Visibility=Private }
+    Procedure ShowView_FromClient String sView Boolean bStandalone String sOptCallbackMsg String sOptCallbackObj
+        Handle hoView hmCallbackMsg hoCallbackObj
+        Boolean bIsLoaded bInSync
+        
+        If (num_arguments > 3) Begin
+            Get WebObjectByName sOptCallbackObj to hoCallbackObj
+            If (hoCallbackObj > 0) Begin
+                Get WebMethodByName of hoCallbackObj sOptCallbackMsg to hmCallbackMsg
+            End
+        End
+        
+        Get WebObjectByName sView to hoView
+        Get IsViewLoaded hoView to bIsLoaded
+        Set phoCurrentShowView to hoView    // Property used to check if no other ShowView is called meanwhile (check is in ShowView_Exec)
+        
+        If (not(bIsLoaded)) Begin
+            Get LoadView sView 0 to bIsLoaded
+            If (bIsLoaded) Begin
+                
+                // Do callback
+                If (hmCallbackMsg > 0) Begin
+                    Send hmCallbackMsg of hoCallbackObj hoView
+                End
+                
+                Send ShowView_Exec hoView bStandalone
+            End
+        End
+        Else Begin
+            Get IsViewInSync hoView to bInSync
+            If (bInSync) Begin
+                // Do callback
+                If (hmCallbackMsg > 0) Begin
+                    Send hmCallbackMsg of hoCallbackObj hoView
+                End
+                
+                Send ShowView_Exec hoView bStandalone
+            End
+            Else Begin
+                Error DFERR_OPERATOR "ShowView_FromClient requires view to be synchronized if loaded."
+            End
+        End
+    End_Procedure
+    
+    
+    // Client Action: Sends unloadView to the client to remove the passed view and its web properties.
+    // An Unloaded view must be reloaded from the server before it can be displayed again (using LoadView). 
+    // Note, unloading a view is more secure than hiding it because its data is removed from the client.
+    // See also "Unload" method of cWebView.
+    // See also "LoadView"
+    Procedure UnloadView Handle hoView
+        String sViewName
+        String[] aParams
+        
+        Get Object_Label of hoView to sViewName
+        Move sViewName      to aParams[0]   // Pass the view name as the 1st parameter.
+        Move True           to aParams[1]
+        Send ClientAction "unloadView" aParams
+    End_Procedure
+    
+    
+    // Triggers when the page title is automatically updated and concatenates the the application 
+    // title with the view title. Can be augmented / overriden to 
+    //
+    // Params:
+    //      ByRef sTitle    Contains the page title when coming in, should receive the full title.
+    //      hoView          Handle to the current view (can be C_WebUnresolvedObject).
+    //      sViewTitle      Current caption of the view (can be "").
+    { MethodType=Event }
+    Procedure OnGeneratePageTitle String ByRef sTitle Handle hoView String sViewTitle
+        If (Trim(sViewTitle) <> "") Begin
+            Move (sTitle + " - " + sViewTitle) to sTitle
+        End
+    End_Procedure
+    
+    
+    // Updates the page title by generating the full title based on the passed view title.
+    //
+    // Params:
+    //      hoView      Handle to the current view (can be C_WebUnresolvedObject).
+    //      sViewTitle  Current view caption.
+    { Visibility=Private }
+    Procedure UpdatePageTitle Handle hoView String sViewTitle
+        String sTitle
+        Boolean bUpdate
+        
+        WebGet pbUpdateApplicationTitle to bUpdate
+        
+        If (bUpdate) Begin
+            WebGet psApplicationTitle to sTitle
+            
+            Send OnGeneratePageTitle (&sTitle) hoView sViewTitle
+            
+            Send SetPageTitle sTitle
+        End
+    End_Procedure
+
+
+    // This can be sent to any child object to retrieve the object handle of the parent view via delegation.
+    // If delegation reaches here it means there is no view object so we return C_WebUnresolvedObject.
+    { Visibility=Private }
+    Function ViewObject Returns Handle
+        Function_Return C_WebUnresolvedObject
+    End_Function
+    
+    
+    // Locate_Server and Server are used so that child objects can resolve 
+    // that a server does not exit.
+    { Visibility=Private }
+    Function Locate_Server Returns Handle
+        Function_Return 0
+    End_Function
+    
+    
+    { Visibility=Private }
+    Function Server Returns Handle
+        Function_Return 0
+    End_Function
+
+    // Determines if an initial view (like a login dialog) needs to be shown. Overriden in
+    // cWebSessionHost_mixin to handle showing of a login view.
+    //
+    // Returns:
+    //  Handle to the initial view that needs to be shown (C_WebUnresolvedObject if none)
+    { Visibility=Private }
+    Function ForcedInitialView Returns Handle
+        Function_Return C_WebUnresolvedObject
+    End_Function
+
+    // returns the default view, which is normally phoDefaultView.
+    // Is provided for augmentation so developers can specify the default view dynamically
+    Function GetDefaultView Returns Handle
+        Handle hoView
+        Get phoDefaultView to hoView
+        Function_Return hoView
+    End_Function
+
+    // Synchronizes the current records with the passed row id's for each DDO in the
+    // passed collection of DDO structures. Each Structure in the collection belongs
+    // to a different view. The aDDOViews parameter is populated with the object handle
+    // of each view referenced in the aDDODefs collection
+    //
+    // During this process the view is tested for AllowViewAccess. If access is denied to
+    // any view in the stack then SynchronizeDDOs is aborted and the function returns False.
+    { Visibility=Private }
+    Procedure Call_PreSync tWebCallContext ByRef cctx
+        Integer i icDDODef
+        Handle[] aDDOViews
+        Handle hoInvokingObject
+        
+        Send NotifySyncWebApp         
+        
+        // Iterate the DDODefs array and synchronize the DDOs for each view....
+        Move (SizeOfArray(cctx.request.Header.aDDOViews)) to icDDODef
+        
+        //  First get all the object references
+        For i from 0 to (icDDODef - 1)
+            // Get the array of object handles to the views referenced in the request header's aDDODefs collection....
+            Get GetAjaxWebAppView of (phoWebControlLocator(Self)) cctx.request.Header.aDDOViews[i] to aDDOViews[i]
+        Loop
+        
+        Set paDDOViews to aDDOViews
+        
+        //  Now update data bindings (note that this needs to happen after paDDOViews is set for accessibility checks
+        For i from 0 to (icDDODef - 1)
+            // Process the synchronized psValue and pbChanged properties for each control that has a data binding
+            Broadcast Recursive Send UpdateDataBinding to aDDOViews[i]
+            
+            // Get the invoking object, as this might create dynamic objects which could sync their DDO's and we don't want that to happen later
+            Get GetInvokingObject of aDDOViews[i] to hoInvokingObject
+        Loop
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure Call_PostOnCallEnd tWebCallContext ByRef cctx
+        Integer i icDDODef
+        Handle[] aDDOViews
+        
+        // Iterate all the DDODefs in the Request and return the DDODefs for each one in the response
+        Get paDDOViews to aDDOViews
+        Move (SizeOfArray(aDDOViews)) to icDDODef
+        
+        For i from 0 to (icDDODef - 1)
+            Send TriggerOnCallEnd of aDDOViews[i]
+        Loop
+        
+        Send TriggerOnCallEnd
+    End_Procedure
+    
+    // This event is sent for every AJAX call to this view. This can be used by your
+    // security rights management system to set various global rights and roles constraints
+    // properties during each AJAX call.
+    // Note: You should not use web properties for this purpose since synchronized
+    // properties are sync'ed to the client and thus considered insecure.
+    { MethodType=Event }
+    Procedure OnSyncWebApp
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure NotifySyncWebApp
+        Send OnSyncWebApp
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure End_Construct_cWebViewHost_mixin
+        WebPublishFunction LoadView
+        WebPublishProcedure LoadViewCallBack_CallBack
+        WebPublishProcedure ShowView_FromClient
+    End_Procedure
+
+End_Class

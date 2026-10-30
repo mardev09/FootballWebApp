@@ -1,0 +1,25 @@
+﻿Use cWebBaseControl.pkg
+
+{ OverrideProperty=pbServerOnBlur WebProperty=False Visibility=Private }
+{ OverrideProperty=psClientOnBlur WebProperty=False Visibility=Private }
+{ OverrideProperty=pbServerOnFocus WebProperty=False Visibility=Private }
+{ OverrideProperty=psClientOnFocus WebProperty=False Visibility=Private }
+{ OverrideProperty=psTextColor WebProperty=False Visibility=Private }
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ HelpTopic=cWebHorizontalLine }
+{ DesignerJSClass=df.WebHorizontalLine }
+Class cWebHorizontalLine is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set piColumnSpan to 0
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebHorizontalLine"
+    End_Procedure
+
+End_Class

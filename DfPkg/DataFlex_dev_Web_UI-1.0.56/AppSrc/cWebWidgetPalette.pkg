@@ -1,0 +1,215 @@
+﻿Use cWebList.pkg
+Use cWebColumn.pkg
+Use cWebWidgetContainer.pkg
+Use cWebDragDropHelper.pkg
+
+{ Visibility=Private }
+Class cWebWidgetPalette_ContextMenu is a cWebContextMenu
+    Procedure OnContextMenuOpen Boolean ByRef bCancel
+        String sRowId
+            
+        WebGet psContextValue to sRowId
+        If (sRowId = "") Move True to bCancel
+    End_Procedure
+End_Class
+
+{ Visibility=Private }
+Class cWebWidgetPalette_AddWidgetItem is a cWebMenuItem
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psCaption to "Append widget"
+    End_Procedure
+    
+    Procedure OnClick
+        String sWidgetName
+        Handle hoContainer
+        tWidgetDef WidgetDef
+                
+        WebGet psContextValue of (Parent(Self)) to WidgetDef.sName
+        
+        Delegate Get phoWidgetContainer to hoContainer
+        
+        If (hoContainer <> C_WebUnresolvedObject and WidgetDef.sName <> "") Begin
+            Send AppendWidget of hoContainer WidgetDef
+        End
+    End_Procedure
+End_Class
+
+{ Visibility=Private }
+Class cWebWidgetPalette_DragDropHelper is a cWebDragDropHelper
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Property Handle phoTargetInternalWidgetContainer C_WebUnresolvedObject
+    End_Procedure
+
+
+                
+    //  Handle drop event
+    Procedure OnDrop Handle hoDragSource Handle hoDropTarget WebDropPosition eDropPosition
+        Handle hoContainer hoWidgetContainerInternal
+        
+        tWebListDragData ListDragData
+        Get DragData of hoDragSource to ListDragData
+        
+        tWebWidgetContainerDropData GridDropData
+        Get DropData of hoDropTarget to GridDropData
+        
+        // add widget
+        tWidgetDef WidgetDef
+        Move GridDropData.data.iRow     to WidgetDef.iRowIndex
+        Move GridDropData.data.iCol     to WidgetDef.iColIndex
+        Move ListDragData.data.sRowId   to WidgetDef.sName
+        Move GridDropData.data.iRowSpan to WidgetDef.iRowSpan
+        Move GridDropData.data.iColSpan to WidgetDef.iColSpan
+        Move True                       to WidgetDef.bFillHeight
+        
+        Send AddWidget of (phoTargetInternalWidgetContainer(Self)) WidgetDef
+    End_Procedure
+End_Class
+
+
+
+Class cWebWidgetPalette is a cWebList
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set pbDataAware to False
+        Set pbShowHeader to False
+        Set pbAllowColumnReordering to False
+        Set pbAllowColumnHiding to False
+        Set psCSSClass to "WebWidgetPalette"
+        Set pbScroll to False
+        Set pbShowSelected to False
+        Set pbOfflineEditing to True
+        Set piSortColumn to 0
+        
+        Property Boolean pbCreateDefaultDragDropHelper True
+        
+        { Visibility=Private }
+        Property Handle phoPrivateWidgetContainer C_WebUnresolvedObject
+        { Visibility=Private }
+        Property Handle phoPrivateDragDropHelper C_WebUnresolvedObject
+        
+        Object oCaptionColumn is a cWebColumn
+            Set psCaption to ""
+            Set piWidth to 1
+            Set psCSSClass to "RowCaption"
+            Set peWordBreak to wbEllipsis
+        End_Object
+        
+        Object oDescriptionColumn is a cWebColumn
+            Set psCaption to ""
+            Set piWidth to 1
+            Set pbNewLine to True
+            Set psCSSClass to "RowDetail"
+            Set peWordBreak to wbPreWrap
+        End_Object
+        
+    End_Procedure
+    
+    { MethodType=Property }
+    Procedure Set phoWidgetContainer Handle hoContainer
+        Set phoPrivateWidgetContainer to hoContainer
+        
+        If (phoPrivateDragDropHelper(Self) <> C_WebUnresolvedObject) ;
+            Send RegisterDropTarget of (phoPrivateDragDropHelper(Self)) hoContainer C_WebDropOnCell
+    End_Procedure
+    
+    { MethodType=Property }
+    Function phoWidgetContainer Returns Handle        
+        Function_Return (phoPrivateWidgetContainer(Self))
+    End_Function
+    
+    { MethodType=Event }    
+    Procedure OnCreateDefaultDropHelper
+        Handle hoHelper hoWidgetContainer hoInternalContainer
+        
+        Get CreateNamed (RefClass(cWebWidgetPalette_DragDropHelper)) "oDefaultDragDrophelper" to hoHelper
+        
+        Send RegisterDragSource of hoHelper Self C_WebDragListRow
+        
+        If (phoWidgetContainer(Self) <> C_WebUnresolvedObject) ;
+            Send RegisterDropTarget of hoHelper (phoWidgetContainer(Self)) C_WebDropOnCell
+        
+        Set phoPrivateDragDropHelper to hoHelper
+        
+        Get phoWidgetContainer to hoWidgetContainer
+        
+        Set phoTargetInternalWidgetContainer of hoHelper to (phoInternalWidgetContainer(hoWidgetContainer))
+    End_Procedure
+    
+    { NoDoc=True }
+    Procedure OnCreateDefaultHeaderMenu
+        Boolean bShowHeader bUseHeaderMenuOnWholeList
+        Handle hoDefaultHeaderMenu hoChild
+        
+        Get pbShowHeader to bShowHeader
+        Get pbUseHeaderMenuOnWholeList to bUseHeaderMenuOnWholeList
+        
+        Get CreateNamed (RefClass(cWebWidgetPalette_ContextMenu)) "oDefaultHeaderMenu" to hoDefaultHeaderMenu
+        
+        Set piWidth of hoDefaultHeaderMenu to 150
+        Set peContext of hoDefaultHeaderMenu to C_WebUIContextListRow
+        
+        Get CreateNamed of hoDefaultHeaderMenu (RefClass(cWebWidgetPalette_AddWidgetItem)) "oAppendItem" to hoChild
+
+        Set phPrivateDefaultHeaderMenu to hoDefaultHeaderMenu
+    End_Procedure
+    
+    { NoDoc=True }
+    Procedure OnManualLoadData tWebRow[] ByRef aTheRows String ByRef sCurrentRowID tWebGroupConfig[] ByRef aTheGroups tWebGroupHeader[] ByRef aTheGroupHeaders
+        Handle hoContainer hoWidget
+        tWidgetRegistration[] aWidgets
+        Integer iWidget iRow
+        String sCaption sDescription
+        Boolean bAllowed
+        
+        Get phoWidgetContainer to hoContainer
+        
+        If (hoContainer = C_WebUnresolvedObject) Begin
+            Error DFERR_PROGRAM "cWidgetPalette requires phoWidgetContainer to be set"
+            Procedure_Return
+        End
+        
+        Get paRegisteredWidgets of hoContainer to aWidgets
+        For iWidget from 0 to (SizeOfArray(aWidgets) - 1)
+            
+            Move "" to sDescription
+            Move aWidgets[iWidget].hoStaticInstance to hoWidget
+            
+            If (hoWidget <> C_WebUnresolvedObject) Begin
+                Get AllowViewAccess of (Host(Self)) hoWidget to bAllowed
+                
+                If (bAllowed) Begin                
+                    Get psWidgetCaption of hoWidget to sCaption
+                    Get psWidgetDescription of hoWidget to sDescription
+                
+                    If (sCaption = "") ;
+                        Move aWidgets[iWidget].sName to sCaption
+                    
+                    Move (SizeOfArray(aTheRows)) to iRow
+                    
+                    Move aWidgets[iWidget].sName    to aTheRows[iRow].sRowId
+                    Move sCaption                   to aTheRows[iRow].aCells[piColumnId(oCaptionColumn)].sValue
+                    Move sDescription               to aTheRows[iRow].aCells[piColumnId(oDescriptionColumn)].sValue
+                End
+            End
+        Loop
+    End_Procedure
+    
+    { NoDoc=True }
+    Procedure OnLoad
+        Send GridRefresh
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        If (pbCreateDefaultDragDropHelper(Self)) ;
+            Send OnCreateDefaultDropHelper
+    End_Procedure
+
+End_Class

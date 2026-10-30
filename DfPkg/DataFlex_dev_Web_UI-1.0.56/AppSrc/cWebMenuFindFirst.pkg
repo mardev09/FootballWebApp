@@ -1,0 +1,23 @@
+﻿Use cWebMenuItem.pkg
+
+// Menu items for WebApp Request_Find FIRST_RECORD
+{ HelpTopic=cWebMenuFindFirst }
+Class cWebMenuFindFirst is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set psCaption to C_$CaptionFindFirst
+        Set psCSSClass to "WebFirstMenuItem"
+        Set psToolTip to C_$ToolTipFindFirst
+    End_Procedure
+
+    Procedure OnClick
+        Handle hoFocus
+        Get DEOControlFocusObject to hoFocus
+        If hoFocus Begin
+            Send Request_Find of hoFocus  FIRST_RECORD
+        End
+    End_Procedure
+         
+End_Class 
+

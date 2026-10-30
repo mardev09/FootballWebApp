@@ -1,0 +1,6 @@
+﻿
+// Combo list item data.
+Struct tWebComboItem
+    String sValue         // combo item value
+    String sDescription   // user-friendly description of item value
+End_Struct 

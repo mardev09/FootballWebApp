@@ -1,0 +1,100 @@
+﻿Use WebUIConstants.pkg
+Use SoapConstants.pkg
+
+// This function converts a typed value from the generic format appropriate for transport to
+// the DataFlex format for that type.
+//
+// For example a date value should be converted from XML transport format
+// for dates. e.g. European "2013-03-24" is converted into "24/03/2013"
+//                 USA      "2013-03-24" is converted into "03/24/2013"
+//
+// This function is intended to be used when receiving numeric or date values from
+// the client during an AJAX call in a Web Framework application.
+//
+// This function is used internally by the framework to convert psValue Web Properties.
+//
+// eDataType - Must be passed to inform this function how to interpret the passed value (sValue)
+// sValue    - Is the value to be converted.
+// Returns   - The converted value.
+//
+// See also ConvertToClient
+Function ConvertFromClient Global Integer eDataType String sValue Returns String
+    // Test if the value represents a number, date or datetime. If so we must convert
+    // the value from a universal format sent by the client....
+    Case Begin
+        Case (eDataType = typeNumber)
+            // don't convert if psValue = "", otherwise "" will convert to "0".
+            If (sValue <> "") Begin
+                ConvertFromXml xsNumber sValue to sValue
+            End
+            Case Break
+        
+        Case (eDataType = typeDate)
+            ConvertFromXml xsDate sValue to sValue
+            Case Break
+        
+        Case (eDataType = typeDateTime)
+            ConvertFromXml xsDatetime sValue to sValue
+            Case Break
+        
+        Case (eDataType = typeTime)
+            ConvertFromXml xsTime sValue to sValue
+            Case Break
+        
+    Case End
+    
+    Function_Return sValue
+End_Function
+
+
+// This function converts a DataFlex format value into a generic format appropriate for
+// transport to the client.
+//
+// For example a date value should be converted into XML transport format
+// for dates. e.g. European "24/03/2013" is converted into "2013-03-24"
+//                 USA      "03/24/2013" is converted into "2013-03-24"
+//
+// This function is intended to be used when sending numeric or date values to
+// the client during an AJAX call in a Web Framework application.
+//
+// This function is used internally by the framework to convert psValue Web Properties.
+//
+// eDataType - Must be passed to inform this function how to interpret the passed value (sValue)
+// sValue    - Is the value to be converted.
+// Returns   - The converted value.
+//
+// See also ConvertFromClient.
+Function ConvertToClient Global Integer eDataType String sValue Returns String
+    // Test if the value represents a number, date or datetime. If so we must convert
+    // the value into a universal format for transferring it to the client....
+    Case Begin
+        Case (eDataType = typeNumber)
+            // don't convert if psValue = "", otherwise "" will convert to "0".
+            If (sValue <> "") Begin
+                ConvertToXml xsNumber sValue to sValue
+            End
+            Case Break
+        
+        Case (eDataType = typeDate)
+            If (sValue <> "") Begin
+                ConvertToXml xsDate sValue to sValue
+            End
+            Case Break
+        
+        Case (eDataType = typeDateTime)
+            If (sValue <> "") Begin
+                ConvertToXml xsDatetime sValue to sValue
+            End
+            Case Break
+        
+        Case (eDataType = typeTime)
+            If (sValue <> "") Begin
+                ConvertToXml xsTime sValue to sValue
+            End
+            Case Break
+        
+    Case End
+    
+    Function_Return sValue
+End_Function
+

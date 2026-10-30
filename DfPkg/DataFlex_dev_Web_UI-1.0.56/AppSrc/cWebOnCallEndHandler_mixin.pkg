@@ -1,0 +1,61 @@
+﻿Use VdfBase.pkg
+Use cWebCallHandler_mixin.pkg
+
+// Implements the administration of OnCallEnd listener objects. Used by cWebApp, cLocalWebControlHost
+// and cWebView.
+Class cWebOnCallEndHandler_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebOnCallEndHandler_mixin
+        { Visibility=Private }
+        Property Handle[] paRegisteredObjects
+    End_Procedure
+    
+    
+    // Registering an object here will ensure the 'OnCallEnd' event
+    // gets triggered when a webapp client call ends (on that 
+    // specific object).
+    Procedure RegisterOnCallEndEvent Handle hoObj
+        Handle[] aRegisteredObjects
+        
+        Get paRegisteredObjects to aRegisteredObjects
+        Move hoObj to aRegisteredObjects[SizeOfArray(aRegisteredObjects)]
+        Set paRegisteredObjects to aRegisteredObjects
+    End_Procedure
+    
+    
+    // Removes an object's registration.
+    Procedure RemoveOnCallEndEvent Handle hoObj
+        Integer iIndex
+        Handle[] aRegisteredObjects
+        
+        Get paRegisteredObjects to aRegisteredObjects
+        
+        Move (SearchArray(hoObj, aRegisteredObjects)) to iIndex
+        If (iIndex <> -1) Begin
+            Move (RemoveFromArray(aRegisteredObjects, iIndex)) to aRegisteredObjects
+            Set paRegisteredObjects to aRegisteredObjects
+        End
+    End_Procedure
+    
+    
+    // Triggers the OnCallEnd event for all registered objects.
+    { Visibility=Private }
+    Procedure TriggerOnCallEnd    
+        Integer iObject icObjects
+        Handle[] aRegisteredObjects
+        
+        Get paRegisteredObjects to aRegisteredObjects
+        
+        Move (SizeOfArray(aRegisteredObjects)) to icObjects
+        For iObject from 0 to (icObjects - 1)
+            Send OnCallEnd of aRegisteredObjects[iObject]
+        Loop
+    End_Procedure
+    
+    // Called by cWebCallHandler_mixin to trigger the OnCallEnd step.
+    { Visibility=Private }
+    Procedure Call_PostOnCallEnd tWebCallContext ByRef cctx
+        Send TriggerOnCallEnd
+    End_Procedure
+End_Class

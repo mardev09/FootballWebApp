@@ -1,0 +1,29 @@
+﻿Use cWebCard.pkg
+
+{ DesignerJSClass=df.WebAccordionCard }
+Class cWebAccordionCard is a cWebCard
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbExpanded False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psBtnCSSClass ""
+        { Category="Client Events" }
+        { WebProperty=Client } 
+        Property String psBtnBackgroundColor ""
+        
+        Set psCaption to "Accordion Item"
+        
+        Set psJSClass to "df.WebAccordionCard"
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

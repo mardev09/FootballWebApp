@@ -1,0 +1,67 @@
+﻿Use cWebList.pkg
+
+Define WebDropPosDetectionMode for Integer
+Enum_List
+    Define C_WebDropPosDetectionVertical            for 0
+    Define C_WebDropPosDetectionHorizontal          for 1
+End_Enum_List
+
+{ DesignerJSClass=df.WebHtmlList }
+Class cWebHtmlList is a cWebList
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psHtmlBefore ""
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psHtmlAfter ""
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psHtmlTemplate ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnElemClick True
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnElemClick ""
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer peDropPosDetectionMode C_WebDropPosDetectionVertical
+        
+        //  Makes it looks better in the designer
+        Set pbScroll to False
+        Set pbShowHeader to False         
+        
+        Set psJSClass to "df.WebHtmlList"
+    End_Procedure
+    
+    Procedure UpdateHtmlTemplate String sTemplate
+        String[] aParams
+        
+        Move sTemplate to aParams[0]
+        
+        Send ClientAction "updateTemplate" aParams
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnElemClick String sRowId String sParam
+    End_Procedure
+    
+    // HTML list does not have a header and thus no menu
+    { Visibility=Private }
+    Procedure OnCreateDefaultHeaderMenu
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        WebPublishProcedure OnElemClick
+        
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

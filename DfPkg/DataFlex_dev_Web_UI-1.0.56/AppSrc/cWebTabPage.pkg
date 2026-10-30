@@ -1,0 +1,17 @@
+﻿Use cWebCard.pkg
+
+{ HelpTopic=cWebTabPage }
+{ DesignerJSClass=df.WebTabPage }
+Class cWebTabPage is a cWebCard
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psCaption to "Tab page"
+        Set psJSClass to "df.WebTabPage"
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psBtnCSSClass ""
+    End_Procedure
+
+End_Class

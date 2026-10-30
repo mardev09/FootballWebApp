@@ -1,0 +1,30 @@
+﻿// Create a global variable to store handle to the cWebApp.
+Global_Variable Handle ghoWebApp
+Move 0 to ghoWebApp
+
+// Global Web Service Dispatcher object: cWebServiceDispatcher
+Global_Variable Handle ghoWebServiceDispatcher
+Move 0 to ghoWebServiceDispatcher
+
+// Global Session Manager Object: cWebSessionManager
+Global_Variable Handle ghoWebSessionManager
+Move 0 to ghoWebSessionManager
+
+// Global WebApp Error Handler Object: cWebErrorHandler
+#Replace ghoWebErrorHandler ghoErrorHandler
+
+// Global WebApp Resource Handler Object: cWebREsourceManager
+Global_Variable Handle ghoWebResourceManager
+Move 0 to ghoWebResourceManager
+
+// Reference to the global cWebViewStack object.
+Global_Variable Integer ghoWebViewStack
+Move 0 to ghoWebViewStack
+
+// Reference to the global object responsible for storing server properties
+Global_Variable Integer ghoWebServerPropStore
+Move 0 to ghoWebServerPropStore
+
+// Counter used to validate / invalidate accessability cache for UI objects
+Global_Variable Integer giWebAccCacheCtx
+Move 1 to giWebAccCacheCtx

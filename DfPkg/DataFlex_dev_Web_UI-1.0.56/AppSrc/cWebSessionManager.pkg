@@ -1,0 +1,170 @@
+﻿Use VdfBase.pkg 
+Use cCryptographerEx.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use cWebComponent.pkg
+Use WebUIConstants.pkg
+
+// cWebSessionHost_mixin interface
+Register_Function ReadSessionKey Returns String
+Register_Function GetLoginView Returns Handle
+Register_Function RecreateSession Returns Boolean
+Register_Function LoginMode Returns Integer
+Register_Procedure FireNotifyChangeRights
+
+// cWebObject_Mixin functions
+Use cWebObject_API.pkg
+
+{ ClassLibrary=WebApp }
+{ HelpTopic=cWebSessionManager }
+Class cWebSessionManager is a cWebComponent
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Global handle is deprecated.
+        Move Self to ghoWebSessionManager
+        // Set the session manager of the cWebApp or cLocalWebControlHost to this object
+        Delegate Set phoSessionManager to Self
+        
+        Property String psSessionKey ""
+        Property Integer piSessionTimeout 480               //  Session timeout in minutes
+        Property String psSessionCookieName "dfWebApp"      //  Name of the cookie in which the session key is stored
+        Property Integer piSessionCookieTimeout 0           //  The number hours that the session cookie should be stored (0 for the current browser session)
+        Property String psSessionCookiePath ""              //  Determines the path for which the session key cookie is set ('/' for entire domain, '' for the current path)
+        Property String psSessionCookieDomain ""            //  Determines the domain name for which the cookie is set (if the app is running on a subdomain the cookie can be shared accross the entire domain, "" means just for the current domain)
+        Property Boolean pbSessionCookieSecure False        //  Determines if the session cookie should be set as a secure cookie so that it is only send for HTTPS connections
+        Property Boolean pbSessionCookieHttpOnly False      //  Determines if the session cookie should be set as HTTP Only cookie so that it is not accessible from JavaScript.
+        Property String psSessionCookieSameSite "Lax"    //  Determines the samesite attribute of the session cookie.
+        
+        
+        Property Integer piSessionKeyLength 36
+        
+        { Visibility=Private }        
+        Property Handle phoRandomizer -1
+        
+        { Visibility=Private }
+        Object oRandomGen is a cCryptographerEx
+            Set phoRandomizer to Self
+        End_Object
+    End_Procedure
+    
+        
+    // Called for each view in the AJAX request header's DDO structures. Triggers an AllowAccess call to the view.
+    // Use this to allow or restrict access to the referenced view.
+    // Use this to manage access rights to each view in your application.
+    // Return - True if access is allowed to the referenced view, else False.
+    Function AllowViewAccess Handle hoView String sViewName Returns Boolean
+        Boolean bResult
+        Get AllowAccess of hoView to bResult
+        Function_Return bResult
+    End_Function
+
+    // User hook to manage what to do when creating a new client/server session. By default
+    // the system will create a globally unique identifier GUID as a new session key.
+    // This is called automatically during LoadWebApp and the session key is passed back to the 
+    // client.
+    // sRemoteAddress - Is the IP address of the client.
+    // Returns        - The new session key.
+    Function CreateSession String sRemoteAddress Returns String
+        String sSessionKey
+        Handle hoCryptRandom
+        Integer iLength
+        
+        Get piSessionKeyLength to iLength
+        
+        //  Generate a random key (slightly too long)
+        Get phoRandomizer to hoCryptRandom
+        Get GenerateRandomString of hoCryptRandom (iLength + 10) to sSessionKey
+        
+        //  Clear out special characters as these might cause issues with older browsers and ASP Classic, and then cut to the proper length
+        Move (Left(Replaces("+", Replaces("/", sSessionKey, ""), ""), iLength)) to sSessionKey
+        
+        Set psSessionKey to sSessionKey
+        
+        Function_Return sSessionKey
+    End_Function
+
+    
+    // Ends a session. May be augmented 
+    Procedure EndSession
+    End_Procedure
+    
+    
+    // Hook to provide logic to test if the application user is currently logged in.
+    // Returns - True if the user is logged in.
+    Function IsLoggedIn Returns Boolean
+        Function_Return False
+    End_Function
+    
+    
+    // Your user login system should call this whenever the logged-in user changes, or their rights & roles are
+    // modified. By default it just sends this to the main WebApp object, which handles this.
+    //
+    { Visibility=Private }
+    Procedure NotifyChangeRights
+        Send FireNotifyChangeRights of (Host(Self))
+    End_Procedure
+
+    
+    // Requests a Login. If there is a login dialog (phoLoginView), this will invoke that dialog
+    Procedure RequestLogin
+        Handle hoLogin
+        Get GetLoginView to hoLogin
+        If hoLogin Begin
+            Send Show of hoLogin
+        End
+    End_Procedure
+
+    
+    // Performs a logout and a reset of the session. May trigger a login if one is required.
+    Procedure RequestLogout
+        Boolean bValid
+        Integer eLoginMode eAppStateMode 
+        String sStateHash
+        Handle hoWebApp
+        
+        Get Host to hoWebApp
+        
+        //  We end the session and create a new one (so the user is logged out)
+        Send EndSession // close the current session key
+        Get RecreateSession of hoWebApp to bValid
+        
+        //  Now we try to 
+        Get LoginMode to eLoginMode
+        
+        If (eLoginMode = lmLoginRequired) Begin
+            Get peApplicationStateMode to eAppStateMode
+            
+            //  If history management is used we add an entry for the default view, and then refresh, so after login the user gets back to the dashboard
+            If (eAppStateMode <> asmOff) Begin
+                Send SetStateHash of hoWebApp "" "" False
+            End
+
+            Send NavigateRefresh of hoWebApp          // refresh the WebApp at the client (triggers a login)
+        End
+    End_Procedure
+
+    
+    // Performs a login with the passed params. To be augmented in superclasses
+    Function UserLogin String sLoginName String sPassword Returns Boolean
+        Function_Return False
+    End_Function
+    
+    
+    // User hook to validate the passed session key. This will be called for each and every AJAX call
+    // from the client. If False then the AJAX call is not completed.
+    // sSessionKey - The session key passed from the client. This should be the same key generated by CreateSession.
+    // Returns     - True if the session key is valid and the AJAX call can continue.
+    Function ValidateSession String sSessionKey Returns Boolean
+        If (Length(sSessionKey) = piSessionKeyLength(Self)) Begin
+            Set psSessionKey to sSessionKey
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

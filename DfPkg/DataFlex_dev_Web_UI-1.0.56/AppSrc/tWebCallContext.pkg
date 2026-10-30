@@ -1,0 +1,17 @@
+Use tWebRequest.pkg
+Use tWebResponse.pkg
+
+//  Stores the current call state while processing it (see cWebCallHandler_mixin)
+Struct tWebCallContext          
+    Handle hoJsonRequest        //  JSON object of the parsed request
+    Handle hoJsonResponse       //  JSON object for generated response
+    tWebRequest request         //  Parsed request data
+    tWebResponse response       //  Response data
+                                
+    Boolean bSuccess             //  Indicates if the last step was a success, if false it will skip further processing but still finish response generation
+    Boolean bCancel             //  True if a step failed and further processing will be cancelled
+    Integer iFatalErrorCode     //  If set an HTTP error will be returned
+    String sFatalError          //  Description of fatal error that is returned if iFatalErrorCode is set
+    
+    Boolean bNotifyChangeRights //  If true Call_PreNotifyRightsChange will fire
+End_Struct

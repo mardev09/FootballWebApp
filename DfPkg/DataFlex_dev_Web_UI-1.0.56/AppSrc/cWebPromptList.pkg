@@ -1,0 +1,541 @@
+﻿Use cWebForm.pkg
+Use cWebGrid.pkg
+Use cWebColumn.pkg
+Use cWebList.pkg
+Use umPromptRelational.pkg
+
+{ HelpTopic=cWebPromptList }
+{ Navigable="" }
+Class cWebPromptList is a cWebList
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        { EnumList="umPromptRelational,umPromptValue,umPromptCustom,umPromptNonInvoking" }
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Integer peUpdateMode umPromptRelational
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Integer piUpdateColumn 0
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Integer piInitialColumn -1
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoSeed True
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String  psSeedValue ''
+
+        { WebProperty=Client } 
+        { DesignTime=False }
+        Property String psInvokingObject ''
+
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psPromptUpdateCallback ''
+
+        { DesignTime=False }
+        Property Handle phmPromptSeedBufferCallback 0
+
+        { Category="Behavior" }
+        Property Boolean pbAutoServer False
+
+        Set pbOfflineEditing to True
+        Set peRequestFindMode to rfmFindMainSuper
+    End_Procedure
+    
+    Function GetInvokingObject Returns Handle
+        String sName
+        Handle hoInvoking
+        WebGet psInvokingObject to sName
+        If (Trim(sName) <> "") Begin
+            Get WebObjectByName sName to hoInvoking
+        End
+        Function_Return hoInvoking
+    End_Function
+
+    // Seeds data and finds a record. Returns true if a seed/find succeeded.
+    Function SeedData Handle hoUpdateColumn Handle hoInitialColumn Returns Boolean
+        Handle hoInvokingObject hoInvokingServer hoServer
+        Handle hmSeedBuffer
+        Integer iField iFile eUpdateMode iStat iOrdering
+        Boolean bAutoSeed bReadRecord bChanged bSeeded bReverseOrdering bAutoServer
+        String sValue
+
+        WebGet peUpdateMode to eUpdateMode
+        Get GetInvokingObject to hoInvokingObject
+        WebGet pbAutoSeed to bAutoSeed
+        Get phmPromptSeedBufferCallback to hmSeedBuffer
+        Get pbAutoServer to bAutoServer
+        
+        Get ReadingServer to hoServer
+        Get Main_File of hoServer to iFile
+        Get Server of hoInvokingObject to hoInvokingServer
+        
+        // if autoserver, we need to make sure the file buffers are set for
+        // the invoking DDOs. This may be needed for relates-to constraints
+        If (bAutoServer) Begin
+            Send Refind_Records of hoInvokingServer
+        End
+        // if a seed message is created, we assume that this should override anything else and that
+        // you will use this and only this for seeding
+        If (eUpdateMode<>umPromptNonInvoking and hmSeedBuffer) Begin
+            Clear iFile    // First clear the main_file buffer
+            Send hmSeedBuffer of hoInvokingObject Self
+            // if we come back with a non-edited, record we assume the seed did a find
+            // and we will use that record. Otherwise we want to do a find
+            Get_Attribute DF_FILE_STATUS of iFile to iStat
+            If (iStat=DF_FILE_ACTIVE) Begin
+                Move True to bSeeded
+            End
+            Else Begin             
+                Move True to bReadRecord
+            End
+        End
+        // if relational we will seed if autoseed and if it really is relational
+        Else If (eUpdateMode=umPromptRelational and bAutoSeed) Begin
+            Clear iFile    // First clear the main_file buffer
+            // Default action is to perform an entry update just like a find
+            // key would do. If we have a server allow the server to control this.
+            Send Request_Entry_Update to hoInvokingServer iFile 1
+            Move True to bReadRecord
+        End
+        // if value or custom, we seed if auto seed and we have an update column
+        Else If (bAutoSeed and hoUpdateColumn) Begin
+            WebGet psSeedValue to sValue
+            Get Data_File of hoUpdateColumn to iFile
+            Get Data_Field of hoUpdateColumn to iField
+            Clear iFile    // First clear the main_file buffer
+            Set_Field_Value iFile iField to sValue 
+            Move True to bReadRecord
+        End
+        
+        // only find a record if there is a change. If the buffer is unchanged we leave
+        // it as is. This uncleared always start at the top of the list and if a custom
+        // seed was used to find the record, we will use that id
+        If bReadRecord Begin
+            Get_Attribute DF_FILE_CHANGED of iFile to bChanged
+            If bChanged Begin
+                WebGet pbReverseOrdering to bReverseOrdering
+                Get IndexOrder to iOrdering
+                Get ReadDDRecordInBuffer hoServer iOrdering bReverseOrdering to bSeeded
+            End
+        End
+        
+        Function_Return bSeeded
+    End_Function
+    
+    Procedure RestoreDefaults
+        Integer iVal
+        String sVal
+        
+        Get piSortColumn to iVal
+        WebSet piSortColumn to iVal
+
+        Get peUpdateMode to iVal
+        WebSet peUpdateMode to iVal
+        
+        Get piInitialColumn to iVal
+        WebSet piInitialColumn to iVal
+        
+        Get piUpdateColumn to iVal
+        WebSet piUpdateColumn to iVal
+        
+        Get psSeedValue to sVal
+        WebSet psSeedValue to sVal
+
+        Get pbAutoSeed to iVal
+        WebSet pbAutoSeed to iVal
+
+        Get psPromptUpdateCallback to sVal
+        WebSet psPromptUpdateCallback to sVal
+    End_Procedure
+
+    // called before the list is activated. 
+    { Visibility=Private }
+    Procedure InitializePromptList
+        Handle hoServer hoReadingDD hoInvokingObject hoInvokingServer hoInitialColumn hoUpdateColumn
+        Boolean bSeeded bReverseOrdering bDataAware
+        Integer iFile iField iOldMode iMainFile eUpdateMode iOrdering
+        Integer iUpdateColumn iInitialColumn 
+        String sValue sName
+        RowID riRowid
+        
+        Send RestoreDefaults // set back to default state
+        
+        WebGet peUpdateMode to eUpdateMode
+        
+        If (eUpdateMode<>umPromptNonInvoking) Begin
+            // get and webset the full name of the invoking object
+            Get ReturnObject to hoInvokingObject
+            Get WebObjectName of hoInvokingObject to sName
+            WebSet psInvokingObject to sName  
+                      
+            If (hoInvokingObject<=Desktop) Begin
+                Error DFERR_PROGRAM C_$PromptListHasNoInvokingObject
+                Procedure_Return
+            End
+
+            Send Prompt_Callback to hoInvokingObject Self
+            WebGet peUpdateMode to eUpdateMode // this may have changed
+        End
+        Get pbDataAware to bDataAware
+        If not bDataAware Begin
+            Send InitializePromptListNDA
+            Procedure_Return
+        End
+
+        Get Server to hoServer
+        If (hoServer=0) Begin
+            Error DFERR_PROGRAM C_$PromptListHasNoServer
+            Procedure_Return
+        End
+        
+        WebGet piInitialColumn to iInitialColumn
+
+        If (eUpdateMode=umPromptRelational) Begin
+            Get Delegation_Mode of hoInvokingObject to iOldMode
+            Set Delegation_Mode of hoInvokingObject to NO_DELEGATE_OR_ERROR
+            Get Data_File  of hoInvokingObject Current to iFile
+            Get Data_Field of hoInvokingObject Current to iField
+            Set Delegation_Mode of hoInvokingObject to iOldMode
+            If (iFile) Begin
+                Get Server of hoInvokingObject to hoInvokingServer
+            End
+            
+            Get Main_File of hoServer to iMainFile
+            
+            If (not (iFile<>0 and iMainFile=iFile and hoInvokingObject<>0)) Begin
+                Send OnRelationalPromptListError
+                // get the update mode in case the RelationalPromptListError changes the mode to try another mode
+                WebGet peUpdateMode to eUpdateMode
+            End
+        End
+        
+        If (eUpdateMode=umPromptValue) Begin // else not used here intentionally
+            WebGet psValue of hoInvokingObject to sValue
+            WebSet psSeedValue to sValue
+        End
+        
+        // if relational, update column is the "best" else you must specify it
+        If (eUpdateMode=umPromptRelational) Begin
+            Get SelectBestColumn iFile iField to iUpdateColumn
+        End
+        Else Begin
+            WebGet piUpdateColumn to iUpdateColumn
+        End
+        If (iUpdateColumn>=0) Begin
+            Get GetColumnObject iUpdateColumn to hoUpdateColumn
+        End
+        
+        // We need an initial column. if you specified an initial column that will get used for the start column
+        // and the initial sort order. If you did not, which is typical, it will use the update column
+        If (iInitialColumn=-1) Begin
+            Move iUpdateColumn to iInitialColumn
+        End
+        If (iInitialColumn>=0) Begin
+            Get GetColumnObject iInitialColumn to hoInitialColumn
+        End
+        
+        // this assigns an ordering and a sort order
+        If (hoInitialColumn) Begin
+            WebSet piSortColumn to iUpdateColumn
+        End
+        
+        // this function seeds the data and a boolean indicating if the buffer was seeded and read
+        If (eUpdateMode<>umPromptNonInvoking) Begin 
+            Get SeedData hoUpdateColumn hoInitialColumn to bSeeded
+        End 
+
+        // if initial and update columns are different we must now reset the ordering
+        // to the initial order.
+        If (hoInitialColumn and (hoInitialColumn<>hoUpdateColumn)) Begin
+            WebSet piSortColumn to iInitialColumn
+        End
+            
+        If (not(bSeeded)) Begin
+            WebGet pbReverseOrdering to bReverseOrdering
+            Get IndexOrder to iOrdering
+            Get ReadingServer to hoReadingDD
+            Get ReadDDFirstRecord hoReadingDD iOrdering bReverseOrdering to riRowid
+            Move (not(IsNullRowID(riRowid))) to bSeeded
+        End
+        
+        If (peDbGridType(Self)<>gtManual) Begin
+            If bSeeded Begin
+                Send Request_Assign of hoServer
+            End
+            Else Begin
+                Send ClearGrid
+            End
+        End
+        Else Begin
+            // with a manual loaded list, we will refresh the grid by sending GridRefresh
+            Move (GetRowID(Main_File(hoServer))) to riRowid
+            Send GridRefresh // this will do a manual load
+            String sRowId
+            Get psCurrentRowID to sRowId
+            If (bSeeded and IsNullRowID(DeserializeRowID(sRowId))) Begin
+                WebSet psCurrentRowID to (SerializeRowID(riRowid))
+            End
+        End            
+    End_Procedure
+
+    // initialize prompt list for a non-data aware grid (pbDataAware=F)
+    { Visibility=Private }
+    Procedure InitializePromptListNDA
+        Handle hoInvokingObject hoInitialColumn hoUpdateColumn
+        Boolean  bDataAware
+        Integer  eUpdateMode
+        Integer iUpdateColumn iInitialColumn 
+        String sValue sName
+        
+        Get FocusObject to hoInvokingObject
+
+        WebGet peUpdateMode to eUpdateMode
+        If (eUpdateMode=umPromptRelational) Begin
+            Move umPromptValue to eUpdateMode
+            WebSet peUpdateMode to eUpdateMode
+        End
+        
+        WebGet piInitialColumn to iInitialColumn
+        
+        If (eUpdateMode=umPromptValue) Begin
+            WebGet psValue of hoInvokingObject to sValue
+            WebSet psSeedValue to sValue
+        End
+        
+        WebGet piUpdateColumn to iUpdateColumn
+        If (iUpdateColumn>=0) Begin
+            Get GetColumnObject iUpdateColumn to hoUpdateColumn
+        End
+        
+        // We need an initial column. if you specified an initial column that will get used for the start column
+        // and the initial sort order. If you did not, which is typical, it will use the update column
+        If (iInitialColumn=-1) Begin
+            Move iUpdateColumn to iInitialColumn
+        End
+        If (iInitialColumn>=0) Begin
+            Get GetColumnObject iInitialColumn to hoInitialColumn
+        End
+        
+        // this assigns an ordering and a sort order
+        If (hoInitialColumn) Begin
+            WebSet piSortColumn to iInitialColumn
+        End
+        
+        Send GridRefresh // this will call OnLoadManualData which will fill and seed the list
+    End_Procedure
+    
+    // by default this raises an error. If you want a failed relational list to not raise an
+    // error but to default to a different mode such as umPromptValue, just remove the error and
+    // set peUpdateMode.
+    { MethodType=Event }
+    Procedure OnRelationalPromptListError
+        Error DFERR_PROGRAM C_$PromptListCannotbeRelational
+    End_Procedure
+    
+    // called for relational update. DD should contain selected record
+    { MethodType=Event }
+    Procedure OnMoveValueOutByRelational Handle hoInvokingObject
+        RowID rRowId
+        Handle hoInvokingServer hoServer
+        Integer iFile 
+        Boolean bDataAware bSuccess
+
+        Get pbDataAware to bDataAware
+        If not bDataAware Begin
+            // this should have already been tested and should not be possible
+            Error DFERR_PROGRAM "Assert: OnMoveValueOutByRelational called by non data aware grid list can not be used as a relational prompt list for this object"
+            Procedure_Return
+        End
+
+        Get Server to hoServer
+        Get Main_File of hoServer to iFile
+        Get CurrentRowId of hoServer to rRowId
+        If (not(IsNullRowID(rRowId))) Begin
+            Get Server of hoInvokingObject to hoInvokingServer
+            Get FindByRowIdEx of hoInvokingServer iFile rRowId to bSuccess
+            // this is very unlikely
+            If not bSuccess Begin
+                Error DFERR_CANT_REFIND_RECORD
+            End
+        End
+    End_Procedure
+
+    // called for move value out update. DD and web column objects should contain selected record
+    { MethodType=Event }
+    Procedure OnMoveValueOutByValue Handle hoInvokingObject
+        String sValue
+        Handle hoCol
+        Integer iCol
+
+        WebGet piUpdateColumn to iCol
+        Get GetColumnObject iCol to hoCol
+        
+        WebGet psValue of hoCol to sValue
+        WebSet psValue of hoInvokingObject to sValue
+        WebSet pbChanged of hoInvokingObject to True
+    End_Procedure
+
+    { MethodType=Event }
+    Procedure OnMoveValueOutByCustom Handle hoInvokingObject
+    End_Procedure
+
+    { Visibility=Private }
+    // This is only called in a successful close
+    Procedure ClosePromptList
+        Handle hoInvokingObject hoServer
+        Handle hmCallBack
+        Integer iFile eUpdateMode
+        RowID rRowId
+        String sRowId sCallBack
+        Boolean bOldExt bDataAware bSuccess
+        
+        Get pbDataAware to bDataAware
+        If bDataAware Begin
+            // update DD with the current selected record
+            WebGet psCurrentRowID to sRowId
+            Move (DeserializeRowID(sRowId)) to rRowId            
+            Get Server to hoServer
+            Get Main_File of hoServer to iFile
+            If (not(IsNullRowID(rRowId))) Begin
+                Get pbNotifyingExternalDD to bOldExt
+                Set pbNotifyingExternalDD to True // refresh will not try to fill the grid
+                Get FindByRowIdEx of hoServer iFile rRowId to bSuccess
+                // this is very unlikely
+                If not bSuccess Begin
+                    Error DFERR_CANT_REFIND_RECORD
+                End
+                Set pbNotifyingExternalDD to bOldExt
+            End
+        End
+        
+        WebGet peUpdateMode to eUpdateMode
+        // If non-invoking there is by definition, no Move value out
+        If (eUpdateMode<>umPromptNonInvoking) Begin
+            Get GetInvokingObject to hoInvokingObject            
+            
+            If not hoInvokingObject Begin
+                Error DFERR_PROGRAM "Assert: hoInvokingObject is 0"
+                Procedure_Return
+            End
+            
+            If (eUpdateMode=umPromptRelational) Begin
+                Send OnMoveValueOutByRelational hoInvokingObject
+            End
+            Else If (eUpdateMode=umPromptValue) Begin
+                Send OnMoveValueOutByValue hoInvokingObject
+            End
+            Else If (eUpdateMode=umPromptCustom) Begin
+                Send OnMoveValueOutByCustom hoInvokingObject
+            End
+            WebGet psPromptUpdateCallback to sCallBack
+            If sCallBack Begin
+                Get WebMethodByName of hoInvokingObject sCallBack to hmCallBack
+                If hmCallBack Begin
+                    Send hmCallBack of hoInvokingObject Self
+                End
+            End
+        End
+    End_Procedure
+
+    Procedure Cancel
+        Integer eViewStyle
+        Get peWebViewStyle to eViewStyle
+        
+        // if drilldown we do a NavigateCancel instead of a Hide.
+        // We use NavigateCancel instead of NavigateClose because the prompt
+        // list has already updated the invoking object.
+        // If it is a dialog we call CloseDialog and let the dialog decide how it needs to be closed
+        If (eViewStyle=wvsDrillDown) Begin
+            Send NavigateCancel
+        End
+        Else If (eViewStyle=wvsDialog) Begin
+            Send CloseDialog
+        End
+        Else Begin
+            Send Hide
+        End
+    End_Procedure
+
+    Procedure Ok
+        Send ClosePromptList
+        Send Cancel
+        Send NotifyCloseModalDialog
+    End_Procedure
+    
+    // Returns server to use for reading and constraints.
+    // If pbAutoServer is set, return the matching DD from the invoking DEO's view.
+    // if not set, the server is also the reading server.
+    Function ReadingServer Returns Handle
+        Handle hoDD hoInvokingDEO hoInvokingDD
+        Integer iMain
+        Boolean bAutoServer
+
+        Get Server to hoDD
+
+        Get pbAutoServer to bAutoServer
+        If bAutoServer Begin           
+            Get GetInvokingObject to hoInvokingDEO
+            If hoInvokingDEO Begin
+                Get Main_File of hoDD to iMain
+                Get Server of hoInvokingDEO to hoInvokingDD
+                Get Which_Data_Set of hoInvokingDD iMain to hoInvokingDD
+                If hoInvokingDD Begin
+                    Move hoInvokingDD to hoDD
+                End
+            End
+        End
+        Function_Return hoDD
+    End_Function
+
+    // this must be augmented to handle auto-server searches
+    Procedure OnSearch String sSearchText
+        Integer iCol 
+        Boolean bReverseOrdering bFound bAutoServer
+        Integer iOrdering iFile
+        Handle hoCol hoServer hoReadingServer
+        
+        Get pbAutoServer to bAutoServer
+        If not bAutoServer Begin
+            Forward Send OnSearch sSearchText
+        End
+        Else Begin
+            WebGet piSortColumn to iCol
+            
+            If (iCol>=0) Begin
+                Get GetColumnObject iCol to hoCol
+                Get Server to hoServer               // the prompt lists server
+                Get ReadingServer to hoReadingServer // invoking server used for constained reads
+                If (hoServer=0) Begin
+                    Procedure_Return
+                End
+                            
+                Send DDSetChangedValue of hoCol sSearchText
+                WebGet pbReverseOrdering to bReverseOrdering
+                Get IndexOrder to iOrdering
+                Get Main_File of hoServer to iFile
+                
+                // entry update based on the prompt list server (that's where the search value is)
+                Send Request_Entry_Update of hoServer iFile 1
+                
+                // read record for reading server (the invoking server)
+                Get ReadDDRecordInBuffer hoReadingServer iOrdering bReverseOrdering to bFound
+                
+                If bFound Begin
+                    // tell prompt list server about this record. This will update the list
+                    Send Request_Assign of hoServer
+                End
+            End
+        End
+    End_Procedure
+End_Class
+
+

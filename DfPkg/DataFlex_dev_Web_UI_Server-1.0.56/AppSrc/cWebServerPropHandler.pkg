@@ -1,0 +1,288 @@
+﻿Use cWebBasePropHandler.pkg
+Use cWebServerPropStore.pkg
+Use cCryptographerEx.pkg
+Use cJsonObject.pkg
+
+//  Struct format in which the properties are stored.
+Struct tWebStoredProps
+    tWebSyncProps[] aProps
+    tWebAdvProp[] aAdvProps
+End_Struct
+
+// Handler for server-side web properties (WebProperty=Server and WebProperty=ServerSession). The
+// base class contains the logic for storing these in memory. At first access they are loaded from 
+// a store (cWebServerPropStore, usually the database) and at the end of a request they are written
+// to the store. This class handles the logic for determining the key and serializing to / from a 
+// JSON string passed along as UChar array.
+//
+
+{ ClassLibrary=WebApp }
+{ Visibility=Private }
+Class cWebServerPropHandler is a cWebBasePropHandler
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Property Boolean pbSessionScope False
+        
+        Property Boolean pbLoaded False
+        Property Boolean pbChanged False
+        
+        Property Integer piGenKeyLength 64
+        
+        Property Handle phoRandomizer -1
+        Property Handle phoJsonParser -1
+        
+        Set pbErrorObjNotFound to False
+        
+        Object oRandomGen is a cCryptographerEx
+            Set phoRandomizer to Self
+        End_Object
+        
+        Object oJsonParser is a cJsonObject
+            Set phoJsonParser to Self
+            Set pbUseVariantMetaData to True
+            Set pbRequireAllMembers to False
+        End_Object
+    End_Procedure
+    
+    //
+    // Makes sure the properties are loaded before letting the base class perform the WebGet.
+    //
+    { Visibility=Private }
+    Function GetAdvSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns Variant
+        Boolean bLoaded
+        Variant vResult
+        
+        Get pbLoaded to bLoaded
+        If (not(bLoaded) and pbActive(Self)) Begin
+            Send LoadProps
+        End
+        
+        Forward Get GetAdvSyncProp hoObject (&pubProp) to vResult
+        
+        Function_Return vResult
+    End_Function
+    
+    
+    //
+    // Makes sure the properties are loaded before letting the base class perform the WebGet.
+    //
+    { Visibility=Private }
+    Function GetScalarSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns String
+        Boolean bLoaded
+        String sResult
+        
+        Get pbLoaded to bLoaded
+        If (not(bLoaded) and pbActive(Self)) Begin
+            Send LoadProps
+        End
+        
+        Forward Get GetScalarSyncProp hoObject (&pubProp) to sResult
+        
+        Function_Return sResult
+    End_Function
+    
+    
+    
+    
+    //
+    // Makes sure the properties are loaded before letting the base class perform the WebSet.
+    //
+    { Visibility=Private }
+    Procedure SetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Variant vPropValue
+        Boolean bLoaded
+        
+        Get pbLoaded to bLoaded
+        If (not(bLoaded)) Begin
+            Send LoadProps
+        End
+        
+        Forward Send SetSyncProp hoObject (&pubProp) vPropValue
+        
+        Set pbChanged to True
+    End_Procedure
+    
+    
+    //
+    // Server-side web properties are always in scope.
+    //
+    { Visibility=Private }
+    Function IsObjectInCallActionScope Handle hoObject Returns Boolean
+        Function_Return True
+    End_Function
+    
+    
+    //
+    // Loads the web properties from the property store and deserializes them.
+    //
+    { Visibility=Private }
+    Procedure LoadProps
+        String sKey
+        Boolean bResult
+        UChar[] ucPropData
+        tWebStoredProps props
+        Handle hoJsonParser hoServerPropStore
+        
+        Get ServerPropStore to hoServerPropStore
+        
+        If (hoServerPropStore = C_WebUnresolvedObject) Begin
+            Error DFERR_PROGRAM "Unable to WebGet / WebSet the server property. The phoWebServerPropStore is not initialized. The most likely cause is the WebAppServerProp table not being available."
+            Procedure_Return
+        End
+        
+        Get phoJsonParser to hoJsonParser
+        Get StoreKey to sKey
+        Get LoadPropValues of hoServerPropStore sKey (&ucPropData) to bResult
+        
+        If (bResult) Begin
+            Get ParseUtf8 of hoJsonParser ucPropData to bResult
+            If (bResult) Begin
+                Get JsonToDataType of hoJsonParser to props
+                
+                //  We do this to release the JSON structure in memory without destroying the object
+                Send InitializeJsonType of hoJsonParser jsonTypeNull
+            End
+        End
+        
+        Send InitializeSyncProps props.aProps props.aAdvProps
+        
+        Set pbChanged to False
+        Set pbLoaded to True
+    End_Procedure
+    
+    
+    //
+    // Called when the webapp finished handlign a request. If the web properties where loaded and 
+    // changed it stores them. If they were loaded but not changed it gives the store a chance to
+    // unlock them.
+    //
+    { Visibility=Private }
+    Procedure FinishedCall tWebSyncProps[] ByRef aChangedSyncProps tWebAdvSyncProp[] ByRef aChangedAdvSyncProps
+        Boolean bLoaded bChanged
+        Integer iStoreIndex iSize iProp icProp
+        UChar[] ucPropData
+        String sKey
+        tWebStoredProps props
+        Handle hoJsonParser
+        
+        Get pbLoaded to bLoaded
+        
+        If (bLoaded) Begin
+            Get pbChanged to bChanged
+            Get piStoreIndex to iStoreIndex
+            Get phoJsonParser to hoJsonParser
+            Get StoreKey to sKey
+            If (bChanged) Begin
+                //  Get regular props (reduce size of array to actual size)
+                Get piSize to iSize
+                Move (ResizeArray(gaSyncProps[iStoreIndex], iSize)) to props.aProps
+                
+                //  Gather advanced sync props
+                Move (SizeOfArray(gaAdvSyncProps[iStoreIndex])) to icProp
+                Move (ResizeArray(props.aAdvProps, icProp)) to props.aAdvProps
+                For iProp from 0 to (icProp - 1)
+                    Move gaAdvSyncProps[iStoreIndex][iProp].tSvrProp to props.aAdvProps[iProp]
+                Loop
+                
+                Send DataTypeToJson of hoJsonParser props
+                Get StringifyUtf8 of hoJsonParser to ucPropData
+                
+                Send StorePropValues of (ServerPropStore(Self)) sKey (&ucPropData)
+            End
+            Else Begin
+                Send ReleasePropValues of (ServerPropStore(Self)) sKey
+            End
+            
+            Set pbLoaded to False
+        End
+        
+        Forward Send FinishedCall (&aChangedSyncProps) (&aChangedAdvSyncProps)
+    End_Procedure
+    
+    
+    //
+    // Augments the InitializeSyncProps with logic to initialize the advanced properties. For
+    // server web properties these are not serialized to a value tree so this is different as for
+    // client web properties.
+    //
+    { Visibility=Private }
+    Procedure InitializeSyncProps tWebSyncProps[] aSyncProps tWebAdvProp[] aAdvProps
+        Integer iSize iProp iStoreIndex
+        Handle hoLocator
+        
+        Get phoWebControlLocator to hoLocator
+        Get piStoreIndex to iStoreIndex
+        
+        //  Initialize the advanced property cache
+        Move (SizeOfArray(aAdvProps)) to iSize
+        Move (ResizeArray(gaAdvSyncProps[iStoreIndex], iSize)) to gaAdvSyncProps[iStoreIndex]
+        
+        For iProp from 0 to (iSize - 1)
+            Get FindWebObject of hoLocator aAdvProps[iProp].sO to gaAdvSyncProps[iStoreIndex][iProp].hoObj
+            Move False                  to gaAdvSyncProps[iStoreIndex][iProp].bChanged
+            Move True                   to gaAdvSyncProps[iStoreIndex][iProp].bDeserialized
+            Move aAdvProps[iProp]       to gaAdvSyncProps[iStoreIndex][iProp].tSvrProp
+        Loop
+        
+        Forward Send InitializeSyncProps aSyncProps
+    End_Procedure
+    
+    
+    //
+    //  Search for an advanced web property in the advanced web properties array.
+    //
+    { Visibility=Private }
+    Function FindAdvPropCache Handle hoObj String sPropName Returns Integer
+        Integer iTo iCur iStoreIndex
+        
+        Get piStoreIndex to iStoreIndex
+        
+        Move (Uppercase(sPropName)) to sPropName
+        Move (SizeOfArray(gaAdvSyncProps[iStoreIndex]) - 1) to iTo
+        For iCur from 0 to iTo
+            If (gaAdvSyncProps[iStoreIndex][iCur].hoObj = hoObj and Uppercase(gaAdvSyncProps[iStoreIndex][iCur].tSvrProp.sP) = sPropName) Begin
+                Function_Return iCur
+            End
+        Loop
+        
+        Function_Return -1
+    End_Function
+    
+    //
+    // Determines the key under which the server properties are stored. For serversession 
+    // properties this is the session key where for regular server properties this is a unique key
+    // generated and saved in a client web property.
+    //
+    { Visibility=Private }
+    Function StoreKey Returns String
+        Integer eLifetime
+        String sKey
+        Handle hoCryptRandom
+        Boolean bSessionScope
+        
+        Get pbSessionScope to bSessionScope
+        
+        If (bSessionScope) Begin
+            Get psSessionKey of (SessionManager(Self)) to sKey
+        End
+        Else Begin
+            WebGet psSPKey of (phowebhost(Self)) to sKey
+            
+            If (sKey = "") Begin
+                Get phoRandomizer to hoCryptRandom
+                Get GenerateRandomString of hoCryptRandom (piGenKeyLength(Self)) to sKey
+                
+                WebSet psSPKey of (phowebhost(Self)) to sKey
+            End 
+        End
+        
+        Function_Return sKey
+    End_Function
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

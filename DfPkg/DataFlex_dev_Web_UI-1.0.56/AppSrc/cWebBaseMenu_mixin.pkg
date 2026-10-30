@@ -1,0 +1,119 @@
+﻿Use VdfBase.pkg
+Use tWebMenuItem.pkg
+
+Class cWebBaseMenu_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebBaseMenu_Mixin
+        Handle hoWebNeighborhood
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAllowHtml False  //  If true HTML attributes can be used in the psCaption of menu items.
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psGroupName ""      //  The group name to which menu class is attached
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnItemClick True
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnItemClick ""
+        
+        // Register this object as a listner to the NotifyChangeRights event.
+        //
+        // DF18.0: But only if the object is in the "global" scope. We do not
+        // support NotifyChangeRights to objects inside a view scope (since the
+        // view might not be in scope when the notification is sent.
+        Get phoWebNeighborHood to hoWebNeighborhood
+        
+        If (hoWebNeighborhood = Owner(Self)) Begin
+            Send AddChangeRightsClient to (Owner(Self)) Self
+        End
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure NotifyChangeRights
+        Broadcast Send NotifyChangeRights
+        Send OnChangeRights
+    End_Procedure
+    
+    Procedure CollapseAll
+        Send ClientAction "collapseAll"
+    End_Procedure
+    
+    // Received whenever cWebSessionManager - NotifyChangeRights message is sent.
+    // Augment this event to manage any global rights settings.
+    //
+    // DF18.0: But only if the object is in the "global" scope. We do not
+    // support NotifyChangeRights to objects inside a view scope (since the
+    // view might not be in scope when the notification is sent.
+    { MethodType=Event }
+    Procedure OnChangeRights
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefineMenu tWebMenuItem[] ByRef aMenu
+        
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnItemClick String sId String sCaption
+        
+    End_Procedure
+    
+    Procedure FullRefresh
+        tWebMenuItem[] aMenu
+        String[] aParams
+       
+        Send OnDefineMenu (&aMenu)
+        
+        If (SizeOfArray(aMenu) > 0) Begin
+            Send ClientAction "refresh" aParams aMenu
+        End
+    End_Procedure
+    
+    Procedure UpdateItem String sId Boolean bOverwriteSubItems tWebMenuItem NewItem
+        String[] aParams
+        
+        Move sId                    to aParams[0]
+        Move bOverwriteSubItems     to aParams[1]
+        Send ClientAction "updateItem" aParams NewItem
+    End_Procedure
+    
+    
+    Procedure InsertItem String sParentId tWebMenuItem NewItem
+        String[] aParams
+        
+        Move sParentId to aParams[0]
+
+        Send ClientAction "insertItem" aParams NewItem 
+    End_Procedure
+    
+    
+    Procedure RemoveItem String sId
+        String[] aParams
+        
+        Move sId to aParams[0]
+        
+        Send ClientAction "removeItem" aParams
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PostSerializeObject
+        Send FullRefresh
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure Destroy_Object_cWebBaseMenu_mixin
+        If (phoWebNeighborHood(Self) = Owner(Self)) Begin
+            Send RemoveChangeRightsClient of (Owner(Self)) Self
+        End
+    End_Procedure
+        
+    { Visibility=Private }
+    Procedure End_Define_cWebBaseMenu_mixin
+        WebPublishProcedure OnItemClick
+    End_Procedure
+End_Class

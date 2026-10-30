@@ -1,0 +1,54 @@
+﻿Use cWebBaseUIObject.pkg
+Use cWebBaseMenu_mixin.pkg
+Use cWebBaseControl.pkg
+
+// Toolbar container object. Toolbar buttons are created using cWebMenuItem objects. A cWebToolBar must
+// be hosted inside a cWebCommandBar object. The commandbar object is used to position the toolbar.
+//
+// Adds support for...
+// - show/hide caption control.
+{ HelpTopic=cWebToolBar } 
+{ DesignerJSClass=df.WebToolBar }
+Class cWebToolBar is a cWebBaseControl
+    Import_Class_Protocol cWebBaseMenu_mixin
+    
+    Procedure Construct_Object
+        Handle hoWebNeighborhood
+        Forward Send Construct_Object  
+        
+        Send Define_cWebBaseMenu_Mixin
+        
+        // Published properties....        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowCaption False    // Display psCaption value of root menu items
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowIcons True        // Display the icons
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        { EnumList="alignLeft, alignRight, alignCenter"}
+        Property Integer peAlign alignLeft      // Determines alignment of items. Only available when positioned as a control outside of a command bar.
+        
+        Get phoWebNeighborHood to hoWebNeighborhood
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbFocusable (hoWebNeighborhood <> Owner(Self))
+        
+        Set pbShowLabel to False
+        
+        Set psJSClass to "df.WebToolBar"
+    End_Procedure
+    
+    Procedure Destroy_Object
+        Send Destroy_Object_cWebBaseMenu_mixin
+        
+        Forward Send Destroy_Object
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Send End_Define_cWebBaseMenu_mixin
+        
+        Forward Send End_Construct_Object
+    End_Procedure    
+End_Class

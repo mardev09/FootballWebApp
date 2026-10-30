@@ -1,0 +1,106 @@
+﻿Use cWebBaseUIObject.pkg
+
+//  Represents a swipe button that can be used inside a cWebList. It will render a button if a row 
+//  is swiped to the left or the right on mobile devices.
+Class cWebListSwipeButton is a cWebBaseUIObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { Visibility=Private }
+        Property Boolean pbIsWebColumn False           // This is used by the cWebList to filter swipe buttons from columns
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbDynamic False    //  If set to true the button can be customized for each row by implementing OnDefineButton
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psCaption ""   
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piWidth 0
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbPositionLeft False
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAllowHtml False
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psTooltip ""
+        
+        Property Integer piColumnId 0
+        
+        
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnClick ""
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick True
+        
+        Set psJSClass to "df.WebListSwipeButton"
+        
+        Delegate Send RegisterColumn Self   // Add myself to the parent Grid object's columns collection
+    End_Procedure
+    
+    
+    //  Called by the list / grid to determine the field value details based on the current 
+    //  environment values (global buffer or properties). It fills the tWebCell struct that is 
+    //  passed by reference with details needed by the JavaScript Engine to render the cell.
+    Procedure LoadGridCell tWebCell ByRef tCell
+        Boolean bDynamic bRender
+        
+        Get pbDynamic to bDynamic
+        If (bDynamic) Begin
+            Move True to bRender
+            
+            WebGet psCaption to tCell.sValue
+            
+            Send OnDefineButton (&bRender) (&tCell.sValue)
+            
+            Move bRender to tCell.aOptions[0]
+        End
+        
+        // Give a chance to add custom tooltips & CSS Classnames
+        Send OnDefineTooltip (&tCell.sTooltip)
+        Send OnDefineCssClass (&tCell.sCssClassName)
+        
+//        Move sValue to tCell.sValue
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefineButton Boolean ByRef bRender String ByRef sCaption
+        
+    End_Procedure
+    
+    //  This event is fired for each row that is sent to the client and gives a chance to provide 
+    //  a custom tooltip value fort his cell. For data aware grids / lists the global buffers will 
+    //  contain the right records. If the tooltip is left empty the field value will be shown as 
+    //  tooltip (if pbValueAsTooltip is true).
+    { Visibility=Private }
+    Procedure OnDefineTooltip String ByRef sTooltip
+        
+    End_Procedure
+    
+    //  This event is fired for each tor that is sent to the client and gives a chance to provide a
+    //  custom CSS Classname for individual cells. For data aware grids / lists the global buffers 
+    //  will contain the right records.
+    { MethodType = Event }
+    Procedure OnDefineCssClass String ByRef sCSSClass
+        
+    End_Procedure
+    
+    
+    { MethodType=Event }
+    Procedure OnClick String sRowId
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnClick
+
+    End_Procedure
+
+End_Class

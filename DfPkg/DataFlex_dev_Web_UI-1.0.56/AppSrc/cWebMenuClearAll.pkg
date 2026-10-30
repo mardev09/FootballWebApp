@@ -1,0 +1,22 @@
+﻿Use cWebMenuItem.pkg
+
+// Menu items for WebApp Request_Clear_All
+{ HelpTopic=cWebMenuClearAll }
+Class cWebMenuClearAll is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set psCaption to C_$CaptionClearAll
+        Set psToolTip to C_$ToolTipClearAll
+        Set psCSSClass to "WebClearAllMenuItem"
+    End_Procedure
+
+    Procedure OnClick
+        Handle hoFocus
+        Get DEOFocusObject to hoFocus
+        If hoFocus Begin
+            Send Request_Clear_All of hoFocus
+        End
+    End_Procedure
+         
+End_Class 

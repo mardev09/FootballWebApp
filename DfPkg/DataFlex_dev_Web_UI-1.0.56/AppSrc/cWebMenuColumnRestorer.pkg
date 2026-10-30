@@ -1,0 +1,13 @@
+Use cWebMenuItem.pkg
+
+Class cWebMenuColumnRestorer is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psJSClass to "df.WebMenuColumnRestorer"
+        Set psCaption to C_$WebListHeaderMenuRestoreMenuName
+        Set pbServerOnClick to False
+    End_Procedure
+
+End_Class

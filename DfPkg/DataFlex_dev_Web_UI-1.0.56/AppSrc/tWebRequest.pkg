@@ -1,0 +1,35 @@
+﻿// Structures used to pass information to the server whenever an AJAX call is made.
+// the passed information includes all synchronized properties and information about the 
+//
+// Note: member names are kept very short in order to minimize the size of the generated JSON
+// data that is sent to the client.
+
+Use tWebSyncProps.pkg
+Use tWebAdvSyncProp.pkg
+Use tWebDDODef.pkg
+Use tWebValueTree.pkg
+
+// Header struct for all action requests.
+Struct tWebRequestHeader
+    String sFocus                   // name of the currently focused object "oMyView.oMyControl"
+    String[] aDDOViews           // each member represents the DDO struct for a view. Normally it will be one member containing DDOs for the current view.
+    tWebSyncProps[] aSyncProps      // values of the synchronized properties that are involved in the request
+    tWebAdvSyncProp[] aAdvSyncP    // values of the advanced synchornized properties (arrays and structs)
+End_Struct
+
+
+// Structure to store a requested server side action/event
+Struct tWebServerAction
+    String sTarget          // Target object path: "oMyView.oMyControl" or "oMenubar.oFindMenu.oFindNext"
+    String sAction          // Action to perform on the target object: "onClick"
+    String[] aParams        // Parameters (if any) passed to the action method
+    Integer iAttached       // Attachment index
+End_Struct
+
+
+// Generic action request (i.e. Save, Find, Onclick, etc).
+Struct tWebRequest
+    tWebRequestHeader Header
+    tWebServerAction[] aActions
+End_Struct
+

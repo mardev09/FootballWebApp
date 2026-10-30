@@ -1,0 +1,498 @@
+﻿Use VdfBase.pkg
+
+Class cWebHostAPI_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebHostAPI_mixin
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psCurrencySymbol ""       // The default currency symbol to use on the client in currency masks. "&euro;" can be used to represent the EURO symbol. If left blank then the server's default system currency symbol will be loaded. This symbol replaces the "&curren;" symbol in the mask string when the mask is sent to the client.
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psDateFormat ""           // The date format to use on the client. (see DF_DATE_FORMAT)
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psDateSeparator ""        // The date separator string to use on the client. (see DF_DATE_SEPARATOR)
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psDateTimeFormat ""       // The datetime format used by the client for editing and displaying datetime values.
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psTimeFormat "hh:mm:ss"   // The time format used by the client for editing and displaying time values.
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psTimeSeparator ":"       // The time separator used on the client when editing and displaying datetime values.
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psDecimalSeparator "."    // The decimal separator character to us on the client when formating numeric masks. (see DF_DECIMAL_SEPARATOR)
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psThousandsSeparator ","  // The thousands separator character to us on the client when formating numeric masks. (see DF_THOUSANDS_SEPARATOR)
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psTheme "Df_Material"    // The theme being used (actually determines from which folder theme.css is included)
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psBodyCSSClass ""        // The CSS class being applied to the document.body in html
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piScreenWidth 0
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piScreenHeight 0
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piWindowWidth 0
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piWindowHeight 0
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psLocationHash ""               // The current hash part of the url (read-only)
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer peMode -1              //  The responsive mode in which the client is running (see WebSetResponsive). This property is readonly.
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbResponsive True      //  This property can be used to disable the responsive system (WebSetResponsive values will not be applied if false)
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbIsMobile             //  This property indicates wether or not the client is detected as a mobile device (tablet / phone running android or IOS). This property is readonly.
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        { EnumList="spLightMode, spDarkMode" }
+        Property Integer peSystemThemePreference spLightMode      //  This property indicates if the currently active theme should render in dark mode.
+        { WebProperty=Client }
+        { Category="Behavior" }
+        { DesignTime=False }
+        { EnumList="tpLightMode, tpDarkMode, tpSystemPreference"}
+        Property Integer peThemePreference tpLightMode // This property indicates if the current system has a preference for dark mode. This is decided by the operating system.
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        { DesignTime=False }
+        Property String[] pasBrowserLanguages
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer piBrowserTimezoneOffset 0
+        
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        { EnumList = "alignLeft, alignCenter, alignRight" }
+        Property Integer peAlignView alignLeft      //  Determines the alignment of the view being displayed
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnOrientationChange False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnOrientationChange ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnResizeWindow False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnResizeWindow ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnSystemThemePreferenceChange False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnSystemThemePreferenceChange ""
+        
+        Send InitLocalizationProperties
+        
+        // This property is not actually used but might be called by delegation from the 
+        // cWebSyncPropsHandler. This would happen when the psValue web property of an object is
+        // being accessed but that object does not support peDataType.
+        { Visibility=Private }
+        Property Integer peDataType typeASCII          
+        
+        // This is set to true when the application is being synchronized to the client.
+        // When true there may be certain things you don't want to do. This is system maintained.
+        // Usually, you will using Get AppSynching instead of this property.
+        { Visibility=Private }
+        Property Boolean pbSynchronizing False
+        
+        // This string is used as a key for encryption and hashing within the framework. The 
+        // cWebResourceManager uses it to encrypt data into the generated download URL's. It is 
+        // also used for generating checksums to protect data (like the rowid's) from being changed
+        // on the client. To increase the security it is advised to change this property to a 
+        // unique value for every running web application.
+        { Category="Security" }
+        Property String psEncryptPassword ""  //  Password used to encrypt the key
+        
+        { WebProperty=Server }
+        { Visibility=Private }
+        Property Boolean pbIsLoaded False
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure InitLocalizationProperties
+        // This is called by Construct_Object. We perform these property settings in a separate routine
+        // so that the Studio's parser does not parse the Set Property statements at the end. Parsing
+        // these Set statements would cause the properties to be shown read-only in the properties panel.
+        Integer iDateSeparator iDecimalSeparator iThousandsSeparator iDateFormat
+        String sDateFormat sCurrencySymbol sDateSeparator sDecimalSeparator sThousandsSeparator
+
+        Move (Default_Currency_Symbol()) to sCurrencySymbol
+
+        Get_Attribute DF_DECIMAL_SEPARATOR   to iDecimalSeparator
+        Get_Attribute DF_THOUSANDS_SEPARATOR to iThousandsSeparator
+        Get_Attribute DF_DATE_SEPARATOR      to iDateSeparator
+        Get_Attribute DF_DATE_FORMAT         to iDateFormat
+        
+        Move (Character(iDecimalSeparator))   to sDecimalSeparator
+        Move (Character(iThousandsSeparator)) to sThousandsSeparator
+        Move (Character(iDateSeparator))      to sDateSeparator
+    
+        Case Begin
+            Case (iDateFormat = DF_DATE_USA)
+                Move ("mm/dd/yyyy") to sDateFormat
+                Case Break
+
+            Case (iDateFormat = DF_DATE_EUROPEAN)
+                Move ("dd/mm/yyyy") to sDateFormat
+                Case Break
+
+            Case (iDateFormat = DF_DATE_MILITARY)
+                Move ("yyyy/mm/dd") to sDateFormat
+                Case Break
+        Case End
+    
+        Set psDecimalSeparator   to sDecimalSeparator
+        Set psThousandsSeparator to sThousandsSeparator    
+        Set psCurrencySymbol     to sCurrencySymbol
+        Set psDateFormat         to sDateFormat
+        Set psDateTimeFormat     to (sDateFormat * "hh:mm:ss")
+        Set psDateSeparator      to sDateSeparator
+    End_Procedure
+    
+    // Client Action: Sends navigateRefresh to the client to reload the web application.
+    // This will clear all loaded views and zero all web properties. You would
+    // send this message to restart the WebApp and trigger a new user login.
+    // See also "UnloadView" method of cWebView.
+    Procedure NavigateRefresh
+        Send ClientAction "navigateRefresh"
+    End_Procedure
+    
+    // Client Action: Opens a new URL in: current browser or new tab or new window.
+    // sURL           - Is the URL to navigate to.
+    // eBrowserTarget - Determines where the URL will be shown. Can be one of:
+    //                  btCurrentWindow, btNewTab, btNewWindow
+    Procedure NavigateToPage String sURL Integer eBrowserTarget
+        String[] aParams
+        
+        Move sURL                     to aParams[0]
+        Move (String(eBrowserTarget)) to aParams[1]
+        Send ClientAction "navigateToPage" aParams
+    End_Procedure
+    
+    // Client Action: Opens the URL in a new window.
+    Procedure NavigateNewWindow String sUrl Integer iWidth Integer iHeight
+        String[] aParams
+        
+        Move sURL                     to aParams[0]
+        Move iWidth                   to aParams[1]
+        Move iHeight                  to aParams[2]
+        
+        Send ClientAction "navigateNewWindow" aParams
+    End_Procedure
+    
+    //  Client Action: Shows a message in a modal dialog on the client. When called multiple times 
+    //  the dialogs are shown after each other (not on top of each other).
+    Procedure ShowInfoBox String sMessage String sOptCaption
+        String[] aParams
+        
+        Move sMessage to aParams[0]
+        If (num_arguments >= 2) Begin
+            Move sOptCaption to aParams[1]
+        End
+        Else Begin
+            Move C_$Information to aParams[1]
+        End
+        
+        Send ClientAction "showInfoBox" aParams        
+    End_Procedure
+    
+    //  Client Action: Shows a message box on the client and passes it an object name and method 
+    //  name that will Handle the result. The result will be an Integer indicating which button is 
+    //  clicked.
+    Procedure ShowMessageBox Handle hoObj Handle hoReturnMsg String sMessage String sOptCaption String sOptLabelCSSClass Integer eOptDefaultButton String[] asOptButtons
+        String[] aParams aButtons 
+        String sReturnMethod
+        tWebValueTree tVT
+        Integer iIndex
+        
+        //  Search for publiced reutrn message
+        Get WebMethodName of hoObj hoReturnMsg to sReturnMethod
+            
+        If (sReturnMethod <> "") Begin
+            Get WebObjectName of hoObj to aParams[0]    //  Translate handle to object name
+            Move sReturnMethod         to aParams[1]    //  Translate message id to method name
+            Move sMessage              to aParams[2]    //  Determine further parameters 
+           
+            If (num_arguments > 3) Begin
+                Move sOptCaption       to aParams[3]
+            End
+            Else Begin
+                Move C_$Information    to aParams[3]
+            End
+            
+            If (num_arguments > 4) Begin
+                Move sOptLabelCSSClass to aParams[4]
+            End
+            Else Begin
+                Move ""                to aParams[4]
+            End
+            
+            If (num_arguments > 5) Begin
+                Move eOptDefaultButton to aParams[5]
+            End
+            Else Begin
+                Move 0                 to aParams[5]
+            End
+            
+            If (num_arguments > 6) Begin
+                Move asOptButtons to aButtons
+            End
+            Else Begin
+                Move C_$Yes       to aButtons[0]
+                Move C_$No        to aButtons[1]
+            End
+            
+            //  Add client action
+            Send ClientAction "showMessageBox" aParams aButtons            
+        End
+    End_Procedure
+    
+    //  Shows a message box with yes and no buttons.
+    Procedure ShowYesNo Handle hoCallBack Handle hmCallback String sMessage String sOptCaption Integer eOptDfltBtn
+        String sCSSClass sCaption
+        String[] ButtonTextArray
+        Integer eDflt
+    
+        Move C_$Yes to ButtonTextArray[0]
+        Move C_$No to ButtonTextArray[1]
+        
+        If (num_arguments > 3) Begin
+            Move sOptCaption to sCaption
+        End
+        Else Begin
+            Move C_$Confirm  to sCaption
+        End
+        
+        If (Num_Arguments > 4) Begin
+           Move eOptDfltBtn to eDflt
+        End
+        Else Begin
+           Move 2 to eDflt //cmNo to eDflt
+        End
+    
+        Move "WebMsgBoxConfirm" to sCSSClass // assume this defines any images and other features for a yes/no dialog.    
+    
+        Send ShowMessageBox hoCallBack hmCallback sMessage sCaption sCSSClass eDflt ButtonTextArray
+    End_Procedure
+
+    //  Shows a message box with yes and no buttons.
+    Procedure ShowYesNoCancel Handle hoCallBack Handle hmCallback String sMessage String sOptCaption Integer eOptDfltBtn
+        String sCSSClass sCaption
+        String[] ButtonTextArray
+        Integer eDflt
+    
+        Move C_$Yes to ButtonTextArray[0]
+        Move C_$No to ButtonTextArray[1]
+        Move C_$Cancel to ButtonTextArray[2]
+        
+        If (num_arguments > 3) Begin
+            Move sOptCaption to sCaption
+        End
+        Else Begin
+            Move C_$Confirm to sCaption
+        End
+        
+        If (Num_Arguments > 4) Begin
+           Move eOptDfltBtn to eDflt
+        End
+        Else Begin
+           Move 3 to eDflt //cmCancel to eDflt
+        End
+    
+        Move "WebMsgBoxConfirm" to sCSSClass // assume this defines any images and other features for a yes/no dialog.    
+    
+        Send ShowMessageBox hoCallBack hmCallback sMessage sCaption sCSSClass eDflt ButtonTextArray
+    End_Procedure
+    
+    // Updates the title of the web page based on the provided string.
+    //
+    // Params:
+    //  sTitle  The new page title.
+    //
+    Procedure SetPageTitle String sTitle
+        String[] aParams
+        
+        Move sTitle to aParams[0]
+        
+        Send ClientAction "setPageTitle" aParams
+    End_Procedure
+    
+    //  Client Action: Shows the provided text on the console of JavaScript debuggers (like 
+    //  FireBug). This is a common debugging method in web applications comparable to Showln in 
+    //  windows. The "Server: " String is added before the text to identify server-side log lines 
+    //  on the client.
+    Procedure ClientLog String sText
+        String[] aParams
+        
+        Move ("Server: " * sText) to aParams[0]
+        
+        Send ClientAction "log" aParams
+    End_Procedure
+    
+    //  Client Action: Sends a forceResize which triggers a resize action after handling this call. 
+    //  Usually this should happen autmatically when needed but this method provides a way to force
+    //  it.
+    Procedure ClientResize
+        String[] aParams
+        
+        Send ClientAction "forceResize" aParams
+    End_Procedure
+    
+    // Pushes a new state item to the browser its history stack. Implemented as a client action 
+    // (see history.pushState JavaScript API).
+    //
+    // Params:
+    //      sUrl        URL for the new history item.
+    //      sTitle      Page title for the new history item.
+    //      stateData   Valuetree struct that is added as data to the history item. This allows 
+    //                  custom information to be added for usage on back navigation.
+    Procedure HistoryPushState String sUrl String sTitle  tWebValueTree stateData
+        String[] aParams
+        
+        Move sUrl to aParams[0]
+        If (num_arguments > 1) Begin
+            Move sTitle to aParams[1]
+        End
+        If (num_arguments > 2) Begin
+            Send ClientAction "historyPushState" aParams stateData
+        End
+        Else Begin
+            Send ClientAction "historyPushState" aParams 
+        End
+    End_Procedure
+    
+    // Replaces the current item in the browser its history stack. Implemented as client action and
+    // maps to the history.replaceState JavaScript API.
+    //
+    // Params:
+    //      sUrl        URL for the new history item.
+    //      sTitle      Page title for the new history item.
+    //      stateData   Valuetree struct that is added as data to the history item. This allows 
+    //                  custom information to be added for usage on back navigation.
+    Procedure HistoryReplaceState String sUrl String sTitle  tWebValueTree stateData
+        String[] aParams
+        
+        Move sUrl to aParams[0]
+        If (num_arguments > 1) Begin
+            Move sTitle to aParams[1]
+        End
+        If (num_arguments > 2) Begin
+            Send ClientAction "historyReplaceState" aParams stateData
+        End
+        Else Begin
+            Send ClientAction "historyReplaceState" aParams 
+        End
+    End_Procedure
+    
+    // Server-Action
+    //
+    // Triggered by the client when a history popstate event occurs. This is a browser back 
+    // navigation to an item that was added to the history stack using HistoryPushState. The 
+    // ptActionData contains the tWebValueTree struct with data passed to HistoryPushItem.
+    //
+    // Params:
+    //      sTitle      Page title for the history item.
+    //      sUrl        URL for the history item.
+    { Visibility=Private }
+    Procedure HistoryPopState String sTitle String sUrl
+        String sStateHash
+        tWebValueTree stateData
+        
+        Get ptActionData to stateData
+        
+        //  Trigger public event
+        Send OnHistoryPopState sTitle sUrl stateData
+    End_Procedure
+    
+    // This event is called when the browser navigates back to a history item added using 
+    // HistoryPushState. This allows the application to respond to the back navigation. If 
+    // peApplicationStateMode is set to asmHistoryOnly or asmHistoryAndUrls then the framework will
+    // have restored the state before this event is triggered.
+    //
+    // Params:
+    //      sTitle      Page title of the history item.
+    //      sUrl        URL of the history item.
+    //      stateData   Custom state data passed to HistoryPushState or HistoryReplaceState.
+    { MethodType=Event } 
+    Procedure OnHistoryPopState String sTitle String sUrl tWebValueTree stateData
+        
+    End_Procedure
+    
+    // Server-Action
+    //
+    // Called by the client when the location hash changes (hashchange browser event) and triggers
+    // a restorestate if needed and calls OnLocationHashChange.
+    // 
+    // Params:
+    //      sHash       New location hash.
+    { Visibility=Private }
+    Procedure LocationHashChange String sHash
+        Send OnLocationHashChange sHash
+    End_Procedure
+    
+    // Triggers when the location hash changes (#.. part of the URL). Only fires if the hash change
+    // is not caused by an pop state event, in that case OnHistoryPopState should be used.
+    //
+    // Params:
+    //      sHash   New location hash.
+    { MethodType=Event }
+    Procedure OnLocationHashChange String sHash
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnOrientationChange Integer iOrientation
+    End_Procedure
+    
+    // Event that is fired when the size of the browser window changes. This event can be used to 
+    // make the web application layout responsive to the browser size. It gets the new dimensions
+    // of the browser window passed as parameters.
+    //
+    // Params:
+    //  iWindowWidth    Width of the browser window in pixels.
+    //  iWindowHeight   Height of the browser window in pixels.
+    { MethodType=Event }
+    Procedure OnResizeWindow Integer iWindowWidth Integer iWindowHeight
+    End_Procedure
+    
+    // Event that is fired when the operating systems prefered theme changes.
+    // It gets the new prefered theme of the operating system as a string
+    //
+    // Params:
+    // peThemePreference    Name of the new prefered theme
+    { MethodType=Event }
+    Procedure OnSystemThemePreferenceChange Integer eSystemThemePreference
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebHostAPI_mixin
+        WebPublishProcedure OnOrientationChange
+        WebPublishProcedure OnResizeWindow
+        WebPublishProcedure HistoryPopState
+        WebPublishProcedure LocationHashChange
+        WebPublishProcedure OnSystemThemePreferenceChange
+    End_Procedure
+End_Class

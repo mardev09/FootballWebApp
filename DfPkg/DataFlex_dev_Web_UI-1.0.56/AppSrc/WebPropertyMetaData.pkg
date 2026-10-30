@@ -1,0 +1,161 @@
+﻿Use GlobalFunctionsProcedures.pkg
+Use cBaseErrorHandler.pkg
+
+/*
+The administration of web properties at runtime is now optimized so and deduplicated at class level. 
+So each cWebObject instance holds a reference to a cWebClassPropertyData object that stores the web 
+property data for its class. Optionally it can also have a second cWebPropertyMetaData object that 
+stores web properties created at object level.
+*/
+
+/*
+Represents a single web property, is used for storage and to pass a web property reference arround.  
+*/
+Struct tWebPropMetaData
+    Handle hmSetter     //  Setter message
+    Handle hmGetter     //  Getter message
+    String sName        //  Name with proper casing
+    Integer eType       //  Property type (cArgInt, cArgStr, cArgArray, cArgStruct, ...)
+    Integer eMode       //  Web property mode (wptClient, wptServerPage, wptServerSession, wptClientProtected)
+    String sDefault     //  Initial value of the property 
+End_Struct
+
+/*
+Maintains administration of web properties. Stores them in a sorted array for quick access.
+*/
+{ Visibility=Private }
+Class cWebPropertyMetaData_mixin is a Mixin
+    
+    Procedure Define_cWebPropertyMetaData_mixin
+        Property tWebPropMetaData[] paWebPropertyMeta
+    End_Procedure
+    
+    Procedure RegisterWebProperty Handle hmGetter Handle hmSetter String sName Integer iType Integer eMode String sOptDefault
+        tWebPropMetaData newProp
+        tWebPropMetaData[] details
+        Integer iPos
+        
+        Move hmSetter to newProp.hmSetter
+        Get paWebPropertyMeta to details
+        Move (BinarySearchArray(newProp, details, False)) to iPos
+        If (iPos = -1) Begin
+            Move (BinarySearchInsertPos()) to iPos
+            Move hmGetter to newProp.hmGetter
+            Move sName to newProp.sName
+            Move iType to newProp.eType
+            Move eMode to newProp.eMode
+            //  Only class meta data stores the default value
+            If (num_arguments > 5) ;
+                Move sOptDefault to newProp.sDefault
+            
+            Move (InsertInArray(details, iPos, newProp)) to details
+            Set paWebPropertyMeta to details
+        End    
+        Else If (num_arguments > 5 and iType <> cArgArray and iType <> cArgStruct) Begin
+            If (sOptDefault <> details[iPos].sDefault) Begin
+                //Error DFERR_PROGRAM (SFormat("Web %1 property redefined with different default ('%2' <> '%3')!", sName, vDefault, details[iPos].vDefault))
+                Move sOptDefault to details[iPos].sDefault
+                Set paWebPropertyMeta to details
+            End
+        End
+    End_Procedure
+    
+    Function FindWebPropertyBySetter Handle hmSetter Returns tWebPropMetaData
+        tWebPropMetaData[] details
+        tWebPropMetaData search 
+        Integer iPos
+        
+        Get paWebPropertyMeta to details
+        
+        Move hmSetter to search.hmSetter
+        Move (BinarySearchArray(search, details, False)) to iPos
+        
+        If (iPos <> -1) ;
+            Function_Return details[iPos]
+        
+        Move 0 to search.hmSetter
+        Function_Return search
+    End_Function
+    
+    Function FindWebPropertyByGetter Handle hmGetter Returns tWebPropMetaData
+        tWebPropMetaData[] details
+        tWebPropMetaData empty
+        Integer i iTo
+        
+        Get paWebPropertyMeta to details
+        Move (SizeOfArray(details) - 1) to iTo
+        For i from 0 to iTo
+            If (details[i].hmGetter = hmGetter) ;
+                Function_Return details[i]
+        Loop
+        
+        Function_Return empty
+    End_Function
+    
+    Function FindWebPropertyByName String sName Returns tWebPropMetaData
+        tWebPropMetaData[] details
+        tWebPropMetaData empty
+        Integer i iTo
+        
+        Get paWebPropertyMeta to details
+        Move (SizeOfArray(details) - 1) to iTo
+        For i from 0 to iTo
+            If (details[i].sName = sName) ;
+                Function_Return details[i]
+        Loop
+        
+        Function_Return empty
+    End_Function
+
+End_Class
+
+/*
+Extends the cWebPropertMetaData with sealing logic for storing class web properties. The sealing 
+reduces startup time as properties are not reregistered when a new instance of the class is created.
+*/
+{ Visibility=Private }
+Class cWebClassPropertyData is a cObject
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Property Handle phClassId 0
+        Property Boolean pbSealed False // This property is used by cWebObject_mixin
+        Property Handle pjJsonCache C_WebUnresolvedObject
+        
+        Send Define_cWebPropertyMetaData_mixin
+    End_Procedure
+    
+    Import_Class_Protocol cWebPropertyMetaData_mixin
+    
+    Procedure SealDefinition
+        Set pbSealed to True
+    End_Procedure
+End_Class
+
+
+/*
+Central singleton object that maintains instances of the cWebClassPropertyData objects (which are 
+shared by web object instances).
+*/
+Global_Variable Handle ghoWebClassPropertyMetaStore 
+
+Object oWebClassPropertyMetaStore is a cObject
+    Property Handle[] pClasses
+    
+    Move Self to ghoWebClassPropertyMetaStore
+    
+    Function CreateClassPropMetaData Handle hClass Returns Handle
+        Handle[] classes
+        Handle hNewMetaObj
+        
+        Get pClasses to classes
+        If (hClass < SizeOfArray(classes) and classes[hClass] > 0) ;
+            Function_Return classes[hClass]
+        
+        Get CreateNamed (RefClass(cWebClassPropertyData)) ("oClassProp_" + String(hClass)) to hNewMetaObj
+        Set phClassId of hNewMetaObj to hClass
+        Move hNewMetaObj to classes[hClass]
+        Set pClasses to classes
+        
+        Function_Return hNewMetaObj
+    End_Function
+End_Object

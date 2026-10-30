@@ -1,0 +1,63 @@
+﻿Use cWebBaseControl.pkg
+Use cWebBaseMenu_mixin.pkg
+
+{ DesignerJSClass=df.WebMenuButton }
+Class cWebMenuButton is a cWebBaseControl
+    Import_Class_Protocol cWebBaseMenu_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Send Define_cWebBaseMenu_Mixin
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbRenderAsAnchor False
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbHideOnBlur True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMenuWidth 300
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMenuHeight 0
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psMenuCSSClass ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psMenuRootCaption C_$Menu
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbMenuShowCaption True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbMenuShowIcons False
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbOpenOnRoot False
+        
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebMenuButton"
+    End_Procedure
+
+    Procedure LevelUp
+        Send ClientAction "levelUp"
+    End_Procedure
+    
+    Procedure Destroy_Object
+        Send Destroy_Object_cWebBaseMenu_mixin
+        
+        Forward Send Destroy_Object
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Send End_Define_cWebBaseMenu_mixin
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

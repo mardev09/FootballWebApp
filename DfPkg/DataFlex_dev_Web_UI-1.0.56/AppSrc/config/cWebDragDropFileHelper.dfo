@@ -1,0 +1,27 @@
+Object
+
+    //  Register drop targets
+    // Send RegisterDropTarget oControl C_WebDropOnControl
+                
+    //  Called for each file dropped, should return the local path to write the file
+    Function OnFileDrop String sFileName Integer iBytes String sMime Handle hoDropTarget WebDropPosition eDropPosition Returns String
+        String sPath
+        tWebTreeViewDropData tDropData
+        Boolean bExists
+        
+        Get UploadFolder of (Host(Self)) True to sPath
+        Move (sPath + "\" + sFileName) to sPath
+        
+        //  Check if we are not overwriting an existing file
+        File_Exist sPath bExists
+        If (bExists) Begin
+            Send UserError "File already exists!"
+            Function_Return ""
+        End
+        
+        Function_Return sPath
+    End_Function
+    
+    Procedure OnFileFinished String sFileName String sLocalPath
+    End_Procedure
+End_Object

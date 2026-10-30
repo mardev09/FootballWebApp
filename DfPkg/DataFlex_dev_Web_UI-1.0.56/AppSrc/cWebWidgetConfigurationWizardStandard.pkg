@@ -1,0 +1,203 @@
+﻿Use cWebWidgetConfigurationWizard.pkg
+Use cWebDynamicObjectContainer.pkg
+Use cWebCombo.pkg
+
+{ Visibility=Private }
+Class cPropWebForm is a cWebForm
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty = Server}
+        Property String psPropObj      
+        
+        {WebProperty = Server}
+        Property String psPropName    
+    End_Procedure
+End_Class
+
+{ Visibility=Private }
+Class cPropWebCombo is a cWebCombo
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty = Server}
+        Property String psPropObj      
+        
+        {WebProperty = Server}
+        Property String psPropName    
+        
+        {WebProperty = Client}
+        Property String[] paValues
+        
+    End_Procedure
+    
+    Procedure OnFill
+        Integer i
+        String[] aValues
+        
+        Forward Send OnFill
+        
+        WebGet paValues to aValues 
+        
+        For i from 0 to (SizeOfArray(aValues) - 1)
+            Send AddComboItem aValues[i] aValues[i]
+        Loop
+    End_Procedure
+End_Class
+
+{ Visibility=Private }
+Class cPropWebSlider is a cWebSlider
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty = Server}
+        Property String psPropObj      
+        
+        {WebProperty = Server}
+        Property String psPropName
+
+        Set pbShowValue to True
+    End_Procedure
+End_Class
+
+{ Visibility=Private }
+Class cPropWebCheckbox is a cWebCheckbox
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        {WebProperty = Server}
+        Property String psPropObj      
+        
+        {WebProperty = Server}
+        Property String psPropName
+        
+        Set psChecked to "1"
+        Set psUnchecked to "0"
+    End_Procedure
+End_Class
+
+
+Composite cWebWidgetConfigurationWizardStandard is a cWebWidgetConfigurationWizard
+    Set piWidth to 400
+    
+    Procedure OnPopulateWizard tWidgetConfigProp[] aConfigurableProps tWidgetConfigPropValue[] aCurPropValues
+        Send PopulateWizard of oWizardContainer aConfigurableProps aCurPropValues
+    End_Procedure
+    
+    
+    Object oMainPanel is a cWebPanel
+        Set peRegion to prCenter
+        
+        Object oWizardContainer is a cWebDynamicObjectContainer
+        
+            Procedure PopulateWizard tWidgetConfigProp[] aConfigurableProps tWidgetConfigPropValue[] aValues
+                Integer iPropCount i j
+                Handle hoObj
+                Integer iObjClass
+                String sObjPropId
+                Variant vCurPropVal
+                tWidgetConfigProp Prop
+                
+                // Clear container
+                Send ResetContainer
+                
+                // Use widget def to create dynamic objects and configure them
+                Move ((SizeOfArray(aConfigurableProps)) -1) to iPropCount
+                
+                For i from 0 to iPropCount
+                    Move aConfigurableProps[i] to Prop
+                    Case Begin
+                        Case (Prop.Settings.eControlType = WCT_Form)
+                            Move (RefClass(cPropWebForm)) to iObjClass
+                            Case Break
+                        Case (Prop.Settings.eControlType = WCT_Combo)
+                            Move (RefClass(cPropWebCombo)) to iObjClass
+                            Case Break
+                        Case (Prop.Settings.eControlType = WCT_Slider)
+                            Move (RefClass(cPropWebSlider)) to iObjClass
+                            Case Break
+                        Case (Prop.Settings.eControlType = WCT_Checkbox)
+                            Move (RefClass(cPropWebCheckbox)) to iObjClass
+                            Case Break
+                    Case End
+                    
+                    If (iObjClass <> 0) Begin
+                        Get CreateDynamicObject iObjClass i '' to hoObj
+
+                        Send InitDynamicProp of hoObj "psPropObj" Prop.sObjName
+                        Send InitDynamicProp of hoObj "psPropName" Prop.sPropName
+                        Send InitDynamicProp of hoObj "pbShowLabel" True
+                        Send InitDynamicProp of hoObj "psLabel" Prop.Settings.sOptLabel
+                        
+                        // Sanity check
+                        If ((SizeOfArray(aValues)) > i) Begin
+                            Send InitDynamicProp of hoObj "psValue" aValues[i].sValue
+                        End
+                        
+                        If (Prop.Settings.eControlType = WCT_Combo) Begin
+                            Send InitDynamicProp of hoObj "paValues" Prop.Settings.asOptValues                 
+                        End
+                        
+                        If (Prop.Settings.eControlType = WCT_Slider) Begin
+                            Send InitDynamicProp of hoObj "piMinValue" Prop.Settings.iOptMinValue
+                            Send InitDynamicProp of hoObj "piMaxValue" Prop.Settings.iOptMaxValue
+                            Send InitDynamicProp of hoObj "piInterval" Prop.Settings.iOptStepSize
+                        End
+                    End
+                Loop
+                
+                Send Activate
+            End_Procedure
+    
+        End_Object
+
+    End_Object
+    
+    Object oButtonPanel is a cWebPanel
+        Set peRegion to prBottom
+        Set piColumnCount to 4
+        
+        Object oOkBtn is a cWebButton
+            Set pbShowLabel to False
+            Set psCaption to "Ok"
+            Set piColumnIndex to 1
+            
+            Procedure OnClick
+                Send Ok
+            End_Procedure
+        End_Object
+        
+        Object oCancelBtn is a cWebButton
+            Set pbShowLabel to False
+            Set psCaption to "Cancel"
+            Set piColumnIndex to 2
+            
+            Procedure OnClick
+                Send Cancel
+            End_Procedure
+        End_Object
+    End_Object
+    
+    Procedure OnGetConfigValues tWidgetConfigPropValue[] ByRef aNewPropValues
+        String[] aObjs
+        Integer i iObjs
+        Handle hoObj
+        
+        Get DynamicChildren of oWizardContainer '' to aObjs
+        Move ((SizeOfArray(aObjs) - 1)) to iObjs
+        
+        For i from 0 to iObjs
+            Get DynamicObject of oWizardContainer aObjs[i] to hoObj
+            WebGet psPropObj of hoObj to aNewPropValues[i].sObjName
+            WebGet psPropName of hoObj to aNewPropValues[i].sPropName
+            WebGet psValue of hoObj to aNewPropValues[i].sValue
+        Loop
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Composite
+

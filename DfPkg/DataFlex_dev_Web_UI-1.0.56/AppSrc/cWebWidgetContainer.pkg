@@ -1,0 +1,538 @@
+﻿Use cWebGroup.pkg
+Use cWebWidgetContainerInternal.pkg
+Use cWebNavPathHelper_mixin.pkg
+
+Composite cWebWidgetContainerContextMenu is a cWebContextMenu
+    Set pbServerOnContextMenuOpen to True
+    
+    Object oEditItem is a cWebMenuItem
+        Set psCaption to C_$WebWidgetConToggleEdit
+        
+        Procedure OnClick
+            Handle hoControl
+            Delegate Get phoControl to hoControl
+            
+            Send StartEditMode of hoControl
+        End_Procedure
+    End_Object
+    
+    Object oResetItem is a cWebMenuItem
+        Set psCaption to C_$WebWidgetConResetConfig
+        
+        Procedure OnClick
+            Handle hoControl
+            Delegate Get phoControl to hoControl
+            
+            Send ResetToDefaultConfiguration of hoControl
+        End_Procedure
+    End_Object
+    
+    Object oSaveItem is a cWebMenuItem
+        Set psCaption to C_$WebWidgetConSaveEdits
+        
+        Procedure OnClick
+            Handle hoControl
+            Delegate Get phoControl to hoControl
+            
+            Send SaveConfiguration of hoControl
+        End_Procedure
+    End_Object
+    
+    Object oCancelItem is a cWebMenuItem
+        Set psCaption to C_$WebWidgetConCancelEdits
+      
+        Procedure OnClick
+            Handle hoControl
+            Delegate Get phoControl to hoControl
+            
+            If (hoControl <> 0) Begin
+                Send CancelChanges of hoControl
+            End
+        End_Procedure
+    End_Object
+
+    Procedure OnContextMenuOpen Boolean  ByRef bCancel
+        Handle hoControl
+        Boolean bEditMode
+        
+        Forward Send OnContextMenuOpen (&bCancel)
+
+        Get phoControl to hoControl
+        
+        If (hoControl <> 0) Begin
+            WebGet pbEditMode of hoControl to bEditMode
+            
+            WebSet pbRender of oEditItem    to (not(bEditMode))
+            WebSet pbRender of oSaveItem    to bEditMode
+            WebSet pbRender of oCancelItem  to bEditMode
+        End
+    End_Procedure
+    
+End_Composite
+
+Class cWebWidgetContainer is a cWebGroup
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set piColumnCount to 12
+        Set piRowCount to 0
+        Set psDefaultRowHeight to "80px"
+        Set pbShowCaption to False
+        Set pbShowBorder to False
+        
+        Set psJSClass to 'df.WebWidgetContainer'
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Boolean pbShowEditButton True
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Boolean pbShowEditMenu True
+        
+        { Visibility=Private}
+        Property tWidgetRegistration[] paRegisteredWidgets
+        
+        { Visibility=Private}
+        Property Handle[] paDefaultWidgets
+        
+        { Visibility=Private}
+        Property Handle phoConfigWizard // Used to initialize a (default) config wizard upon object creation
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbUseCustomConfigurationStorage False
+        
+        {WebProperty=Client}
+        { Category="Behavior" }
+        Property Boolean pbEditMode False
+        
+        { WebProperty=Client }
+        Property Boolean pbDisableInternalDragDropHelper False
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnToggleEditMode False
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnWidgetMoved False
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnWidgetResized False
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAlwaysShowConfigureButton False
+
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property String psConfigVersionCode '1'
+        
+        {Visibility=Private}
+        Property Handle phoInternalWidgetContainer
+        
+        {Visibility=Private}
+        Property Handle phInternalWidgetContainerClass
+
+        // This makes the designer work, the JavaScript class overwrites this
+        Set peLayoutType to ltGrid
+    End_Procedure
+    
+    {Visibility=Private}
+    Procedure CreateInternalContainer
+        Handle hClass hoContainer
+        Boolean bIsInternalContainerClass
+        
+        Get phInternalWidgetContainerClass to hClass
+        If (hClass = 0) Begin
+            Move (RefClass(cWebWidgetContainerInternal)) to hClass
+        End
+        
+        Get IsClassOfClass (RefClass(cWebWidgetContainerInternal)) hClass to bIsInternalContainerClass
+        
+        If (not(bIsInternalContainerClass)) Begin
+            Error DFERR_PROGRAM "Referenced InternalWidgetContainerClass is not of type cWebWidgetContainerInternal"
+        End
+        
+        Get Create hClass to hoContainer
+        
+        Set phoInternalWidgetContainer to hoContainer
+    End_Procedure
+    
+    // --- Wrapper API
+    
+    Procedure RegisterWidget Handle hoWidgetClass
+        tWidgetRegistration[] aWidgets
+        Integer iWidget
+        
+        Get paRegisteredWidgets to aWidgets
+        Move (SizeOfArray(aWidgets)) to iWidget
+        Move hoWidgetClass to aWidgets[iWidget].hClass
+        Move C_WebUnresolvedObject to aWidgets[iWidget].hoStaticInstance
+        Set paRegisteredWidgets to aWidgets
+        
+    End_Procedure
+    
+    { Visibility=Private}
+    Function WidgetRegistrationByName String sWidgetName Returns tWidgetRegistration
+        tWidgetRegistration[] aWidgets
+        tWidgetRegistration searchItem emptyItem
+        Integer iIndex
+        
+        Get paRegisteredWidgets to aWidgets
+        
+        Move sWidgetName to searchItem.sName
+        Move (BinarySearchArray(searchItem, aWidgets, False)) to iIndex
+        
+        If (iIndex <> -1) ;
+            Function_Return aWidgets[iIndex]
+            
+        Function_Return emptyItem
+    End_Function
+    
+    { Visibility=Private}
+    Function CompareClassId tWidgetRegistration widget1 tWidgetRegistration widget2 Returns Integer
+        If (widget1.hClass > widget2.hClass) ;
+            Function_Return (GT)
+
+        If (widget1.hClass < widget2.hClass) ;
+            Function_Return (LT)
+
+        Function_Return (EQ)
+    End_Function
+    
+    { Visibility=Private}
+    Function WidgetRegistrationByClass Handle hWidgetClass Returns tWidgetRegistration
+        tWidgetRegistration[] aWidgets
+        tWidgetRegistration searchItem emptyItem
+        Integer iIndex
+        
+        Get paRegisteredWidgets to aWidgets
+        
+        Move hWidgetClass to searchItem.hClass
+        Move (SearchArray(searchItem, aWidgets, Self, (RefFunc(CompareClassId)))) to iIndex
+        
+        If (iIndex <> -1) ;
+            Function_Return aWidgets[iIndex]
+            
+        Function_Return emptyItem
+    End_Function
+    
+    // --- Container API
+    // Most of these are forwarded to the actual container, API exposed here for easy access for the developer
+    
+    Procedure Reload
+        Send Reload of (phoInternalWidgetContainer(Self))
+    End_Procedure
+    
+    Procedure LoadConfiguration
+        Send LoadConfiguration of (phoInternalWidgetContainer(Self))
+    End_Procedure
+    
+    Procedure SaveConfiguration
+        Send SaveConfiguration of (phoInternalWidgetContainer(Self))
+    End_Procedure
+    
+    Procedure SaveConfigurationToLocalStorage tContainerDef ContainerDef
+        Send SaveConfigurationToLocalStorage of (phoInternalWidgetContainer(Self)) ContainerDef
+    End_Procedure
+    
+    Procedure AddWidget tWidgetDef WidgetDef
+        Send AddWidget of (phoInternalWidgetContainer(Self)) WidgetDef
+    End_Procedure
+    
+    Procedure AppendWidget tWidgetDef WidgetDef
+        Send AppendWidget of (phoInternalWidgetContainer(Self)) WidgetDef
+    End_Procedure
+    
+    Function WidgetInstance String sWidgetDynamicId Returns Handle
+        Handle hoWidget
+        
+        Get DynamicObject of (phoInternalWidgetContainer(Self)) sWidgetDynamicId to hoWidget
+        
+        Function_Return hoWidget
+    End_Function
+    
+    Function WidgetInstanceEx String sWidgetDynamicId Returns Handle
+        Handle hoWidget
+        
+        Get DynamicObjectEx of (phoInternalWidgetContainer(Self)) sWidgetDynamicId to hoWidget
+        
+        Function_Return hoWidget
+    End_Function
+    
+    Procedure ShowWidgetConfiguration String sWidgetDynamicId Boolean bOptNoErrorIfNotAvailable
+        Boolean bNoErrorIfNotAvailable
+        
+        If (num_arguments > 1) ;
+            Move bOptNoErrorIfNotAvailable to bNoErrorIfNotAvailable
+        Send RequestConfigWizard of (phoInternalWidgetContainer(Self)) sWidgetDynamicId bNoErrorIfNotAvailable
+    End_Procedure
+    
+    Procedure ResetToDefaultConfiguration
+        Send DoResetConfiguration of (phoInternalWidgetContainer(Self))
+        WebSet pbEditMode to False
+    End_Procedure
+    
+    Procedure StartEditMode
+        WebSet pbEditMode to True
+    End_Procedure
+    
+    Procedure CancelChanges
+        Send Reload of (phoInternalWidgetContainer(Self))
+        WebSet pbEditMode to False
+    End_Procedure
+    
+    { Visibility=Private}
+    Procedure RefreshOverlay
+        Send RefreshOverlay of (phoInternalWidgetContainer(Self))
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnLoadConfiguration tContainerDef ByRef ContainerDef
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnSaveCustomConfiguration tContainerDef ContainerDef
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure OnResetConfiguration
+    End_Procedure
+    
+    // Sent before adding a widget
+    // Can be used to cancel add action
+    {MethodType=Event}
+    Function OnBeforeAddWidget tWidgetDef ByRef WidgetDef Handle ByRef hoWidgetClass Returns Boolean
+        Function_Return True
+    End_Function
+    
+    // Sent when a widget has been added
+    {MethodType=Event}
+    Procedure OnWidgetAdded tWidgetDef WidgetDef Handle hoWidgetClass
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnWidgetRemoved tWidgetDef WidgetDef
+    End_Procedure
+    
+    // Called when a widget has been moved
+    // WidgetDef contains the updated widget (with new indexes)
+    {MethodType=Event}
+    Procedure OnWidgetMoved tWidgetDef WidgetDef
+    End_Procedure
+    
+    // Called when a widget has been resized
+    // WidgetDef contains the updated widget (with new spans)
+    {MethodType=Event}
+    Procedure OnWidgetResized tWidgetDef WidgetDef
+    End_Procedure
+    
+    // Sent when toggling edit mode for this container
+    {MethodType=Event}
+    Procedure OnToggleEditMode Boolean bEdit
+    End_Procedure
+    
+    {MethodType = Event}
+    Procedure OnRegisterWidgets
+        Error DFERR_PROGRAM "OnRegisterWidgets not implemented. Implement to initialize widgets for use. An empty implementation is allowed"
+    End_Procedure
+    
+    // --- Drag drop
+    {Visibility = Private}
+    Function SupportsDragAction Integer eAction Returns Boolean
+        If (eAction = C_WebDragWidget) Begin
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDropAction Integer eAction Returns Boolean
+        Boolean bSupported
+        
+        Forward Get SupportsDropAction eAction to bSupported
+        
+        If (not(bSupported)) Begin
+            If (eAction = C_WebDropOnCell) Begin
+                Move True to bSupported
+            End
+        End
+        
+        Function_Return bSupported
+    End_Function
+    
+    {Visibility = Private}
+    Function DropData Returns Variant
+        tWebWidgetContainerDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    { Visibility=Private }
+    Procedure RegisterChildWebObject Handle hoChild
+        Handle[] aDefaultWidgets
+        
+        If (IsObjectOfClass(hoChild, RefClass(cWebWidget))) Begin
+
+            
+            Get paDefaultWidgets to aDefaultWidgets
+            Move hoChild to aDefaultWidgets[-1]
+            Set paDefaultWidgets to aDefaultWidgets
+        End
+        Else Begin
+            Forward Send RegisterChildWebObject hoChild
+        End
+    End_Procedure
+    
+    
+    { Visibility=Private}
+    Procedure InitializeWidgetAdministration
+        tWidgetRegistration[] aWidgets
+        Integer iWidget
+        Handle hoStaticInstance
+        
+        //  First determine default config, as this might fill in some of the static instances or add new widgets
+        Send DetermineDefaultConfig
+        
+        //  Loop over widgets and 
+        Get paRegisteredWidgets to aWidgets
+        For iWidget from 0 to (SizeOfArray(aWidgets) - 1)
+            If (aWidgets[iWidget].hoStaticInstance = C_WebUnresolvedObject) Begin
+                Get CreateNamed aWidgets[iWidget].hClass ('StatWid-' + String(iWidget)) to hoStaticInstance
+                Move hoStaticInstance to aWidgets[iWidget].hoStaticInstance
+                
+                //  Configure web objects to act as ghosts
+                Send MarkGhost of hoStaticInstance
+            End
+            Else ;
+                Move aWidgets[iWidget].hoStaticInstance to hoStaticInstance
+                
+        
+           
+            Get psWidgetName of hoStaticInstance to aWidgets[iWidget].sName
+            Get piDefaultColSpan of hoStaticInstance to  aWidgets[iWidget].iColSpan
+            Get piDefaultRowSpan of hoStaticInstance to  aWidgets[iWidget].iRowSpan
+        Loop
+        
+        Move (SortArray(aWidgets, False)) to aWidgets
+        Set paRegisteredWidgets to aWidgets
+    End_Procedure
+
+    
+    { Visibility=Private}
+    Procedure DetermineDefaultConfig
+        tContainerDef DefaultContainerDef
+        tWidgetRegistration[] aWidgets
+        tWidgetRegistration searchItem
+        tWidgetConfigProp[] aProps
+        tWidgetConfigPropValue[] aPropVals
+        
+        Handle hoWidget
+        Handle[] aDefaultWidgets
+        Integer iWidget iRegIndex i iProps iActualObjectClass
+        tWebPropMetaData PropMeta
+        Variant vPropVal
+        
+        
+        Get paDefaultWidgets to aDefaultWidgets
+        Get paRegisteredWidgets to aWidgets
+        
+        For iWidget from 0 to (SizeOfArray(aDefaultWidgets) - 1)
+            Move aDefaultWidgets[iWidget] to hoWidget
+            
+            //  Add to default configuration
+            Move ("DefWid-" + String(iWidget)) to DefaultContainerDef.aWidgets[iWidget].sDynId
+            Get piRowIndex of hoWidget to DefaultContainerDef.aWidgets[iWidget].iRowIndex
+            Get piRowSpan of hoWidget to DefaultContainerDef.aWidgets[iWidget].iRowSpan
+            Get piColumnIndex of hoWidget to DefaultContainerDef.aWidgets[iWidget].iColIndex
+            Get piColumnSpan of hoWidget to DefaultContainerDef.aWidgets[iWidget].iColSpan
+            Get psWidgetName of hoWidget to DefaultContainerDef.aWidgets[iWidget].sName
+            Get pbFillHeight of hoWidget to DefaultContainerDef.aWidgets[iWidget].bFillHeight
+            Get paPubPropertyRules of hoWidget to DefaultContainerDef.aWidgets[iWidget].aResponsivePropRules
+            
+            // Configurable props
+            Get GetConfigurableProps of hoWidget to aProps
+            Move ((SizeOfArray(aProps)) - 1) to iProps
+            
+            For i from 0 to iProps
+                // For now, we only support top level config props in the default
+                If (aProps[i].sObjName = "") Begin
+                    Get FindWebPropertyMetaByName of hoWidget aProps[i].sPropName to PropMeta
+                    If (PropMeta.hmGetter <> 0) Begin
+                        Get GetSyncProp of hoWidget hoWidget PropMeta.hmSetter PropMeta.sName to vPropVal
+                        Move aProps[i].sObjName     to DefaultContainerDef.aWidgets[iWidget].aConfig[i].sObjName
+                        Move aProps[i].sPropName    to DefaultContainerDef.aWidgets[iWidget].aConfig[i].sPropName
+                        Move vPropVal               to DefaultContainerDef.aWidgets[iWidget].aConfig[i].sValue
+                    End
+                End            
+            Loop
+            
+            //  Configure web objects to act as ghosts
+            Send MarkGhost of hoWidget
+            
+            
+            //  Check missing behavior if the inheriting class is not the same as the actual object class.
+            //  In other words the object def has additional functional logic.
+            Get ObjectClass of hoWidget to searchItem.hClass
+            Get Class of hoWidget to iActualObjectClass
+            
+            If (searchItem.hClass <> iActualObjectClass) Begin
+                Error DFERR_PROGRAM "It is not allowed to define procedures and/or functions on default widgets, please define those in a Class/Composite abstraction."
+            End
+            
+            //  Add to default config
+            Move (SearchArray(searchItem, aWidgets, Self, RefFunc(CompareClassId))) to iRegIndex
+            If (iRegIndex = -1) Begin
+                Move (SizeOfArray(aWidgets)) to iRegIndex
+                Move hoWidget to aWidgets[iRegIndex].hoStaticInstance
+                Get ObjectClass of hoWidget to aWidgets[iRegIndex].hClass
+            End
+            Else If (aWidgets[iRegIndex].hoStaticInstance = C_WebUnresolvedObject) Begin
+                Move hoWidget to aWidgets[iRegIndex].hoStaticInstance
+            End
+        Loop
+        
+        Set ptDefaultContainerDef of (phoInternalWidgetContainer(Self)) to DefaultContainerDef
+        Set paRegisteredWidgets to aWidgets
+    End_Procedure
+    
+    {MethodType=Event}
+    Procedure CreateContextMenu
+        Send CreateDefaultContextMenu
+    End_Procedure
+    
+    {Visibility=Private}
+    Procedure CreateDefaultContextMenu
+        Handle hoCtxMenu
+        
+        Get CreateNamed of Self (RefClass(cWebWidgetContainerContextMenu)) "oWidgetContainerMenu" to hoCtxMenu
+        Set piWidth of hoCtxMenu to 220
+        Set phoControl of hoCtxMenu to Self
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send CreateInternalContainer
+        Send CreateContextMenu
+        
+        Set phoWrapperGroup of (phoInternalWidgetContainer(Self)) to (Self)
+        
+        Send OnRegisterWidgets
+        
+        Send InitializeWidgetAdministration
+    End_Procedure
+
+End_Class

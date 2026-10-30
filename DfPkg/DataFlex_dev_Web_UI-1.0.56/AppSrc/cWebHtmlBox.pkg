@@ -1,0 +1,95 @@
+﻿Use cWebBaseControl.pkg
+
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ HelpTopic=cWebHtmlBox }
+{ DesignerJSClass=df.WebHtmlBox }
+{ Navigable=OnClick }
+Class cWebHtmlBox is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psHtml ""        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbScroll True
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbShowBorder False
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnClick ""
+                
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebHtmlBox"
+    End_Procedure
+
+
+    
+    //  Updates the HTML on the client without making the psHtml a synchronized web property (improves
+    //  performance because HTML is not sent back with each call).
+    Procedure UpdateHtml String sHtml
+        String[] asParams
+        
+        Move sHtml to asParams[0]
+        
+        Send ClientAction "updateHtml" asParams
+    End_Procedure
+    
+    //  Updates the HTML on the client without making the psHtml a synchronized web property (improves
+    //  performance because HTML is not sent back with each call). The provided HTML is append to the existing HTML.
+    Procedure AppendHtml String sHtml
+        String[] asParams
+        
+        Move sHtml to asParams[0]
+        
+        Send ClientAction "appendHtml" asParams
+    End_Procedure
+    
+    //  Updates the HTML on the client without making the psHtml a synchronized web property (improves
+    //  performance because HTML is not sent back with each call). The provided HTML is prepended to the existing HTML.
+    Procedure PrependHtml String sHtml
+        String[] asParams
+        
+        Move sHtml to asParams[0]
+        
+        Send ClientAction "prependHtml" asParams
+    End_Procedure
+    
+    Procedure UpdateHtmlArray String[] aHtml
+        String[] asParams
+        tWebValueTree tVT
+        
+        ValueTreeSerializeParameter aHtml to tVT
+        
+        Send ClientAction "updateHtmlArray" asParams tVT
+    End_Procedure
+    
+    
+    //  Stub for the server handler for click events within the html box. The click events need to 
+    //  be defined on the elements by using the data-ServerOnClick attribute.
+    //
+    //  Params:
+    //      sId     The value of the data-ServerOnClick attribute.
+    //      sParam  The value of the data-OnClickParam
+    { MethodType = Event }
+    Procedure OnClick String sId String sParam
+        
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnClick
+    End_Procedure
+End_Class

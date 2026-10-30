@@ -1,0 +1,25 @@
+﻿
+Struct tWebMenuItem
+    String sId
+
+    String sCaption
+    String sTooltip
+    String sGroupCaption
+
+
+    Boolean bEnabled
+    String sCSSClass
+    String sHtmlId
+
+    Boolean bBeginGroup
+    String sImage
+    
+    Integer eCheckbox
+
+    String sTextColor
+    String sBackgroundColor
+
+    Integer eActionDisplay
+
+    tWebMenuItem[] aChildren
+End_Struct

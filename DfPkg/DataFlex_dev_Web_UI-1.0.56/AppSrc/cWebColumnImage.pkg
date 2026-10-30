@@ -1,0 +1,118 @@
+﻿Use cWebColumn_mixin.pkg
+Use cWebBaseDEO.pkg
+
+// Used to represent each column of a cWebGrid or cWebLookup control.
+{ OverrideProperty=pbVisible Visibility=Private }
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProperty=psLabel Visibility=Private }
+{ OverrideProperty=psLabelColor Visibility=Private }
+{ OverrideProperty=peLabelAlign Visibility=Private }
+{ OverrideProperty=peLabelPosition Visibility=Private }
+{ OverrideProperty=piLabelOffset Visibility=Private }
+{ OverrideProperty=pbShowLabel Visibility=Private }
+{ OverrideProperty=piColumnIndex Visibility=Private }
+{ OverrideProperty=piColumnSpan Visibility=Private }
+{ OverrideProperty=piRowIndex Visibility=Private }
+{ OverrideProperty=piRowSpan Visibility=Private }
+{ HelpTopic=cWebColumnImage }
+{ DesignerJSClass=df.WebColumnImage }
+Class cWebColumnImage is a cWebBaseDEO
+    Import_Class_Protocol cWebColumn_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Send Define_cWebColumn_Mixin
+                
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property String psImageUrl "" 
+        { WebProperty=Client }
+        { Category="Appearance" }  
+        Property String psImageCSSClass ""
+        
+        {EnumList="wiActual, wiStretch, wiStretchHoriz, wiCenter, wiFit, wiCover" }
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer pePosition wiStretchHoriz //   Allows dynamic image positioning. Note that piImageWidth and piImageHeight must be set for this to work.
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbDynamic False
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbImageByCSS False
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piImageWidth 0
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piImageHeight 0
+        
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnClick False
+        { Category="Client Events" } 
+        { WebProperty=Client } 
+        Property String psClientOnClick ""
+        
+        { Visibility=Private }
+        Property String[] paImgOptions
+        
+        //  Sorting on a image column wouldn't make sense
+        Set pbSortable to False
+        
+        Set psJSClass to "df.WebColumnImage"
+    End_Procedure
+ 
+    Procedure LoadGridCell tWebCell ByRef tCell
+        Boolean bMulti
+        String[] aEmpty
+        
+        Set paImgOptions to aEmpty
+        
+        Get pbDynamic to bMulti
+        If (bMulti) Begin
+            Send OnDefineImages
+            Get paImgOptions to tCell.aOptions
+        End
+        
+        // Give a chance to add custom tooltips & CSS Classnames
+        Send OnDefineTooltip (&tCell.sTooltip)
+        Send OnDefineCssClass (&tCell.sCssClassName)
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefineImages
+        
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnClick String sImage String sRowId
+        
+    End_Procedure
+    
+    Procedure AddImage String sUrl String sOptTooltip
+        String[] aImages
+        String sTooltip
+        
+        If (num_arguments > 1) Begin
+            Move sOptTooltip to sTooltip
+        End
+        
+        Get paImgOptions to aImages
+        
+        Move sUrl to aImages[SizeOfArray(aImages)]
+        Move sTooltip to aImages[SizeOfArray(aImages)]
+        
+        Set paImgOptions to aImages
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        WebPublishProcedure OnClick
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+
+End_Class

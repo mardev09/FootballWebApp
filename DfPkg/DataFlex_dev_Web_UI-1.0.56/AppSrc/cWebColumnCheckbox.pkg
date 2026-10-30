@@ -1,0 +1,32 @@
+﻿Use cWebCheckbox.pkg
+Use cWebColumn_mixin.pkg
+
+// Class: cWebColumnCheckbox
+
+// Used to represent each checkbox column of a cWebGrid or cWebLookup control.
+{ OverrideProperty=pbVisible Visibility=Private }
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProperty=psLabel Visibility=Private }
+{ OverrideProperty=psLabelColor Visibility=Private }
+{ OverrideProperty=peLabelAlign Visibility=Private }
+{ OverrideProperty=peLabelPosition Visibility=Private }
+{ OverrideProperty=piLabelOffset Visibility=Private }
+{ OverrideProperty=pbShowLabel Visibility=Private }
+{ OverrideProperty=piColumnIndex Visibility=Private }
+{ OverrideProperty=piColumnSpan Visibility=Private }
+{ OverrideProperty=piRowIndex Visibility=Private }
+{ OverrideProperty=piRowSpan Visibility=Private }
+{ OverrideProperty=peAlign WebProperty=Client Visibility=Public }
+{ HelpTopic=cWebColumnCheckBox }
+{ DesignerJSClass=df.WebColumnCheckbox }
+Class cWebColumnCheckbox is a cWebCheckbox
+    
+    Import_Class_Protocol cWebColumn_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Send Define_cWebColumn_mixin
+        Set psJSClass to "df.WebColumnCheckbox"
+    End_Procedure
+    
+End_Class

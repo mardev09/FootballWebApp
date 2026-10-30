@@ -1,0 +1,16 @@
+﻿Use cWebObject.pkg
+
+{ DesignerJSClass=df.WebMenuGroup }
+Class cWebMenuGroup is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psGroupName "MainActions"
+        
+        Set psJSClass to "df.WebMenuGroup"
+    End_Procedure
+
+End_Class

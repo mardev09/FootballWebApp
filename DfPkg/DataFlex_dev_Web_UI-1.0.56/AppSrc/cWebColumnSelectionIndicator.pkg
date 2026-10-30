@@ -1,0 +1,28 @@
+﻿Use cWebColumnCheckbox.pkg
+
+{ HelpTopic=cWebColumnSelectionIndicator }
+Class cWebColumnSelectionIndicator is a cWebColumnCheckbox
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Set psJSClass to "df.WebColumnSelectionIndicator"
+        
+        {WebProperty=Client}
+        { Category="Behavior" } 
+        Property Boolean pbSelectAllCheckbox False
+    End_Procedure
+
+    Function AreAllSelected Returns Boolean
+        Boolean bAllSelected
+
+        WebGet pbAllSelected of (Parent(Self)) to bAllSelected
+        Function_Return bAllSelected
+    End_Function
+    
+    Procedure SelectAll Boolean bChecked
+        String[] aParams
+        
+        Move bChecked to aParams[-1]
+        Send ClientAction "selectAll" aParams
+    End_Procedure
+End_Class

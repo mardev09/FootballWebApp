@@ -1,0 +1,97 @@
+﻿Use cWebBaseDEO.pkg
+Use cWebColumn_mixin.pkg
+
+// Used to represent each column of a cWebGrid or cWebLookup control.
+{ OverrideProperty=pbVisible Visibility=Private }
+{ OverrideProperty=pbFillHeight Visibility=Private }
+{ OverrideProperty=psLabel Visibility=Private }
+{ OverrideProperty=psLabelColor Visibility=Private }
+{ OverrideProperty=peLabelAlign Visibility=Private }
+{ OverrideProperty=peLabelPosition Visibility=Private }
+{ OverrideProperty=piLabelOffset Visibility=Private }
+{ OverrideProperty=pbShowLabel Visibility=Private }
+{ OverrideProperty=piColumnIndex Visibility=Private }
+{ OverrideProperty=piColumnSpan Visibility=Private }
+{ OverrideProperty=piRowIndex Visibility=Private }
+{ OverrideProperty=piRowSpan Visibility=Private }
+{ HelpTopic=cWebColumnButton } 
+{ DesignerJSClass=df.WebColumnButton }
+{ Navigable=OnClick }
+Class cWebColumnButton is a cWebBaseDEO
+    Import_Class_Protocol cWebColumn_mixin
+        
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Send Define_cWebColumn_mixin
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbDynamic False
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psBtnCssClass ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psButtonCaption ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick True
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnClick ""
+        
+        { Visibility=Private }
+        Property String[] paBtnOptions
+        
+        //  Sorting on a button column wouldn't make sense
+        Set pbSortable to False
+        
+        Set psJSClass to "df.WebColumnButton"
+    End_Procedure
+    
+    Procedure LoadGridCell tWebCell ByRef tCell
+        Boolean bMulti
+        String[] aEmpty
+        
+        Set paBtnOptions to aEmpty
+        
+        Get pbDynamic to bMulti
+        If (bMulti) Begin
+            Send OnDefineButtons
+            Get paBtnOptions to tCell.aOptions
+        End
+        
+        // Give a chance to add custom tooltips & CSS Classnames
+        Send OnDefineTooltip (&tCell.sTooltip)
+        Send OnDefineCssClass (&tCell.sCssClassName)
+    End_Procedure
+    
+    Procedure AddButton String sId String sCaption String sCssClass
+        String[] aOptions
+        
+        Get paBtnOptions to aOptions
+        
+        Move sId        to aOptions[SizeOfArray(aOptions)]
+        Move sCssClass  to aOptions[SizeOfArray(aOptions)]
+        Move sCaption   to aOptions[SizeOfArray(aOptions)]
+
+        Set paBtnOptions to aOptions
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefineButtons
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnClick String sButton String sRowId
+    End_Procedure
+
+    Procedure End_Construct_Object
+        WebPublishProcedure OnClick
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+
+End_Class

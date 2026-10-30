@@ -1,0 +1,470 @@
+﻿Use VdfBase.pkg
+Use errornum.inc
+Use cWebControlLocator.pkg
+Use tWebResponse.pkg
+Use tWebSyncProps.pkg
+Use tWebRow.pkg
+
+// Mixes in basic support for grid column classes.
+//
+// Supports:
+{ ClassType=Mixin }
+Class cWebColumn_mixin is a Mixin
+    
+    { Visibility=Private }
+    Procedure Define_cWebColumn_mixin
+        Boolean bStatic
+        
+        { Category="Behavior" }
+        Property Integer piColumnId -1                // The column number (left to right) of this column. Will be assigned when the grid is registered below
+        
+        { Category="Data" }
+        Property Integer piDefaultIndex -1            // Index to use when sorting the grid by this column. Set by DDO for indexed fields.
+        
+        { Visibility=Private }
+        Property Boolean pbIsWebColumn True           // This is used by the cWebList to filter swipe buttons from columns
+
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnHeaderClick False  // When True fires OnHeaderClick event. 
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        { EnumList="True,False,C_WebDefault"}
+        Property Integer pbSortable C_WebDefault      // When True the grid can be sorted acording to values in this column. Set by DDO for indexed fields.
+        
+        { WebProperty=Client }
+        { Category="Behavior" }                 
+        Property Boolean pbGroupable True             // When True the column can be used for grouping
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piWidth 1                    // Column width (as a ratio of grid width).
+        { WebProperty=Client }
+        { Category="Appearance" }  
+        Property String psCaption ""                  // Column header caption
+        { WebProperty=Client }
+        { Category="Client Events" }  
+        Property String psClientOnHeaderClick ""      // Name of client side OnHeaderClick handler function. 
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbValueAsTooltip True        // If true the value will be shown as tooltip for cells in this column.
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbAllowHtml False            // If true the value will be treathed as HTML and is not encoded
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbNewLine False   
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piListColSpan 1
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piListRowSpan 1
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbFixedWidth False
+        { WebProperty=Client } 
+        { Category="Behavior" } 
+        Property Boolean pbResizable True
+        
+        { WebProperty=ClientProtected }
+        { Category="Behavior" } 
+        Property Boolean pbEditable True
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Boolean pbHidden False
+        
+        { WebProperty=Client }
+        { Category="Behavior" } 
+        Property Boolean pbHideable True
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Boolean pbShowCaption True
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property Integer piPosition -1
+        
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        Property String psFooterValue ""
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        { EnumList="C_WebDefault, alignLeft, alignRight, alignCenter"}
+        Property Integer peFooterAlign C_WebDefault
+        { WebProperty=Client }
+        { Category="Appearance" } 
+        { EnumList="C_WebDefault, typeASCII, typeNumber, typeDate, typeDateTime, typeTime"}
+        Property Integer peFooterDataType C_WebDefault
+        { WebProperty=Client }
+        { Category="Data" } 
+        Property String psFooterMask ""        
+        { WebProperty=Client } 
+        { Category="Data" } 
+        Property Integer piFooterPrecision C_WebDefault    // Max number of numbers that can be entered after the decimal point for a numeric data type.
+    
+        // We allow the parent weblist to determine if we should allow DD pbEnabled adjustemnts.
+        // Normaly, cWebList/cWebPromptList will be static and cWebGrid will be dynamic
+        Delegate Get pbColumnsEnabledStatic to bStatic
+        Set pbEnabledStatic to bStatic       
+
+        Delegate Send RegisterColumn Self   // Add myself to the parent Grid object's columns collection
+        
+        
+        // Publish the event methods....
+        WebPublishProcedure OnHeaderClick
+    End_Procedure
+    
+    // Override's basic AllowUpdateDD behaviour (cWebBaseDEO).
+    { MethodType=Event }    
+    Procedure AllowUpdateDD Boolean ByRef bAllow
+        If (bAllow) Begin
+            WebGet pbEditable to bAllow
+            If (not(bAllow)) ;
+                Procedure_Return
+            
+            Get IsControlAccessible True (pbNoUpdateIfHidden(Self)) to bAllow
+        End
+    End_Procedure
+
+    // Return the best index for this column. If -1, there is no good index
+
+    Function DefaultIndex Returns Integer
+        Integer iFile iField iMainFile iIndex iFieldIndex
+        Integer iRelField eRequestFindMode
+        Handle hoDDO
+  
+        Get Server to hoDDO
+        Get Data_File  to iFile
+        Get Data_Field to iField
+        
+        // If we are attached to a data binding then apply the data dictionary attributes....
+        If ((hoDDO = 0) or (iFile = 0)) Begin
+            Function_Return -1
+        End
+
+        Get Main_File of hoDDO to iMainFile
+        
+        // we don't use the DD FieldIndex message because it respects a DD Ordering override
+        If (iField>0) Begin
+            Get_Attribute DF_FIELD_INDEX of iFile iField to iFieldIndex
+            Move (If(iFieldIndex=0,-1,iFieldIndex)) to iIndex
+        End
+        Else Begin
+            Move 0 to iIndex // recnum index
+        End
+        
+        If (iFile <> iMainFile and iIndex<>-1) Begin
+            // if field is not main-file, we normally don't sort but we allow
+            // one special mode for prompt lists that sorts on the main-file's
+            // index that relates to this parent
+            Delegate Get peRequestFindMode to eRequestFindMode
+            If (eRequestFindMode<>rfmFindMainSuper) Begin
+                Move -1 to iIndex
+            End
+            Else Begin
+                // if non-main file and super find allowed we check for a super-find path
+                If (iIndex>=0) Begin
+                    // it has an index, now make that there is a relational link
+                    // between the main server file and this parent file. If not, no index
+                    Get RelatingField iFile to iRelField
+                    If (iRelField=-1) Begin
+                        Move -1 to iIndex
+                    End
+                    Else Begin
+                        Get_Attribute DF_FIELD_INDEX of iMainFile iRelField to iIndex
+                    End
+                End
+
+            End
+        End
+        Function_Return iIndex    
+    End_Function
+    
+    
+    // Augmented to apply a pbSortable value for columns that are not already set
+    { Visibility=Private }
+    Procedure Attach_Deo_To_Server
+        Integer iIndex iSortable eDataType eFooterDataType iPrecision iFooterPrecision
+        Boolean bClientSortable
+        String sMask sFooterMask
+
+        Forward Send Attach_Deo_To_Server
+        
+        Get peDataType to eDataType
+        Get peFooterDataType to eFooterDataType
+        If (eFooterDataType = C_WebDefault) Begin
+            Set peFooterDataType to eDataType
+        End
+        
+        Get psMask to sMask
+        Get psFooterMask to sFooterMask
+        If (sFooterMask = "") Begin
+            Set psFooterMask to sMask
+        End
+         
+        Get piPrecision to iPrecision
+        Get piFooterPrecision to iFooterPrecision
+        If (iFooterPrecision = C_WebDefault) Begin
+            Set piFooterPrecision to iPrecision
+        End
+
+        // need to set piDefaultIndex and pbSortable (if not explicitly set)
+        // find out who does the sorting, the client or the server
+        Delegate Get ClientSortable to bClientSortable
+        Get pbSortable to iSortable
+        
+        If (bClientSortable) Begin
+            // if client sorting, we dont care about piDefaultIndex
+            // and if  pbSortable is undefined, true is a good default
+            If (iSortable = C_WebDefault) Begin
+                Set pbSortable to True
+            End
+        End
+        Else Begin
+            
+            // if server sorting, we will set piDefaultIndex
+            // and if pbSortable is undefined, set it based on having an index
+            Get piDefaultIndex to iIndex
+            
+            If (iIndex = -1) Begin
+                Get DefaultIndex to iIndex
+                Set piDefaultIndex to iIndex 
+            End
+            
+            // If the pbSortable is undefined, set a proper default for it
+            If (iSortable = C_WebDefault) Begin
+                Set pbSortable to (iIndex <> -1)
+            End
+        End
+
+    End_Procedure
+    
+    
+    // Sent after each DEO Object has been attached to its DDO server and had all the DDO field settings
+    // applied to its published properties. We will set default values to any cWebControl properties that
+    // are still unassigned...
+    { Visibility=Private }
+    Procedure AfterAttachDDO
+        Forward Send AfterAttachDDO
+        
+        Integer eDataType eFooterDataType iPrecision iFooterPrecision
+        String sMask sFooterMask
+        
+        Get peDataType to eDataType
+        Get peFooterDataType to eFooterDataType
+        If (eFooterDataType = C_WebDefault) Begin
+            Set peFooterDataType to eDataType
+        End
+        
+        Get psMask to sMask
+        Get psFooterMask to sFooterMask
+        If (sFooterMask = "") Begin
+            Set psFooterMask to sMask
+        End
+
+        Get piPrecision to iPrecision
+        Get piFooterPrecision to iFooterPrecision
+        If (iFooterPrecision = C_WebDefault) Begin
+            Set piFooterPrecision to iPrecision
+        End
+    End_Procedure
+    
+    
+    //  Called by the list / grid to determine the field value details based on the current 
+    //  environment values (global buffer or properties). It fills the tWebCell struct that is 
+    //  passed by reference with details needed by the JavaScript Engine to render the cell.
+    Procedure LoadGridCell tWebCell ByRef tCell
+        Integer iFile iField
+        String sValue
+        
+
+        Get Data_File  to iFile
+        Get Data_Field to iField
+        
+        If (iFile <> 0) Begin
+            //  Security check
+            If (FillDEOAllowed(Self)) Begin            
+                // If there is a data binding then get the file.field value....
+                Get_Field_Value iFile iField to sValue
+            End
+        End
+        Else Begin
+            // if there is no data binding then fire the calculated field event....
+            WebGet psValue to sValue
+            Send OnSetCalculatedValue (&sValue)         // calculated value
+        End
+
+        // Convert the value into the correct format for transport....                    
+        Move (Trim(sValue)) to sValue                                            // make sure the value is trimmed
+        Get ConvertToTransport (RefFunc(psValue)) sValue cArgStr  to sValue
+        
+        // Give a chance to add custom tooltips & CSS Classnames
+        Send OnDefineTooltip (&tCell.sTooltip)
+        Send OnDefineCssClass (&tCell.sCssClassName)
+        
+        Move sValue to tCell.sValue
+    End_Procedure
+    
+    
+    //  This event is fired for each row that is sent to the client and gives a chance to provide 
+    //  a custom tooltip value fort his cell. For data aware grids / lists the global buffers will 
+    //  contain the right records. If the tooltip is left empty the field value will be shown as 
+    //  tooltip (if pbValueAsTooltip is true).
+    { MethodType = Event }
+    Procedure OnDefineTooltip String ByRef sTooltip
+        
+    End_Procedure
+    
+    //  This event is fired for each tor that is sent to the client and gives a chance to provide a
+    //  custom CSS Classname for individual cells. For data aware grids / lists the global buffers 
+    //  will contain the right records.
+    { MethodType = Event }
+    Procedure OnDefineCssClass String ByRef sCSSClass
+        
+    End_Procedure
+    
+
+    // Header click event handler. See pbServerOnHeaderClick.
+    { MethodType = Event }
+    Procedure OnHeaderClick
+        // Does nothing by default
+    End_Procedure
+    
+    Procedure Request_Clear
+        // Override base DEO and delegate to parent cWebList object.
+        Delegate Send Request_Clear
+    End_Procedure
+    
+    
+    Procedure Request_Delete
+        // Override base DEO and delegate to parent cWebList object.
+        Delegate Send Request_Delete
+    End_Procedure
+    
+    
+    Procedure Request_Save
+        // Override base DEO and delegate to parent cWebList object.
+        Delegate Send Request_Save
+    End_Procedure
+
+
+
+    // special Request_Find logic for web-lists. cWebColumn will direct a Request_Find
+    // to here. This understands non-data aware and static lists and ignores those
+    // requests. It also understands peRequestFindMode which can filter out finds that
+    // don't make sense in a grid.
+    
+    Procedure Request_Find Integer eFindMode
+        Integer iFile iField iIndex iMain iRelField 
+        Integer eRequestFindMode eDbGridType
+        Boolean bFound
+        Handle hoServer
+        Boolean bAllowSwitch bDataAware
+        
+        // only data aware grids process request_find
+        Get pbDataAware to bDataAware
+        If not bDataAware Begin
+            Move False to Found
+            Procedure_Return
+        End
+        
+        // find mode determines what kind of finding is supported
+        Get peRequestFindMode to eRequestFindMode
+        
+        // if finding not allowed at all, no find
+        If (eRequestFindMode=rfmFindNone) Begin
+            Move False to Found
+            Procedure_Return
+        End
+
+        Get peDbGridType to eDbGridType
+        Get Server to hoServer
+        Get Data_File to iFile
+        Get Data_Field to iField
+
+        If (hoServer=0 or iFile=0) Begin
+            Move False to Found
+            Procedure_Return
+        End
+
+        Get Main_File of hoServer to iMain
+        
+        // if no finding index, no find
+        Get File_Field_Index of hoServer iFile iField to iIndex
+        If (iIndex=-1) Begin
+            Move False to Found
+            Procedure_Return
+        End
+            
+        // if this is a main file find we will ignore it if main-file finds are
+        // not allowed or the grid is static. If Static, you should not be doing finds
+        // on the mainfile as it will cause the data to all be reloaded.
+        If (iFile=iMain and ( (eRequestFindMode=rfmFindParentOnly) or (eDbGridType<>gtAutomatic) ) ) Begin
+            Move False to Found
+            Procedure_Return
+        End
+        // if main or find all or findparentonly (with a parent find)
+        Else If (iFile=iMain or eRequestFindMode=rfmFindAll or eRequestFindMode=rfmFindParentOnly ) Begin
+            Send Item_Find of hoServer eFindMode iFile iField True True False
+            Move (Found) to bFound
+        End
+        // if parent with find mainonly
+        Else If (eRequestFindMode=rfmFindMainOnly) Begin
+           Move False to Found
+           Procedure_Return 
+        End
+        // is parent with find superfind logic (used by prompt lists)
+        Else Begin
+           Get RelatingField iFile to iRelField
+           If (iRelField=-1) Begin
+               Move False to Found
+               Procedure_Return   
+           End
+           
+           // if superfind mode, which means this is a prompt list we want to be able to change the
+           // parent, even if committed w/ no parent switch set. 
+           //So Clear that parentNoSwitch for the main-dd for this parent Find and then restore it
+           Get ParentNoSwitchIfCommitted of hoServer iFile to bAllowSwitch
+           Set ParentNoSwitchIfCommitted of hoServer iFile to False
+           Send Item_Find of hoServer eFindMode iFile iField True True False
+           Move (Found) to bFound
+           Set ParentNoSwitchIfCommitted of hoServer iFile to bAllowSwitch
+           If ( (bFound) ) Begin
+                Send Item_Find to hoServer GE iMain iRelField True True False
+                Move (Found) to bFound
+           End
+        End
+        
+        Move bFound to Found
+            
+    End_Procedure
+
+    // does a lookup style find for the passed column based on the value of the search text
+    // This is used when you are doing lookup/searches
+    Procedure RequestColumnLookup String sSearchText
+        Send DDSetChangedValue sSearchText
+        Send Request_Find GE
+        If not Found Begin
+            Send Request_Find LT
+        End
+    End_Procedure
+
+
+    // returns the index to be used for this data-aware grid.
+    // private for now, may change
+    { Visibility=Private }
+    Function ColumnIndexOrder Returns Integer
+        Integer iColumnOrdering
+        
+        Get piDefaultIndex to iColumnOrdering
+        
+        Function_Return iColumnOrdering
+    End_Function
+
+End_Class

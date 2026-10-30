@@ -1,0 +1,4 @@
+Object
+    Set psCaption to "checkbox"
+    Set piWidth to 20
+End_Object

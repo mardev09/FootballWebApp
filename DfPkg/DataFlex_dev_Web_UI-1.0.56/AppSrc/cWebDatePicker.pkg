@@ -1,0 +1,43 @@
+﻿Use cWebBaseDEO.pkg
+
+{ OverrideProperty=psMask Visibility=Private }
+{ HelpTopic=cWebDatePicker }
+{ DesignerJSClass=df.WebDatePicker }
+Class cWebDatePicker is a cWebBaseDEO
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowWeekNr True
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowToday True
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piStartWeekAt 1 // 1=monday, 0=sunday
+        
+        //  OnDateClick event
+        { WebProperty=Client } 
+        { Category="Server Events" } 
+        Property Boolean pbServerOnDateClick False
+        { WebProperty=Client } 
+        { Category="Client Events" } 
+        Property String psClientOnDateClick ""        
+       
+        Set peDataType to typeDate
+        Set psJSClass to "df.WebDatePicker"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDateClick String sDate
+        //  Empty event stub
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnDateClick
+    End_Procedure
+End_Class

@@ -1,0 +1,180 @@
+﻿Use cWebBaseForm.pkg
+
+// Models a client-side textbox control with label support
+{ HelpTopic=cWebForm }
+{ DesignerJSClass=df.WebForm }
+{ Navigable=OnPrompt }
+Class cWebForm is a cWebBaseForm
+
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        // Published Properties....
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbPassword False             // If True then the textbox acts like a password entry box.
+        { WebProperty=Client }
+        { Category="Appearance" }
+        { EnumList="True,False,C_WebDefault"}
+        Property Integer pbPromptButton C_WebDefault  // If True a prompt button is drawn (see also pbServerOnPrompt, psClientOnPrompt)
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnPrompt True        // Set to true to trigger server OnPrompt event when the prompt button is clicked (see also pbPromptButton)
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnPrompt ""           // Name of client side OnPrompt event handler. See also pbPromptButton.
+
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psPlaceHolder ""              // Placeholder value shown inside the form when it doesn't have a value. Note that this feature only works on Internet Explorer 10 and higher.
+
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAutoTab False              // Automatically tab to the next control when the maxlenght is reached
+
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property String psInputMode ""                // Hints the browser as to what virtual keyboard should be used ("none", "text", "decimal", "numeric", "tel", "search", "email")
+                                                      // If empty it will automatically be set to "decimal" or "numeric" for numeric fields
+
+        Set psJSClass to "df.WebForm"
+
+    End_Procedure
+
+
+    { Visibility=Private }
+    Procedure Attach_Deo_To_Server
+        Handle hoPrompt
+        Integer iValue
+
+        Forward Send Attach_Deo_To_Server
+
+        // after DEO is attached, set the prompt button automatically (if needed)
+        Get pbPromptButton to iValue
+
+        If (iValue = C_WebDefault) Begin
+            Get PromptObject to hoPrompt
+            If (hoPrompt <> 0) Begin
+                Set pbPromptButton to True
+            End
+        End
+    End_Procedure
+
+
+    { Visibility=Private }
+    Procedure AfterAttachDDO
+        // Sent after each DEO Object has been attached to its DDO server and had all the DDO field settings
+        // applied to its published properties. We will set default values to any cWebControl properties that
+        // are still unassigned...
+        Integer iValue eDataType iPrecision
+        String sInputMode
+
+        Forward Send AfterAttachDDO
+
+        //  Determine sInputMode
+        Get peDataType to eDataType
+        Get psInputMode to sInputMode
+        If (eDataType = typeNumber and sInputMode = "") Begin
+            Get piPrecision to iPrecision
+            If (iPrecision > 0) Begin
+                Set psInputMode to "decimal"
+            End
+            Else Begin
+                Set psInputMode to "numeric"
+            End
+        End
+
+        //  Correct pbPromptButton
+        Get pbPromptButton to iValue
+
+        If (iValue = C_WebDefault) Begin
+            Set pbPromptButton to False
+        End
+    End_Procedure
+
+
+    // On prompt button click event stub.
+    { MethodType=Event }
+    Procedure OnPrompt
+        Send Prompt
+    End_Procedure
+
+    // returns PromptObject. If phoPrompt is set, it returns this, else checks with DD for web prompt object
+    { NoDoc=True }
+    Function PromptObject Returns Handle
+        Handle hoPrompt hoDD
+        Integer iFile iField
+        Integer eStyle
+        Get WebViewStyle to eStyle
+        If (eStyle = wvsDesktop or eStyle=wvsDialog) Begin
+            Get phoPrompt to hoPrompt
+            If (hoPrompt=0) Begin
+                Get Data_File to iFile
+                Get Data_Field to iField
+                Get Server to hoDD
+                If (iFile and hoDD) Begin
+                    Get File_Field_WebPrompt_Object of hoDD iFile iField to hoPrompt
+                End
+            End
+        End
+        Function_Return hoPrompt
+    End_Function
+
+    // Returns true if control supports prompt buttons and the prompt button
+    // default property value (not webproperty) is enabled. In general when the
+    // default value is false, the developer has disabled this and does not
+    // want the dynamic enabling/disabling logic to be messing with it.
+    { Visibility = Private }
+    Function HasPromptButton Returns Boolean
+        Boolean bPromptButton
+        // this is purposefully Get and not WebGet
+        Get pbPromptButton to bPromptButton
+        Function_Return bPromptButton
+    End_Function
+
+    // augmented to also remove the prompt button from
+    // dynamically disabled forms
+    { NoDoc=True }
+    Procedure SetDynamicEnabled
+        Handle hoServer
+        Integer iFile eWebViewStyle
+        Boolean bEnabled bPrompt
+
+        Get Server to hoServer
+        Get Data_File to iFile
+        If (not(hoServer) or not (iFile)) Begin
+            Procedure_Return
+        End
+
+        Forward Send SetDynamicEnabled
+
+        Get WebViewStyle to eWebViewStyle
+        If (eWebViewStyle = wvsDrillDown) Begin
+            // note we use the design time pbPromptButton. If it is true then
+            // there is something to remove.
+            Get HasPromptButton to bPrompt
+            If (bPrompt) Begin
+                WebGet pbEnabled to bEnabled
+                WebSet pbPromptButton to bEnabled
+            End
+        End
+    End_Procedure
+
+    // Remember the DEO current value for this DEO's file/field owner DD
+    // Augmented from cWebBaseDEO as this is the first class that contains pbPassword
+    Procedure DDFieldRemember
+        Boolean bIsPassword
+
+        WebGet pbPassword to bIsPassword
+        If (not (bIsPassword)) Begin
+            Forward Send DDFieldRemember
+        End
+    End_Procedure
+
+    Procedure End_Construct_Object
+        // Publish the event methods....
+        WebPublishProcedure OnPrompt
+
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

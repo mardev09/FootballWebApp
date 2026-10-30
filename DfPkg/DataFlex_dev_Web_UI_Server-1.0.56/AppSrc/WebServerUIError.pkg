@@ -1,0 +1,7 @@
+﻿Define DfError.exists for 9999
+Use cWebServerUIErrorHandler.pkg
+
+Object oErrorHandler is a cWebServerUIErrorHandler
+    // reference this object via ghoErrorHandler or error_object_id
+End_Object
+        

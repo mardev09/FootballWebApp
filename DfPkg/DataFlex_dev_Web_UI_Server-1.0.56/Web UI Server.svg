@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="clip-Web_UI_Server">
+      <rect width="64" height="64"/>
+    </clipPath>
+  </defs>
+  <g id="Web_UI_Server" data-name="Web UI Server" clip-path="url(#clip-Web_UI_Server)">
+    <rect width="64" height="64" fill="#ff5f1f"/>
+    <rect id="Rectangle_1" data-name="Rectangle 1" width="40" height="13" rx="4" transform="translate(10 10)" fill="#fff" opacity="0.799"/>
+    <circle id="Ellipse_1" data-name="Ellipse 1" cx="2.5" cy="2.5" r="2.5" transform="translate(15 14)" fill="#ff5f1f"/>
+    <circle id="Ellipse_2" data-name="Ellipse 2" cx="2.5" cy="2.5" r="2.5" transform="translate(22 14)" fill="#ff5f1f"/>
+    <rect id="Rectangle_5" data-name="Rectangle 5" width="40" height="13" rx="4" transform="translate(10 24)" fill="#fff" opacity="0.799"/>
+    <circle id="Ellipse_4" data-name="Ellipse 4" cx="2.5" cy="2.5" r="2.5" transform="translate(15 28)" fill="#ff5f1f"/>
+    <circle id="Ellipse_5" data-name="Ellipse 5" cx="2.5" cy="2.5" r="2.5" transform="translate(22 28)" fill="#ff5f1f"/>
+    <rect id="Rectangle_6" data-name="Rectangle 6" width="40" height="13" rx="4" transform="translate(10 38)" fill="#fff" opacity="0.799"/>
+    <circle id="Ellipse_6" data-name="Ellipse 6" cx="2.5" cy="2.5" r="2.5" transform="translate(15 42)" fill="#ff5f1f"/>
+    <circle id="Ellipse_7" data-name="Ellipse 7" cx="2.5" cy="2.5" r="2.5" transform="translate(22 42)" fill="#ff5f1f"/>
+    <rect id="Rectangle_7" data-name="Rectangle 7" width="4" height="1" transform="translate(27 23)" fill="#fff" opacity="0.802"/>
+    <path id="code-solid-full" d="M52.066,67.016a1.779,1.779,0,0,0-2.2,1.222l-7.11,18.887a1.779,1.779,0,1,0,3.422.978l7.11-18.887A1.779,1.779,0,0,0,52.066,67.016Zm3.589,4.56a1.78,1.78,0,0,0,0,2.516l4.077,4.077-4.077,4.077a1.779,1.779,0,1,0,2.516,2.516L63.5,79.431a1.78,1.78,0,0,0,0-2.516l-5.333-5.333a1.78,1.78,0,0,0-2.516,0Zm-15.26,0a1.78,1.78,0,0,0-2.516,0l-5.333,5.333a1.78,1.78,0,0,0,0,2.516l5.333,5.333A1.779,1.779,0,1,0,40.4,82.242L36.318,78.17l4.072-4.077a1.78,1.78,0,0,0,0-2.516Z" transform="translate(-6.025 -31.446)" fill="#fff"/>
+    <path id="code-solid-full_-_Outline" data-name="code-solid-full - Outline" d="M51.576,66.946a1.783,1.783,0,0,0-1.709,1.292L42.756,87.124a1.779,1.779,0,0,0,3.422.978l7.11-18.887a1.783,1.783,0,0,0-1.713-2.269M39.137,71.055a1.774,1.774,0,0,0-1.258.521l-5.333,5.333a1.78,1.78,0,0,0,0,2.516l5.333,5.333A1.779,1.779,0,1,0,40.4,82.242L36.318,78.17l4.072-4.077a1.78,1.78,0,0,0,0-2.516H40.4a1.774,1.774,0,0,0-1.258-.521m17.776.006a1.774,1.774,0,0,0-1.258.521v-.006a1.78,1.78,0,0,0,0,2.516l4.077,4.077-4.077,4.077a1.779,1.779,0,1,0,2.516,2.516L63.5,79.431a1.78,1.78,0,0,0,0-2.516l-5.333-5.333a1.774,1.774,0,0,0-1.258-.521m-5.338-6.115a3.784,3.784,0,0,1,3.769,4.113,5.534,5.534,0,0,1,1.144-.1,6.056,6.056,0,0,1,1.167.174,3.752,3.752,0,0,1,1.931,1.034L64.918,75.5a3.78,3.78,0,0,1,0,5.345l-5.333,5.333a3.779,3.779,0,0,1-5.345-5.345L56.9,78.17l-2.663-2.663a3.76,3.76,0,0,1-.767-1.106l-5.4,14.346a3.78,3.78,0,0,1-7.321-1.827,3.788,3.788,0,0,1-4.287-.747L31.132,80.84a3.784,3.784,0,0,1,0-5.345l5.333-5.333a3.78,3.78,0,0,1,5.345,0,3.118,3.118,0,0,1,1.027,1.42,4.692,4.692,0,0,1,0,1.994A3.758,3.758,0,0,1,41.8,75.507l-2.658,2.661,2.662,2.659a3.765,3.765,0,0,1,.766,1.1l5.4-14.336A3.8,3.8,0,0,1,51.575,64.946Z" transform="translate(-6.025 -31.446)" fill="#ff5f1f"/>
+    <rect id="Rectangle_10" data-name="Rectangle 10" width="4" height="1" transform="translate(27 37)" fill="#fff" opacity="0.802"/>
+  </g>
+</svg>

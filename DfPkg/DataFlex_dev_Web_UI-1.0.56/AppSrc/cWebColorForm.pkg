@@ -1,0 +1,67 @@
+﻿Use cWebForm.pkg
+Use cWebColorPicker.pkg
+
+{ DesignerJSClass=df.WebColorForm }
+{ Navigable="" }
+Class cWebColorForm is a cWebForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAutoShow False
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property Integer piPickHeight 250
+        { WebProperty=Client }
+        { Category="Colors" } 
+        Property Integer piPickWidth 350
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property Boolean pbColorBackground False
+        { WebProperty=Client } 
+        { Category="Colors" }
+        Property Integer piPaletteItemsPerRow 8
+        
+        { WebProperty=Client } 
+        { Category="Colors" }
+        { EnumList="colorFormatHex,colorFormatRGB" }
+        Property Integer peColorFormat colorFormatHex
+        
+        Set pbPromptButton to False
+        Set psValue to "#ffffff"
+        
+        Set psJSClass to "df.WebColorForm"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnDefinePalette
+    End_Procedure
+    
+    Procedure AddPaletteItem String sColor String sDescription
+        String[] aParams
+        
+        Move sColor to aParams[0]
+        Move sDescription to aParams[1]
+        
+        Send ClientAction "addPaletteItem" aParams
+    End_Procedure
+    
+    Procedure UpdatePalette tWebColorPaletteItem[] aItems
+        String[] aParams
+        
+        Send ClientAction "updatePalette" aParams aItems
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        Send OnDefinePalette
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

@@ -1,0 +1,55 @@
+﻿Use VdfBase.pkg
+
+Class cWebBaseContainer_mixin is a Mixin
+    { Visibility=Private }
+    Procedure Define_cWebBaseContainer_mixin
+        
+        // Published properties....        
+        { WebProperty=Client } 
+        { EnumList="ltInherit, ltFlow, ltGrid" }
+        { Category="Appearance" }
+        Property Integer peLayoutType ltInherit    // Render type to use
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piRowCount 0         // Fixed amount of grid rows to create, 0 = auto
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psRowHeights ""       // String used for custom row heights, space separated. Format should be "#ROWNUM/#ROWHEIGHT(or "#fr")" e.g. "1/70 3/1fr 4/21 6/3fr"
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psDefaultRowHeight "minmax(20px, max-content)"   // Used to override the default row height when using gridlayout. Uses CSS sizing syntax like 20px, 1fr, auto or minmax(...).
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piColumnCount 1      // Number of columns in the column layout system
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psColumnWidths ""     // String used column width, space separated Format should be "#COLNUM/#COLWIDTH(or "#fr")" e.g. "1/70 3/1fr 4/21 6/3fr"
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psDefaultColumnWidth "1fr" // Used to override the default column width when using gridlayout. Default is 1fr for an equal split of columns.
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piHeight 0           // height, in pixels, of the panel (0 = calculate height by size of content)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMinHeight 0        // Minimum control height (ignored unless pbFillHeight is True)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piWidth 0            // width, in pixels, of the panel (0 = use full available width)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMinWidth 0         // Minimum control width
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbScroll False       // Determines if this container will show a scrollbar if needed
+        
+    End_Procedure
+    
+    { Visibility=Private }
+    Function ContainerName Returns String
+        // Used to get, by delegation, the object name of the nearest parent container object (web panel, web view, web tab page).
+        String sName
+        Get Object_Label to sName
+        Function_Return sName
+    End_Function
+End_Class

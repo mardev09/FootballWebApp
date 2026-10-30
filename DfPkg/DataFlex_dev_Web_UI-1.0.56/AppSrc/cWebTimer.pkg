@@ -1,0 +1,59 @@
+﻿Use cWebObject.pkg
+
+//  Models a client-side timer that sends calls to the server at an interval.
+{ HelpTopic=cWebTimer }
+{ DesignerJSClass=df.WebTimer }
+Class cWebTimer is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoStart True       //  If true the timer starts automatically when the view is shown. When used outside of a view it starts on initialization.
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoStop True        //  If true the timer stops automatically when a view is hidden.
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Integer piInterval 2000        //  The interval between the OnTimer events in milliseconds.
+        { WebProperty=Client } 
+        { DesignTime=False }
+        Property Boolean pbRunning False        //  Indicates & controls wether the timer is running.
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbWaitForCall True     //  If true the new timeout is set after finishing the previous call.
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnTimer True
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnTimer ""
+        
+        
+        Set psJSClass to "df.WebTimer"
+    End_Procedure
+    
+    //  Empty event stub that is fired when the timeout occurs on the client.
+    { MethodType=Event }
+    Procedure OnTimer
+    End_Procedure
+    
+    //  Starts the timer.
+    Procedure Start
+        WebSet pbRunning to True
+    End_Procedure
+    
+    //  Stops the timer.
+    Procedure Stop
+        WebSet pbRunning to False
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnTimer
+    End_Procedure
+
+End_Class

@@ -1,0 +1,257 @@
+﻿Use cWebAppBase_Mixin.pkg
+Use cWebEndPoint_mixin.pkg
+Use WebConvertClient.pkg
+Use cWebControlLocator.pkg
+Use cWebErrorHandler.pkg
+Use cWebView.pkg
+Use cWebTreeView.pkg
+Use cWebBaseDEO.pkg
+Use WebUIConstants.pkg
+Use WebAppGlobalObjectHandles.pkg
+Use tWebResponse.pkg
+Use tWebRequest.pkg
+Use cWebServiceDispatcher.pkg
+Use cWebResourceManagerProxy.pkg
+
+Use cJsonObject.pkg
+
+Use cWebOnCallEndHandler_mixin.pkg
+Use cWebObjectOwner_mixin.pkg
+Use cWebObjectHost_mixin.pkg
+Use cWebPropertyHost_mixin.pkg
+Use cWebViewHost_mixin.pkg
+Use cWebSessionHost_mixin.pkg
+Use cWebSyncHost_mixin.pkg
+Use cWebHostAPI_mixin.pkg
+Use cWebNavPathHelper_mixin.pkg
+Use cWebNavigationHost_mixin.pkg
+Use cWebFileUploadPathHelper_mixin.pkg
+
+Use cWebServerPropHandler.pkg
+Use cWebClientPropHandler.pkg
+Use cWebServerPropStore.pkg
+
+Use WebServerUIError.pkg         // WebApp error handler. Will create object and set error_object_id
+
+// WebApp wrapper object. Each AJAX WebApp must have one and only one cWebApp object. 
+// The webapp object is used as a container for...
+// - The application's commandbar/titlebar (menubar, toolbars, breadcrumb etc)
+// - Each cWebView and cWebModalDialog
+//
+// Adds interface for:
+// - Loading the WebApp
+// - General handling web service requests,
+// - Registering web service objects (cWebView etc),
+// - Locating cWebControl objects (i.e. retreiving the object handle of any cWebControl),
+// - Managing client-server web properties,
+// - Show/Hide View interface.
+// - Height & width properties.
+// - cWebUIObject support (via mixin)
+// 
+
+
+
+{ ComponentType=WebAppAjaxClass }
+{ HelpTopic=cWebApp }
+{ DesignerJSClass=df.WebApp }
+Class cWebApp is a cWebBaseUIObject
+
+    Procedure Construct_Object
+        Move Self to ghoWebApp               // Store global reference to the webapp object.
+        
+        Forward Send Construct_Object
+        
+        Send Define_cWebAppBase_Mixin
+        
+        // Assert that a web error handler is in place. It should be assigned to ghoWebErrorHandler
+        // and error_object_id. 
+        If (not(ghoWebErrorHandler) or Error_Object_Id<>ghoWebErrorHandler) Begin
+            Error DFERR_PROGRAM "Error object (ghoWebErrorHandler) not properly assigned"        
+        End
+
+        
+        Send Define_cWebCallHandler_mixin
+        Send Define_cWebOnCallEndHandler_mixin
+        Send Define_cWebObjectOwner_mixin
+        Send Define_cWebObjectHost_mixin
+        Send Define_cWebPropertyHost_mixin
+        Send Define_cWebViewHost_mixin
+        Send Define_cWebNavPathHelper_mixin
+        Send Define_cWebSessionHost_mixin
+        Send Define_cWebSyncHost_mixin
+        Send Define_cWebHostAPI_mixin
+        Send Define_cWebNavigationHost_mixin
+        
+        
+        // Place in its own component file so that Studio creates a proper 
+        // WebServiceDispatcher.wso for this.
+        Use WebServiceDispatcher.wo
+        Use WebResourceManagerProxy.wo
+        
+        
+        Set psJSClass to "df.WebApp"
+        // Make the oWebApp object a neighborhood which significantly simplifies object referencing in WebApp.src
+        Set peNeighborhood to nhPublic
+    End_Procedure
+    
+    Import_Class_Protocol cWebAppBase_Mixin
+    Import_Class_Protocol cWebEndPoint_Mixin
+    
+    Import_Class_Protocol cWebCallHandler_mixin
+    Import_Class_Protocol cWebOnCallEndHandler_mixin
+    Import_Class_Protocol cWebObjectOwner_mixin
+    Import_Class_Protocol cWebObjectHost_mixin
+    Import_Class_Protocol cWebPropertyHost_mixin
+    Import_Class_Protocol cWebViewHost_mixin
+    Import_Class_Protocol cWebNavPathHelper_mixin
+    Import_Class_Protocol cWebSessionHost_mixin
+    Import_Class_Protocol cWebSyncHost_mixin
+    Import_Class_Protocol cWebHostAPI_mixin
+    Import_Class_Protocol cWebNavigationHost_mixin
+    Import_Class_Protocol cWebFileUploadPathHelper_mixin
+    
+    { Visibility=Private }
+    Procedure InitPropertyManager
+        Handle hoWebControlLocator hoWebHost
+        
+        Get phoWebControlLocator to hoWebControlLocator
+        Move Self to hoWebHost
+        
+        Object oClientPropManager is a cWebClientPropHandler
+            Delegate Set phoClientHandler to Self 
+            
+            Set phoWebHost to hoWebHost
+            Set phoWebControlLocator to hoWebControlLocator
+        End_Object
+        
+        Object oServerPropManager is a cWebServerPropHandler
+            Delegate Set phoServerHandler to Self 
+            
+            Set phoWebHost to hoWebHost
+            Set phoWebControlLocator to hoWebControlLocator
+        End_Object
+        
+        Object oSessionPropManager is a cWebServerPropHandler
+            Delegate Set phoSessionHandler to Self 
+            
+            Set pbSessionScope to True
+            Set phoWebHost to hoWebHost
+            Set phoWebControlLocator to hoWebControlLocator
+        End_Object
+            
+        Object oClientProtectedPropManager is a cWebClientProtectedPropHandler
+            Delegate Set phoClientProtectedHandler to Self
+            
+            Set phoDelServerHandler to (phoServerHandler(Self))
+            Set phoDelClientHandler to (phoClientHandler(Self))
+            Set phoWebControlLocator to hoWebControlLocator
+        End_Object
+    End_Procedure
+    
+    { Visibility=Private } 
+    Procedure Call_PreErrorHandling tWebCallContext ByRef cctx
+        Send StartRecording of ghoWebErrorHandler Self
+    End_Procedure
+    
+    //  This can be called in error state!
+    { Visibility=Private }
+    Procedure Call_FinishErrorHandling tWebCallContext ByRef cctx
+        Send FinishRecording of ghoWebErrorHandler
+    End_Procedure
+    
+    
+    // Gets the value of a URL parameter based on its name. It parses the URL to determine the 
+    // parameters that are sent and returns the value of the requested parameter ("" if not found).
+    Function UrlParameter String sName Returns String
+        Integer iPos iPos2 iVoid
+        String sUrl
+        WString wsUnescape
+        
+        //  Get the URL from the HTTP header
+        Get ServerVariable of (ServiceDispatcher(Self)) "HTTP_REFERER" to sUrl
+        
+        If (Trim(sUrl) <> "") Begin
+            //  Find ? indicating GET parameters
+            Move (Pos("?", sUrl)) to iPos
+            If (iPos > 0) Begin
+                
+                Move (Uppercase(sName)) to sName
+
+                //  Loop over GET parameters
+                Repeat
+                    //  Determine position of the name
+                    Increment iPos  //  Step over the ? or &
+                    Move (Pos("=", sUrl, iPos)) to iPos2
+                    
+                    //  Check the name
+                    Move (Mid(sURl, iPos2 - iPos, iPos)) to wsUnescape
+                    If (SizeOfWString(wsUnescape) > 0) Begin
+                        Move (UrlUnescapeW(AddressOf(wsUnescape), 0, 0, URL_UNESCAPE_INPLACE ior URL_UNESCAPE_AS_UTF8)) to iVoid
+                    End
+                    If (Uppercase(CString(wsUnescape)) = sName) Begin
+                        
+                        //  Determine position of the value
+                        Increment iPos2 //  Step over the =
+                        Move (Pos("&", sUrl, iPos2)) to iPos
+                        
+                        If (iPos > 0) Begin
+                            Move (Mid(sUrl, iPos - iPos2, iPos2)) to wsUnescape
+                        End
+                        Else Begin
+                            Move ((Mid(sUrl, (Length(sUrl) - iPos2 + 1), iPos2))) to wsUnescape
+                        End
+                        If (SizeOfWString(wsUnescape) > 0) Begin
+                            Move (UrlUnescapeW(AddressOf(wsUnescape), 0, 0, URL_UNESCAPE_INPLACE ior URL_UNESCAPE_AS_UTF8)) to iVoid
+                        End
+                        Function_Return (CString(wsUnescape))
+                    End
+                    
+                    Move (Pos("&", sUrl, iPos2)) to iPos
+                Until (not(iPos > 0)) 
+                
+            End
+        End
+        
+        Function_Return ""
+    End_Function
+    
+    
+    //
+    // Initializes the property store for the server side web properties.
+    //
+    { Visibility=Private }
+    Procedure InitPropStores
+        String sRoot
+        Handle hoServerPropStore
+        
+        //  If the server prop store has not been created manually
+        If (ServerPropStore(Self) = C_WebUnresolvedObject) Begin
+            //  Check if WebAppServerProps exists
+            Declare_Datafile WebAppServerProps
+            Get_Attribute DF_FILE_ROOT_NAME of (RefTable(WebAppServerProps)) to sRoot
+            If (Trim(sRoot) <> "") Begin
+                Get Create (RefClass(cWebServerPropStore)) to hoServerPropStore
+                Set phoServerPropStore to hoServerPropStore
+            End
+        End
+    End_Procedure
+    
+    // Override here since we own ourselves
+    { Visibility=Private }
+    Function Owner Returns Handle
+        Function_Return Self
+    End_Function
+    
+    Procedure End_Construct_Object
+        Send End_Construct_cWebObjectHost_mixin
+        Send FinishWebObjectInitialize
+        Send End_Construct_cWebViewHost_mixin
+        Send End_Construct_cWebHostAPI_mixin
+        Send End_Construct_cWebNavigationHost_mixin
+        
+        Send InitPropStores
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+    
+End_Class

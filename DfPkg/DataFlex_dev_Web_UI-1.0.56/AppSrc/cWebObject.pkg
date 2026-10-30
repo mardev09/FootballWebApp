@@ -1,0 +1,53 @@
+﻿Use VdfBase.pkg
+Use errornum.inc
+Use WebConvertClient.pkg
+Use SoapConstants.pkg
+Use tWebResponse.pkg
+Use tWebSyncProps.pkg
+Use tWebNavigateData.pkg
+Use tWebPropRule.pkg
+Use tWebDynamicObject.pkg
+Use cJsonObject.pkg
+Use cWebObject_mixin.pkg
+Use cWebBaseObject.pkg
+Use cWebControlLocator.pkg
+
+{ Visibility=Private }
+Function IsAjaxWebObject for cObject Returns Boolean
+    // If this is called it means that the receiving object is not a cWebObject
+    Function_Return False
+End_Function
+
+// Provides basic support for a generic server-side Ajax Web Object.
+//
+// Objects of this class should be nested inside a cWebView or a cWebApp.
+//
+// Supports:
+// - Serializing itself for client-side object definition
+// - Client-side object binding
+// - Published properties
+// - Published methods
+// - Object addressing for client-side actions
+// - Web properties
+// - WebSet & WebGet
+
+{ ClassLibrary=WebApp }
+{ DesignerClass=cDTCWebObject } 
+{ DesignerJSClass=df.WebObject }
+{ HelpTopic=cWebObject }
+Class cWebObject is a cWebBaseObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Send Define_cWebObject_mixin    
+    End_Procedure
+    
+    Import_Class_Protocol cWebObject_mixin    
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        Send End_Construct_cWebOject_mixin
+    End_Procedure
+End_Class

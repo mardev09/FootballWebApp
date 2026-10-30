@@ -1,0 +1,42 @@
+﻿// WCT: Wizard Control Type
+Enum_List
+    Define WCT_Form       for 0
+    Define WCT_Combo      for 1
+    Define WCT_Slider     for 2
+    Define WCT_Checkbox   for 3
+End_Enum_List
+
+Struct tWidgetConfigPropSettings
+    String sOptLabel
+    String sOptDescription
+    Integer eControlType        // 0 = form, 1 = combo, 2 = slider, 3 = checkbox. Use above enum
+    Boolean bOptValidateValue   // Whether to validate the given value versus any of the underlying options
+    Integer iOptMinValue
+    Integer iOptMaxValue
+    Integer iOptStepSize
+    String[] asOptValues
+End_Struct
+
+Struct tWidgetConfigProp
+    String sObjName
+    String sPropName
+    tWidgetConfigPropSettings Settings
+End_Struct
+
+Struct tWidgetConfigPropValue
+    String sObjName
+    String sPropName
+    String sValue
+End_Struct
+
+Struct tWidgetDef
+    String sName
+    String sDynId
+    Integer iRowIndex
+    Integer iColIndex
+    Integer iRowSpan
+    Integer iColSpan
+    Boolean bFillHeight
+    tWidgetConfigPropValue[] aConfig // ToDo: This could be smarter, aggregate by child-object and list all props there.
+    tWebPropRule[] aResponsivePropRules
+End_Struct

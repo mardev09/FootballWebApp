@@ -1,0 +1,15 @@
+﻿Use tWebValueTree.pkg
+
+// Structure used to pass synchronized properties in WebApp AJAX Request & Response messages
+//
+// Note: member names are kept very short in order to minimize the size of the generated JSON
+// data that is sent to the client.
+
+
+// Synchronized properties structure.
+Struct tWebAdvSyncProp
+    String sO           // Long name of the object that owns the properties: "oCustomerView.oCustomerName_frm". 
+                        // Note 1: The object name is the full path of boject name minus the global cWebApp object name.                       
+    String sP           
+    tWebValueTree tV
+End_Struct

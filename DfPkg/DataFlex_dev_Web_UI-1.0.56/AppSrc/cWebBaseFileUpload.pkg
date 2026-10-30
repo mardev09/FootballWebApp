@@ -1,0 +1,49 @@
+﻿Use cWebBaseControl.pkg
+Use cJsonObject.pkg
+Use cWebFileUploadMixin.pkg
+
+{ HelpTopic=cWebBaseFileUpload }
+{ DesignerJSClass=df.WebBaseFileUpload }
+
+Class cWebBaseFileUpload is a cWebBaseControl
+    Import_Class_Protocol cWebFileUploadMixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psDropZoneObjName ""
+        { DesignTime=False }
+        Property Handle phoDropZone Self
+        
+        Set psJSClass to "df.WebBaseFileUpload"
+        
+        Send DefineWebFileUploadMixin
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PreSerializeObject
+        String sDropObj sUploadUrl
+        Handle hoDropObj
+        
+        Get psDropZoneObjName to sDropObj
+        If (sDropObj = "") Begin
+            Get phoDropZone to hoDropObj
+            Get WebObjectName of hoDropObj to sDropObj
+            Set psDropZoneObjName to sDropObj
+        End
+        
+        Get psUploadUrl to sUploadUrl
+        If (Trim(sUploadUrl) = "") Begin
+            Get psUploadUrl of (ResourceManager(Self)) to sUploadUrl
+            Set psUploadUrl to sUploadUrl
+        End
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Send PublishFileUploadMethods
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

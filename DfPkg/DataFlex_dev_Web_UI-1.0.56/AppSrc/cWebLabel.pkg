@@ -1,0 +1,40 @@
+﻿Use cWebBaseControl.pkg
+
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ OverrideProperty=psLabel Visibility=False }
+{ OverrideProperty=psLabelColor Visibility=False }
+{ OverrideProperty=peLabelAlign Visibility=False }
+{ OverrideProperty=peLabelPosition Visibility=False }
+{ OverrideProperty=piLabelOffset Visibility=False }
+{ HelpTopic=cWebLabel }
+{ DesignerJSClass=df.WebLabel }
+Class cWebLabel is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowBorder False
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        { EnumList="C_WebDefault, alignLeft, alignRight, alignCenter" }
+        Property Integer peAlign C_WebDefault        // Text alignment - alLeft, alRight, alCenter
+        { WebProperty=Client }
+        { Category="Appearance" }
+        { EnumList="wbNone, wbWrap, wbPre, wbPreWrap, wbEllipsis" }
+        Property Integer peWordBreak wbPreWrap
+        
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebLabel"
+    End_Procedure
+
+End_Class

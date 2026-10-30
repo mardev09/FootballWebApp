@@ -1,0 +1,134 @@
+{
+    "install": [
+        {
+            "hash": "v5Ro248X3sSW9cvNWzu0BeFZtf8FF+PFJ0Xw0wyOVPQ=",
+            "origin": "AppHtml/CssThemes/Df_Material/divider-dots-horizontal.png"
+        },
+        {
+            "hash": "rSAA0jyFGT7jv/dFks+VE+r/o86RuypVH+lQtcG9WoI=",
+            "origin": "AppHtml/CssThemes/Df_Material/divider-dots-vertical.png"
+        },
+        {
+            "hash": "q4HE3ETH+LL6iisOPSiP2qzSjNPlQ25rDzhAzlke6xE=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/icons-reference.html"
+        },
+        {
+            "hash": "Yke9nzjx1ugF5/JjMJlrZjQR+dBLihvvGfdp1tANKk0=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/material-icons.css"
+        },
+        {
+            "hash": "Z6ojsxGONA6Uug+4D1g5Z7Wi4xoLgizdr8+yrWuCbiM=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/material-icons.eot"
+        },
+        {
+            "hash": "itBmqOHPpnjEAB+0wOslqna52alh0c7p3I/CbkjP4QQ=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/material-icons.svg"
+        },
+        {
+            "hash": "Gy2nq+3PiUqdREzhqwVi69uepddpvHczw17m5dXsdbM=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/material-icons.ttf"
+        },
+        {
+            "hash": "PQfau3wgoJa6IN3IPXmOEdztnF2h5RS17wsKqvPRfwo=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/material-icons.woff"
+        },
+        {
+            "hash": "jSopZ8RHosincw7+Fvp9MIVq9X7xj+GfqkGvP8KUFvY=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Light-webfont.eot"
+        },
+        {
+            "hash": "xU+n30ebOf62PY0pkgPdUFnmz+rU9L+ZOYRXgACI4IQ=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Light-webfont.svg"
+        },
+        {
+            "hash": "Z9deLEkzSLWfie1t5PDs4e5AnTO6nqYLKqVnNLrPg9g=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Light-webfont.ttf"
+        },
+        {
+            "hash": "CCDGQOuE94PlUDe71Vhjd03SuNTLVPzfdlJQn06VTYg=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Light-webfont.woff"
+        },
+        {
+            "hash": "WHTy3+zhG+8yltJEU7xA2KRqOLL+SjDBKjnQcKQ2YxY=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Medium-webfont.eot"
+        },
+        {
+            "hash": "TFyYcGoaiXhpBa+yDRktPpC1i4gfIMKMBJZXU+dUITI=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Medium-webfont.svg"
+        },
+        {
+            "hash": "EOWk9TxkyRoduO4jkjYOOIwkpHpmHl5QXKvKJIXOeWk=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Medium-webfont.ttf"
+        },
+        {
+            "hash": "Pdo7HfUWaFkCvjA+NYiNzwf+Ax7vynz/P4y5iy/0lUg=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Medium-webfont.woff"
+        },
+        {
+            "hash": "vQuNa9o/xjSY+aoRbIu19JJoHed4YarWOQUx2Rs7MAI=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Regular-webfont.eot"
+        },
+        {
+            "hash": "X4LjqD53XEFABcMHQrVrL1NoY/AiQnVzvoBh7Ex0q6I=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Regular-webfont.svg"
+        },
+        {
+            "hash": "vHOb9UKy1FbM5g7cs6Dxv8pxEtKiKQZLF8RtyORzusk=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Regular-webfont.ttf"
+        },
+        {
+            "hash": "xAY8M8gmxG0M7KVMiT6n9QdzQcUjf46sdK6fP6lVdQ4=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Regular-webfont.woff"
+        },
+        {
+            "hash": "HM4DmIAaTRueRLqfXQw1K8kJlBXNgq0sKhTO7W+BTIM=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Thin-webfont.eot"
+        },
+        {
+            "hash": "TA0xBI5ui+Hz/IllW1yajJfIfxEoTpgFfuHlN9pKHLg=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Thin-webfont.svg"
+        },
+        {
+            "hash": "Ri/KHFc5BnWjTd5Ry5LZ4cvxWAezgBt0O+xjMDzxpMs=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Thin-webfont.ttf"
+        },
+        {
+            "hash": "JKta4YdaF4retTDEI5DKJpkBkF1QznlyqBIQQaiYxLQ=",
+            "origin": "AppHtml/CssThemes/Df_Material/Fonts/Roboto-Thin-webfont.woff"
+        },
+        {
+            "hash": "t2a8P3L2Ig+uTo2XJAhw968CN3bAqKocRt7GeUjK0aY=",
+            "origin": "AppHtml/CssThemes/Df_Material/LoadingBig.gif"
+        },
+        {
+            "hash": "4JRK2f5GU/+QwifAktwYRGpxY9/ZAdgkbbCbdXjsVSg=",
+            "origin": "AppHtml/CssThemes/Df_Material/LoadingSmall.gif"
+        },
+        {
+            "hash": "SwDUIsaiBAv7SBROOr0y4J37tud4E2W9tqtHkmxKnYk=",
+            "origin": "AppHtml/CssThemes/Df_Material/theme.css"
+        },
+        {
+            "hash": "rVMz/59c9W6cDUFuCSuc8bIH63chfR5WlElXaShhrfQ=",
+            "origin": "AppHtml/CssThemes/Df_Material/WebTreeView-Images.gif"
+        },
+        {
+            "hash": "fhOqmXNkDrxaZtv4wOmsfWPDjLPnQGCO7mIODBkOfsA=",
+            "origin": "AppHtml/CssThemes/Df_Material/WebTreeView-LoadingBig.gif"
+        },
+        {
+            "hash": "jzig0/4ng5aZkGKo4YKSzddLPNa2eMcwQWte/nmaGkY=",
+            "origin": "AppHtml/CssThemes/Df_Material/WebTreeView-LoadingSmall.gif"
+        },
+        {
+            "hash": "sOG+YD5GAw9ZIkPsw914ytIpJwTlgaT4k90NwcULfvU=",
+            "origin": "AppHtml/CssThemes/Df_Material/WebWin-Resize.png"
+        },
+        {
+            "hash": "SwDUIsaiBAv7SBROOr0y4J37tud4E2W9tqtHkmxKnYk=",
+            "origin": "AppHtml/CssThemes/Df_Material/theme.css"
+        }
+    ],
+    "upstream": "https://packages.dataflex.dev/api/v1/packages/DataFlex-dev/Web%20UI%20Material%20Theme",
+    "version": 1
+}

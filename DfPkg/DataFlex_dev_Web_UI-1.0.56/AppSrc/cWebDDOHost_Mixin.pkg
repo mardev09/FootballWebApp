@@ -1,0 +1,44 @@
+﻿Use VdfBase.pkg
+Use cWebView_mixin.pkg
+
+Class cWebDDOHost_Mixin is a Mixin
+  
+    { Visibility=Private }
+    Procedure Define_cWebDDOHost_Mixin
+    { Visibility=Private DesignTime=False }
+    Property Handle private_Main_DD 0
+    End_Procedure
+    
+    { MethodType=Property DesignTime=False }
+    Procedure Set Main_DD Handle hoMain
+        Set private_Main_DD to hoMain
+    End_Procedure
+    
+    { MethodType=Property DesignTime=False }
+    Function Main_DD Returns Handle
+        Handle hoMain
+        
+        Get private_Main_DD to hoMain
+        
+        If (hoMain=0) ;
+            Delegate Get Main_DD to hoMain
+        
+        Function_Return hoMain
+    End_Function
+    
+    { Visibility=Private }
+    Procedure RegisterDDOStructure
+        Handle hoMain
+        
+        Get private_Main_DD to hoMain
+        
+        If (hoMain <> 0) ;
+            Delegate Send AddDDOStructure hoMain
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure End_Construct_cWebDDOHost_Mixin
+        Send RegisterDDOStructure
+    End_Procedure
+    
+End_Class

@@ -1,0 +1,80 @@
+﻿Use cWebBaseControl.pkg
+
+// Card container control.
+//
+// Adds support for...
+// - Panel region, height, width, etc
+{ CompositeClass=cWebCard }
+{ HelpTopic=cWebCardContainer }
+{ DesignerJSClass=df.WebCardContainer }
+Class cWebCardContainer is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published properties....        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowBorder False
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowCaption False
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbSwipeCards False
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbSizeToCurrentCard False
+        
+        { Visibility=Private }
+        { WebProperty=Client } 
+        Property String psCurrentCard ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" } 
+        Property Boolean pbServerOnCardChange False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnCardChange ""
+        
+        Set pbShowLabel to False                    // Label doesn't make sense for a tabcontainer
+        Set piColumnSpan to 0                       // This makes it span the full available width
+        Set psJSClass to "df.WebCardContainer"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnCardChange String sNewSelectedTab String sPrevSelectedTab
+        //  Stub event method called when switching to a different card
+    End_Procedure
+    
+    Procedure NextCard
+        Send ClientAction "nextCard"
+    End_Procedure
+    
+    Procedure PreviousCard
+        Send ClientAction "previousCard"
+    End_Procedure
+    
+    Function CurrentCard Returns Handle
+        String sCurrent
+        Handle hoResult
+        
+        WebGet psCurrentCard to sCurrent
+        
+        If (sCurrent <> "") Begin
+            Get WebObjectByName sCurrent to hoResult
+        End
+        Else Begin
+            Move 0 to hoResult    
+        End
+        
+        Function_Return hoResult
+    End_Function
+    
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnCardChange
+    End_Procedure
+End_Class

@@ -1,0 +1,23 @@
+﻿Use cWebMenuItem.pkg
+
+// Menu items for WebApp Request_Find LAST_RECORD
+{ HelpTopic=cWebMenuFindLast }
+Class cWebMenuFindLast is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        Set psCaption to C_$CaptionFindLast
+        Set psCSSClass to "WebLastMenuItem"
+        Set psToolTip to C_$ToolTipFindLast
+    End_Procedure
+
+    Procedure OnClick
+        Handle hoFocus
+        Get DEOControlFocusObject to hoFocus
+        If hoFocus Begin
+            Send Request_Find of hoFocus  LAST_RECORD
+        End
+    End_Procedure
+         
+End_Class 
+

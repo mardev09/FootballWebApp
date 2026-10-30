@@ -1,0 +1,15 @@
+Object
+    Set piColumnSpan to 0
+    Set psCaption to "Upload File(s)"
+
+    // Called for each file upload to generate the local path where the file is stored.
+    Function OnFileUpload String sFileName Integer iBytes String sMime Returns String
+        String sPath
+        
+        // Determine local path based on workspace setting
+        Get psDataPath of (phoWorkspace(ghoApplication)) to sPath
+        Move (sPath + "\Uploads\" + sFileName) to sPath
+        
+        Function_Return sPath
+    End_Function
+End_Object

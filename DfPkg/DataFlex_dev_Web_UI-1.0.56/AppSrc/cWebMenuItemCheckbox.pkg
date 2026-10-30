@@ -1,0 +1,16 @@
+﻿Use cWebMenuItem.pkg
+
+{ DesignerJSClass=df.WebMenuItemCheckbox }
+Class cWebMenuItemCheckbox is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Boolean pbChecked False
+        
+        Set psJSClass to "df.WebMenuItemCheckbox"
+    End_Procedure
+
+End_Class

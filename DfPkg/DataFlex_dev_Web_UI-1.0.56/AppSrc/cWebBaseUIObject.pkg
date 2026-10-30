@@ -1,0 +1,207 @@
+﻿Use VdfBase.pkg
+Use cWebObject.pkg
+Use cWebDragDropMixin.pkg
+Use cWebBaseUIObject_mixin.pkg
+
+// Base class for Ajax Web Objects that model some client-side user interface.
+//
+// Supports:
+// - Properties to control rendering, visible, enabled etc.
+// - HTML element support (#ID, Class, etc).
+// - Common CSS properties (color etc).
+// - Data binding to DDO server.
+{ ClassType=Abstract }
+{ DataAware=True }
+{ HelpTopic=cWebBaseUIObject }
+Class cWebBaseUIObject is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        Send Define_cWebBaseUIObject_mixin
+        Send DefineWebDragDropMixin
+    End_Procedure
+    
+    Import_Class_Protocol cWebDragDropMixin
+    Import_Class_Protocol cWebBaseUIObject_mixin
+    
+    //  Determines if a control is rendered (if pbRender is true of itself and its parents)
+    Function IsControlRendered Returns Boolean
+        Boolean bRendered
+        Handle hoParent
+        
+        WebGet pbRender to bRendered
+        
+        If (bRendered) Begin
+            Get Parent to hoParent
+            If (hoParent > 0) Begin
+                If (IsObjectOfClass(hoParent, RefClass(cWebBaseUIObject))) Begin
+                    Get IsControlRendered of hoParent to bRendered
+                End
+            End
+        End
+        
+        Function_Return bRendered
+    End_Function
+    
+    //  Determines if a control is visible (if pbVisible is true of itself and its parents)
+    Function IsControlVisible Returns Boolean
+        Boolean bVisible
+        Handle hoParent
+        
+        WebGet pbVisible to bVisible
+        
+        If (bVisible) Begin
+            Get Parent to hoParent
+            If (hoParent > 0) Begin
+                If (IsObjectOfClass(hoParent, RefClass(cWebBaseUIObject))) Begin
+                    Get IsControlVisible of hoParent to bVisible
+                End
+            End
+        End
+        
+        Function_Return bVisible
+    End_Function
+    
+    //  Determines if a control is enabled (if pbEnabled is true of itself and its parents)
+    Function IsControlEnabled Returns Boolean
+        Boolean bEnabled
+        Handle hoParent
+        
+        WebGet pbEnabled to bEnabled
+        
+        If (bEnabled) Begin
+            Get Parent to hoParent
+            If (hoParent > 0) Begin
+                If (IsObjectOfClass(hoParent, RefClass(cWebBaseUIObject))) Begin
+                    Get IsControlEnabled of hoParent to bEnabled
+                End
+            End
+        End
+        
+        Function_Return bEnabled
+    End_Function
+
+    //  Augmented to invalidate the accessibility cache for the involved properties
+    { Visibility=Private }
+    Procedure SetSyncProp Handle hoObject Handle hmSetter String sPropName Variant vPropValue
+        //  Invalidate accessibility cache
+        If (hmSetter = RefProcSet(pbRender) or hmSetter = RefProcSet(pbEnabled) or hmSetter = RefProcSet(pbVisible)) Begin
+            Increment giWebAccCacheCtx
+        End
+        
+        Forward Send SetSyncProp hoObject hmSetter sPropName vPropValue
+    End_Procedure
+    
+    //  Determines if the control is currently accessible. Accessible means that it is a view that
+    //  is available on the client and it is rendered, visible and enabled. This check takes the 
+    //  state of parent controls into account, but not for example if the control is on the current 
+    //  tab page or if the group it is on is expanded.
+    //
+    //  This is used to check if a control should accept server messages and if DEO objects should 
+    //  communicate with DD's. Because it can be called a lot and the determination goes up in the 
+    //  object structure and involves server properties this value is cached.
+    Function IsControlAccessible Boolean bVerifyEnabled Boolean bVerifyVisibility Returns Boolean
+        Boolean bAccessible
+        Integer iAccessible
+        
+        Get GetAccessible to iAccessible
+        
+        Move (iAccessible iand C_UIA_InSync) to bAccessible
+        
+        If (bVerifyEnabled and bAccessible) Begin
+            Move (iAccessible iand C_UIA_Enabled) to bAccessible
+        End
+        If (bVerifyVisibility and bAccessible) Begin
+            Move (iAccessible iand C_UIA_Rendered and iAccessible iand C_UIA_Visible) to bAccessible
+        End
+        
+        Function_Return bAccessible
+    End_Function
+    
+    //  Determines th accessibility which is expressed folded into an integer and can be checked 
+    //  using IAND.
+    { Visibility=Private }
+    Function GetAccessible Returns Integer
+        Integer iAccessible iAccessibleParent
+        Boolean bVal
+        
+        If (piAccessibilityCacheCall(Self) <> giWebAccCacheCtx) Begin
+            Move C_UIA_InSync to iAccessible
+            
+            If (pbNoAccessibilityCheck(Self)) Begin
+               Move C_UIA_All to iAccessible
+            End
+            Else Begin
+                WebGet pbRender to bVal
+                If (bVal) ;
+                    Move (iAccessible + C_UIA_Rendered) to iAccessible
+                
+                WebGet pbVisible to bVal
+                If (bVal) ;
+                    Move (iAccessible + C_UIA_Visible) to iAccessible
+                
+                WebGet pbEnabled to bVal
+                If (bVal) ;
+                    Move (iAccessible + C_UIA_Enabled) to iAccessible
+            End
+            
+            Delegate Get GetAccessible to iAccessibleParent
+            Move (iAccessibleParent iand iAccessible) to iAccessible
+            
+            Set piAccessibilityCache to iAccessible
+            Set piAccessibilityCacheCall to giWebAccCacheCtx
+        End
+        Else Begin
+            Get piAccessibilityCache to iAccessible
+        End
+        
+
+        
+        Function_Return iAccessible
+    End_Function
+    
+    //  By default UI objects are only accessible if they are visible and enabled.
+    { MethodType=Event }
+    Procedure AllowServerAction Boolean ByRef bAllow String sMethodName Handle hoMessage Boolean bIsFunction String[] ByRef aParams
+        Get IsControlAccessible True True to bAllow
+    End_Procedure
+    
+    // We don't support dragging by default, so just return a blank String
+    Function DragData Returns Variant
+        Function_Return ""
+    End_Function
+    
+    Function DropData Returns Variant
+        tWebControlDropData DropData
+        Handle hoJsonData
+        
+        Get phoJsonDropData to hoJsonData
+        If (hoJsonData <> C_WebUnresolvedObject and IsOfJsonType(hoJsonData, jsonTypeObject)) Begin
+            Set pbRequireAllMembers of hoJsonData to False
+            Get JsonToDataType of hoJsonData to DropData
+        End
+        
+        Function_Return DropData
+    End_Function
+    
+    // By default, we only want to support dropping, so we always return false here
+    {Visibility = Private}
+    Function SupportsDragAction Integer eAction Returns Boolean
+        Function_Return False
+    End_Function
+    
+    {Visibility = Private}
+    Function SupportsDropAction Integer eAction Returns Boolean
+        If (eAction = C_WebDropOnControl) Begin
+            Function_Return True
+        End
+        
+        Function_Return False
+    End_Function
+    
+    Procedure End_Construct_Object
+        Send End_Construct_cWebBaseUIObject_mixin
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

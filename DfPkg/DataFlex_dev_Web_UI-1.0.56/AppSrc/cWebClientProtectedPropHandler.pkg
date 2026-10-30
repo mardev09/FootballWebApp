@@ -1,0 +1,57 @@
+﻿Use UI
+
+{ Visibility=Private }
+Class cWebClientProtectedPropHandler is a cObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        Property Handle phoDelServerHandler 0
+        Property Handle phoDelClientHandler 0
+    End_Procedure
+    
+    
+    Function GetAdvSyncProp Handle hoObject tWebPropMetaData ByRef pubProp  Returns Variant
+        Variant vRes
+        Handle hHandler
+        
+        Get phoDelServerHandler to hHandler
+        
+        Get GetAdvSyncProp of hHandler hoObject (&pubProp) to vRes
+        
+        Function_Return vRes
+    End_Function
+    
+    Function GetScalarSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns String
+        String sRes
+        Handle hHandler
+        
+        Get phoDelServerHandler to hHandler
+        
+        Get GetScalarSyncProp of hHandler hoObject (&pubProp) to sRes
+        
+        Function_Return sRes
+    End_Function
+
+    Procedure FinishedCall tWebSyncProps[] ByRef aChangedSyncProps tWebAdvSyncProp[] ByRef aChangedAdvSyncProps
+    End_Procedure
+    
+    Procedure InitializeCall tWebSyncProps[] aSyncProps tWebAdvSyncProp[] aAdvSyncProps
+    End_Procedure
+    
+    Procedure SetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Variant vPropValue
+        Handle hHandler
+        
+        Get phoDelServerHandler to hHandler
+        Send SetSyncProp of hHandler hoObject (&pubProp) vPropValue
+        
+        Get phoDelClientHandler to hHandler
+        Send SetSyncProp of hHandler hoObject (&pubProp) vPropValue
+    End_Procedure
+        
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

@@ -1,0 +1,14 @@
+﻿Use cWebBaseControl.pkg
+
+{ HelpTopic=cWebSpacer }
+{ DesignerJSClass=df.WebSpacer }
+Class cWebSpacer is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebSpacer"
+    End_Procedure
+
+End_Class

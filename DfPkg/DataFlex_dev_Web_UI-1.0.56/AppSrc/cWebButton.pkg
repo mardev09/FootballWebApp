@@ -1,0 +1,60 @@
+﻿Use cWebBaseControl.pkg
+
+// Models a client-side button control.
+//
+// Adds support for:
+// - Button value,
+// - OnClick events, onClick etc.
+{ OverrideProperty=Auto_Fill_State Visibility=Private }
+{ OverrideProperty=pbClearAfterSave Visibility=Private }
+{ OverrideProperty=Verify_Data_Loss_msg Visibility=Private }
+{ OverrideProperty=Verify_Delete_msg Visibility=Private }
+{ OverrideProperty=Verify_Save_msg Visibility=Private }
+{ HelpTopic=cWebButton }
+{ DesignerJSClass=df.WebButton }
+{ Navigable=OnClick }
+Class cWebButton is a cWebBaseControl
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnClick True     // Set to true to trigger server OnClick event
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnClick ""        // Name of client side Onclick event handler
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psLoadViewOnClick ""      // Name of the cWebView (or cWebDialog) to load when clicked. Note: the object name is case-sensitive!
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psCaption ""              // The value that is displayed in the control.
+        { WebProperty=Client }            
+        { Category="Appearance" }
+        { EnumList="C_WebDefault, alignLeft, alignRight, alignCenter"}
+        Property Integer peAlign C_WebDefault       
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbShowWaitDialog False     // If set to true a wait dialog is shown while the onclick is being processed
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psWaitMessage ""            // Changes the text shown on the wait dialog
+       
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebButton"
+    End_Procedure
+    
+    // Server Action
+    { MethodType=Event }
+    Procedure OnClick
+        // On click event stub.
+    End_Procedure
+      
+    Procedure End_Construct_Object
+        // Publish the event methods
+        WebPublishProcedure OnClick      
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

@@ -1,0 +1,14 @@
+Object
+    Set pbServerOnToggleEditMode to True
+    
+    Procedure OnRegisterWidgets
+        // ToDo: Register your widgets here
+    End_Procedure
+    
+    Procedure OnToggleEditMode Boolean bEdit
+        Forward Send OnToggleEditMode bEdit
+        
+         // ToDo: create a cWebPanel object (oWidgetsPanel) and add a cWebWidgetPalette object to it
+         // WebSet pbRender of oWidgetsPanel to bEdit
+    End_Procedure
+End_Object

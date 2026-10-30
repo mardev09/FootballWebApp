@@ -1,0 +1,7 @@
+Object
+    Set piColumnSpan to 0
+    Set psCaption to "button"
+
+    Procedure OnClick
+    End_Procedure
+End_Object

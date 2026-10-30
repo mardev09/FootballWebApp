@@ -1,0 +1,5 @@
+Object
+    Set piColumnSpan to 0
+    Set psCaption to "radio"
+    Set psRadioValue to "A"
+End_Object

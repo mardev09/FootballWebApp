@@ -1,0 +1,46 @@
+﻿Use cWebBaseControl.pkg
+Use cWebBaseMenu_mixin.pkg
+
+{ DesignerJSClass=df.WebMenuList }
+Class cWebMenuList is a cWebBaseControl
+    Import_Class_Protocol cWebBaseMenu_mixin
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object 
+        
+        Send Define_cWebBaseMenu_Mixin       
+                
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property String psRootCaption C_$Menu
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowCaption True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowBackItem True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowIcons False
+               
+        Set pbShowLabel to False
+        Set psJSClass to "df.WebMenuList"
+        Set piHeight to 400
+    End_Procedure
+    
+    Procedure LevelUp
+        Send ClientAction "levelUp"
+    End_Procedure
+    
+    Procedure Destroy_Object
+        Send Destroy_Object_cWebBaseMenu_mixin
+        
+        Forward Send Destroy_Object
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Send End_Define_cWebBaseMenu_mixin
+        
+        Forward Send End_Construct_Object
+    End_Procedure
+End_Class

@@ -1,0 +1,4 @@
+Object
+    Set piColumnCount to 12   
+    Set psCaption to "Accordion Card"
+End_Object

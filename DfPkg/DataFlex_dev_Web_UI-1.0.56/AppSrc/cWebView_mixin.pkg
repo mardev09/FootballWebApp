@@ -1,0 +1,53 @@
+Use VDFBase.pkg
+
+/*
+Defines the API of the WebView as it is used by other controls like cWebBaseDEO and cWebObject. Some 
+packages include this so they can compile without using cWebView (cWebObject for example, to prevent 
+circular referencing). The cDbLocalWebControlHost imports this mixin to make cWebBaseDEO objects 
+work without errors.
+*/
+
+{ Visibility=Private }
+Class cWebView_mixin is a Mixin
+    
+    Function pbRequesteValidateAll Returns Boolean 
+    End_Function
+    
+    Function IsViewReadOnly Returns Boolean
+        Function_Return False
+    End_Function
+    
+    Function IsViewNoFindOnMain Returns Boolean
+        Function_Return False
+    End_Function
+    
+    Function IsViewNoFindOnConstrainedParent Returns Boolean
+        Function_Return False
+    End_Function
+    
+    Procedure OnViewCleared Handle hoServer
+    End_Procedure
+    
+    Procedure OnViewDeleted Handle hoServer
+    End_Procedure
+    
+    Procedure OnViewSaved Handle hoServer
+    End_Procedure
+        
+    Function AlwaysSaveWhenNewDrillDown Returns Boolean
+        Error DFERR_PROGRAM "Not implemented"
+        
+        Function_Return True
+    End_Function
+    
+    Procedure LoadDefaultNavigateBackData Handle hoInvokingObject tWebNavigateData ByRef NavigateData
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    Procedure LoadDefaultNavigateForwardData Handle hoInvokIngObject tWebNavigateData ByRef NavigateData
+        Error DFERR_PROGRAM "Not implemented"
+    End_Procedure
+    
+    Procedure AddDDOStructure Handle hoMain_DD
+    End_Procedure
+End_Class

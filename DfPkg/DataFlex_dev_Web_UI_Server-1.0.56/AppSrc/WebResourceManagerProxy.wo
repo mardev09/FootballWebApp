@@ -1,0 +1,6 @@
+﻿Use cWebResourceManagerProxy.pkg
+
+// creates resource manager proxy which directs to ghoWebResourceManager
+Object oWebResourceManagerProxy is a cWebResourceManagerProxy
+    
+End_Object

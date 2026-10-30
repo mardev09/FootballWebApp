@@ -1,0 +1,1043 @@
+﻿Use cWebBaseControl.pkg
+
+Struct tWebDrawingInstr
+    String sId
+    String sType
+    String[] asParams
+End_Struct
+
+Struct tWebPoint
+    Float fX
+    Float fY
+End_Struct
+
+Struct tWebSize
+    Float fWidth
+    Float fHeight
+End_Struct
+
+Struct tWebDrawingEventData
+    Integer eMouseButtons
+    tWebPoint tMousePosition
+
+    tWebPoint tPosition
+    Float fRotation
+    tWebSize tScaling
+
+    String sStrokeColor
+    Float fStrokeWidth
+    Integer iStrokeCap
+    Integer iStrokeJoin
+    Float fDashOffset
+
+    String sFillColor
+
+    String sShadowColor
+    Float fShadowBlur
+    tWebPoint tShadowOffset
+
+    String sTextContent
+    String sFontFamily
+    Float fFontSize
+    Integer eJustification
+    String sFontWeight
+End_Struct
+
+Struct tWebDrawingResizetData
+    Float fViewWidth
+    Float fViewHeight
+End_Struct
+
+Enum_List 
+    Define wdResizeModeDisabled
+    Define wdResizeModeScale
+    Define wdResizeModeCrop
+End_Enum_List
+
+Enum_List
+    Define wdMouseButtonNone for 0
+    Define wdMouseLeftButton for 1
+    Define wdMouseRightButton for 2
+    Define wdMouseMiddleButton for 4
+End_Enum_List
+
+Enum_List
+    Define wdStrokeCapRound
+    Define wdStrokeCapSquare
+    Define wdStrokeCapButt
+End_Enum_List
+
+Enum_List
+    Define wdStrokeJoinMiter
+    Define wdStrokeJoinRound
+    Define wdStrokeJoinBevel
+End_Enum_List
+
+Enum_List
+    Define wdFontJustificationLeft
+    Define wdFontJustificationCenter
+    Define wdFontJustificationRight
+End_Enum_List
+
+Enum_List
+    Define wdInteractionOnMouseDown for 1
+    Define wdInteractionOnMouseUp for 2
+    Define wdInteractionOnMouseEnter for 4
+    Define wdInteractionOnMouseLeave for 8
+    Define wdInteractionOnMouseMove for 16
+    Define wdInteractionOnMouseClick for 32
+    Define wdInteractionOnMouseDoubleClick for 64
+    Define wdInteractionOnMouseDrag for 128
+End_Enum_List
+
+/*
+Optimized storage for instruction, due to the amount of writes storing it in a property is too 
+expensive (properties get copied a lot in memory).
+*/
+Global_Variable tWebDrawingInstr[][] gtWebDrawing_Instruction
+
+Class cWebDrawing is a cWebBaseControl
+
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        // The width of the drawing
+        { WebProperty = Client }
+        Property Integer piDrawingWidth 0
+
+        // The height of the drawing
+        { WebProperty = Client }
+        Property Integer piDrawingHeight 0
+        
+        // Set the mode how the component should handle resize changes. See wdResizeMode for the options.
+        //
+        // When wdResizeModeDisabled is selected, the drawing will show it's original size defined in piDrawingWidth and piDrawingHeight
+        // When wdResizeModeScale is selected, the developer must Define a piDrawingWidth and piDrawingHeight. The canvas will try and make your drawing scale with the size of the control
+        // When wdResizeModeCrop is selected, piDrawingWidth and piDrawingHeight will be ignored.
+        { WebProperty = Client }
+        { EnumList = "wdResizeModeDisabled,wdResizeModeScale,wdResizeModeCrop" }
+        Property Integer peResizeMode wdResizeModeDisabled
+        
+        // Disable the default right click context menu
+        { WebProperty = Client }
+        Property Boolean pbNoContextMenu False
+        
+        { WebProperty = Client }
+        Property Boolean pbZoomable False
+        
+        // The minimum amount of zoom.
+        // Cannot go below zero
+        { WebProperty = Client }
+        Property Float pfMinZoom 0.125
+        
+        // The maximum amount of zoom.
+        { WebProperty = Client }
+        Property Float pfMaxZoom 4
+        
+        // The default amount of zoom
+        { WebProperty = Client }
+        Property Float pfDefaultZoom 1
+        
+        // Enable the OnResize Client event
+        { WebProperty = Client }
+        Property Boolean pbClientOnResize False
+
+        { WebProperty = Client }
+        Property Boolean pbDebugOutline False
+        
+        { WebProperty = Client }
+        { Visibility = Private }
+        Property Integer piDebugOutlineWidth 1
+        
+        { WebProperty = Client }
+        { Visibility = Private }
+        Property String psDebugOutlineColor ""
+        
+        { WebProperty = Client }
+        Property String psCanvasBackgroundColor ""
+        
+        { WebProperty=Client }
+        { Category=Appearance }
+        Property Boolean pbShowBorder False
+
+        { Visibility = Private }
+        Property Integer piInstructionSlot -1
+        
+        Set pbShowLabel to False
+        Set pbFillHeight to False
+
+        Set psJSClass to "df.WebDrawing"
+    End_Procedure
+
+    Procedure ClearDrawing
+        Send ClientAction "clearDrawing"
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure AddInstr String sId String sType String[] asParams
+        tWebDrawingInstr tInstruction
+
+        Move sId to tInstruction.sId
+        Move sType to tInstruction.sType
+
+        If (num_arguments > 2) Begin
+            Move asParams to tInstruction.asParams
+        End
+
+        Send AddToInstrList tInstruction
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure AddToInstrList tWebDrawingInstr instruction
+        tWebDrawingInstr[] atInstructions
+        Integer iNextIndex
+        
+        If (piInstructionSlot(Self) < 0) ;
+            Set piInstructionSlot to (SizeOfArray(gtWebDrawing_Instruction))
+
+        Move instruction to gtWebDrawing_Instruction[piInstructionSlot(Self)][-1]
+    End_Procedure
+
+    // Put two floats in a tWebPoint struct
+    //
+    // fX: The x value
+    // fY: The y value
+    // Returns: tWebPoint
+    Function XYPoint Float fX Float fY Returns tWebPoint
+        tWebPoint point
+
+        Move fX to point.fX
+        Move fY to point.fY
+
+        Function_Return point
+    End_Function
+
+    // Put two floats in a tWebSize struct
+    Function WHSize Float fWidth Float fHeight Returns tWebSize
+        tWebSize size
+
+        Move fWidth to size.fWidth
+        Move fHeight to size.fHeight
+
+        Function_Return size
+    End_Function
+
+    // Convert a clColor to a hex value
+    // Taken and adapted from Convetions lib
+    //
+    // iColor: The cl Color value
+    //
+    // Returns: HTML HEX color value as a string
+    Function GDIColorToHex Integer iColor Returns String
+        String sResult
+        Repeat
+            Move (sResult + Mid ("0123456789ABCDEF", 1, ((iColor iand |CI$0F) + 1))) to sResult
+            Move (iColor / |CI$10) to iColor
+        Until (iColor = 0)
+
+        // Fill remaining
+        While (Length(sResult) < 6)
+            Move (sResult + "0") to sResult
+        Loop
+
+        // Prepend hash symbol
+        Move ("#" + sResult) to sResult
+
+        Function_Return sResult
+    End_Function
+
+    // START Create paths
+
+    // Draw a rectangle
+    //
+    // sId: ID of the item
+    // position: Position
+    // size: Size
+    // tCorner: Corner size
+    Procedure CreateRectangle String sId tWebPoint position tWebSize size Float fCornerRadius
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+
+        Move (ConvertToClient(typeNumber, size.fWidth)) to asParams[2]
+        Move (ConvertToClient(typeNumber, size.fHeight)) to asParams[3]
+
+        // Optional corner size
+        If (num_arguments > 3) Begin
+            Move fCornerRadius to asParams[4]
+        End
+
+        Send AddInstr sId "create-rectangle" asParams
+    End_Procedure
+
+    // Draw a circle
+    //
+    // sId: ID of the item
+    // centerPosition: The center position
+    // fRadius: Radius of the circle
+    Procedure CreateCircle String sId tWebPoint centerPosition Float fRadius
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, centerPosition.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, centerPosition.fY)) to asParams[1]
+        Move (ConvertToClient(typeNumber, fRadius)) to asParams[2]
+
+        Send AddInstr sId "create-circle" asParams
+    End_Procedure
+
+    // Draw an ellipse
+    //
+    // sId: ID of the item
+    // centerPosition: Top left position of the ellipse
+    // size: Size of the ellipse
+    Procedure CreateEllipse String sId tWebPoint centerPosition tWebSize size
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, centerPosition.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, centerPosition.fY)) to asParams[1]
+
+        Move (ConvertToClient(typeNumber, size.fWidth))  to asParams[2]
+        Move (ConvertToClient(typeNumber, size.fHeight)) to asParams[3]
+
+        Send AddInstr sId "create-ellipse" asParams
+    End_Procedure
+
+    // Start drawing a path
+    //
+    // sId: ID of the item
+    Procedure CreatePath String sId
+        Send AddInstr sId "create-path"
+    End_Procedure
+    
+    // Create a line from two points
+    //
+    // sId: ID of the item
+    // firstPosition: The first position of the line
+    // secondPosition: The second position of the line
+    Procedure CreateLine String sId tWebPoint firstPosition tWebPoint secondPosition
+        String[] asParams
+        
+        Move (ConvertToClient(typeNumber, firstPosition.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, firstPosition.fY)) to asParams[1]
+        
+        Move (ConvertToClient(typeNumber, secondPosition.fX)) to asParams[2]
+        Move (ConvertToClient(typeNumber, secondPosition.fY)) to asParams[3]
+        
+        Send AddInstr sId "create-line" asParams
+    End_Procedure
+
+    // Draw text
+    //
+    // sId: ID of the item
+    // tPosition: The position of the item
+    // sContent: The text content
+    // sFontFamily: The Font family
+    // fFontSize: The size of the font
+    // eJustification: Optional, The justification of the text, see wdFontJustification
+    // sFontWeight: Optional, The amount of weight of a font in as a CSS property
+    // sTextDecoration: Optional, the type of decoration used for text. For example, underline and overline.
+    Procedure CreateText String sId tWebPoint position String sContent String sFontFamily Float fFontSize Integer eJustification String sFontWeight String sTextDecoration
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+        Move sContent to asParams[2]
+        Move sFontFamily to asParams[3]
+        Move (ConvertToClient(typeNumber, fFontSize)) to asParams[4]
+
+        If (num_arguments > 5) Begin
+            Move eJustification to asParams[5]
+        End
+
+        If (num_arguments > 6) Begin
+            Move sFontWeight to asParams[6]
+        End
+        
+        If (num_arguments > 7) Begin
+            Move sTextDecoration to asParams[7]
+        End
+
+        Send AddInstr sId "create-text" asParams
+    End_Procedure
+
+    // END Create paths
+
+    // START Create Raster/SVG
+
+    // Put an image on the drawing
+    //
+    // sId: ID of the item
+    // sPath: Path to the image file, relative to the AppHtml folder
+    // firstPosition: First position of the image. This will be the center position
+    //                if secondPosition is not filled in
+    // secondPosition: Optional, The second point of the image. It will scale the image
+    //                 between the two points.
+    Procedure CreateImage String sId String sPath tWebPoint firstPosition tWebPoint secondPosition
+        String[] asParams
+
+        Move sPath to asParams[0]
+
+        Move (ConvertToClient(typeNumber, firstPosition.fX)) to asParams[1]
+        Move (ConvertToClient(typeNumber, firstPosition.fY)) to asParams[2]
+
+        If (num_arguments > 3) Begin
+            Move (ConvertToClient(typeNumber, secondPosition.fX)) to asParams[3]
+            Move (ConvertToClient(typeNumber, secondPosition.fY)) to asParams[4]
+        End
+
+        Send AddInstr sId "create-image" asParams
+    End_Procedure
+
+    // Put an SVG on the drawing
+    //
+    // sId: ID of the item
+    // sPath: Path to the image file, relative to the AppHtml folder
+    // firstPosition: First position of the image. This will be the center position
+    //                if secondPosition is not filled in
+    // secondPosition: Optional, The second point of the image. It will scale the image
+    //                 between the two points.
+    Procedure CreateSVG String sId String sPath tWebPoint firstPosition tWebPoint secondPosition
+        String[] asParams
+
+        Move sPath to asParams[0]
+
+        Move (ConvertToClient(typeNumber, firstPosition.fX)) to asParams[1]
+        Move (ConvertToClient(typeNumber, firstPosition.fY)) to asParams[2]
+
+        If (num_arguments > 3) Begin
+            Move secondPosition.fX to asParams[3]
+            Move secondPosition.fY to asParams[4]
+        End
+
+        Send AddInstr sId "create-svg" asParams
+    End_Procedure
+
+    // END Create Raster/SVG
+
+    // START Groupings
+
+    // Create a new layer
+    //
+    // sId: ID of the layer
+    Procedure CreateLayer String sId
+        Send AddInstr sId "create-layer"
+    End_Procedure
+
+    // Stop the layer creation of an id
+    //
+    // sId: ID of the layer
+    Procedure EndCreateLayer String sId
+        Send AddInstr sId "end-create-layer"
+    End_Procedure
+
+    // Create a new group
+    //
+    // sId: ID of the group
+    Procedure CreateGroup String sId
+        Send AddInstr sId "create-group"
+    End_Procedure
+
+    // Stop the group creation
+    //
+    // sId: ID of the group
+    Procedure EndCreateGroup String sId
+        Send AddInstr sId "end-create-group"
+    End_Procedure
+
+    // END Groupings
+
+    // Delete an item from the drawing
+    //
+    // sId: ID of the item
+    Procedure DeleteItem String sId
+        Send AddInstr sId "delete-item"
+    End_Procedure
+
+    // START Draw instructions
+
+    // Add a point to a path
+    //
+    // sId: ID of the item
+    // position: Position of the point
+    Procedure PathAdd String sId tWebPoint position
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+
+        Send AddInstr sId "add" asParams
+    End_Procedure
+
+    // Create a new subpath
+    //
+    // sId: ID of the item
+    // position: Position of the point
+    Procedure MoveTo String sId tWebPoint position
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+
+        Send AddInstr sId "moveTo" asParams
+    End_Procedure
+
+    // Create a line from the previous point
+    //
+    // sId: ID of the item
+    // position: Position of the point
+    Procedure LineTo String sId tWebPoint position
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+
+        Send AddInstr sId "lineTo" asParams
+    End_Procedure
+
+    // Create a curved line between two points
+    //
+    // sId: ID of the item
+    // troughPoint: The point where the angle leans towards
+    // toPoint: The point the line should end
+    Procedure QuadraticCurveTo String sId tWebPoint troughPoint tWebPoint toPoint
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, troughPoint.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, troughPoint.fY)) to asParams[1]
+        Move (ConvertToClient(typeNumber, toPoint.fX)) to asParams[2]
+        Move (ConvertToClient(typeNumber, toPoint.fY)) to asParams[3]
+
+        Send AddInstr sId "quadraticCurveTo" asParams
+    End_Procedure
+
+    // Close a path
+    //
+    // sId: ID of the item
+    Procedure ClosePath String sId
+        Send AddInstr sId "closePath"
+    End_Procedure
+
+    // END Draw instructions
+
+    // START Stroke style instructions
+
+    // Set the width of a stroke
+    //
+    // sId: ID of the item
+    // fWidth: Width of the stroke
+    Procedure StrokeWidth String sId Float fWidth
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, fWidth)) to asParams[0]
+
+        Send AddInstr sId "strokeWidth" asParams
+    End_Procedure
+
+    // Set the color of the stroke as CSS value
+    //
+    // sId: ID of the item
+    // sColor: CSS color of the stroke
+    Procedure StrokeColor String sId String sColor
+        String[] asParams
+
+        Move sColor to asParams[0]
+
+        Send AddInstr sId "strokeColor" asParams
+    End_Procedure
+
+    // Set the type of stroke cap
+    //
+    // sId: ID of the item
+    // eStrokeCap: Type of storke cap, see wdStrokeCap
+    Procedure StrokeCap String sId Integer eStrokeCap
+        String[] asParams
+
+        Move eStrokeCap to asParams[0]
+
+        Send AddInstr sId "storkeCap" asParams
+    End_Procedure
+
+    // Set the type of stroke join
+    //
+    // sId: ID of the item
+    // eStrokeJoin: Type of stroke join, see wdStrokeJoin
+    Procedure StrokeJoin String sId Integer eStrokeJoin
+        String[] asParams
+
+        Move eStrokeJoin to asParams[0]
+
+        Send AddInstr sId "strokeJoin" asParams
+    End_Procedure
+
+    // Set the offset between dashes
+    //
+    // sId: ID of the item
+    // fOffset: The amount of offset
+    Procedure DashOffset String sId Float fOffset
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, fOffset)) to asParams[0]
+
+        Send AddInstr sId "dashOffset" asParams
+    End_Procedure
+    
+    // Set dashes between strokes
+    //
+    // sId: ID of the item
+    // iLineDistance: The length of the line, incase iWhitespaceDistance isnt passed this also determines the size of the blank space
+    // iWhitespaceDistance: The length of the whitespace inbetween the line
+    Procedure StrokeDashes String sId Integer iLineDistance Integer iWhitespaceDistance
+        String[] asParams
+        
+        Move iLineDistance to asParams[0]
+        
+        If (num_arguments > 2) Begin
+            Move iWhitespaceDistance to asParams[1]
+        End
+        
+        Send AddInstr sId "strokeDashes" asParams
+    End_Procedure
+
+    // END Stroke style instructions
+
+    // START Fill style instructions
+
+    // Set the fill color of the item
+    //
+    // sId: ID of the item
+    // sColor: CSS color of the fill
+    Procedure FillColor String sId String sColor
+        String[] asParams
+
+        Move sColor to asParams[0]
+
+        Send AddInstr sId "fillColor" asParams
+    End_Procedure
+
+    // END Fill stype instructions
+
+    // START Shadow style instructions
+
+    // Set the color of the shadow
+    //
+    // sId: ID of the item
+    // sColor The color of the shadow as hex
+    Procedure ShadowColor String sId String sColor
+        String[] asParams
+
+        Move sColor to asParams[0]
+
+        Send AddInstr sId "shadowColor" asParams
+    End_Procedure
+
+    // Set the amount of shadow blur
+    //
+    // sId: ID of the item
+    // fBlurAmount: The amount of blur
+    Procedure ShadowBlur String sId Float fBlurAmount
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, fBlurAmount)) to asParams[0]
+
+        Send AddInstr sId "shadowBlur" asParams
+    End_Procedure
+
+    // Set the offset of the shadow
+    //
+    // sId: ID of the item
+    // offset: The offset of the shadow
+    Procedure ShadowOffset String sId tWebPoint offset
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, offset.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, offset.fY)) to asParams[1]
+
+        Send AddInstr sId "shadowOffset" asParams
+    End_Procedure
+
+    // END Shadow style instrucions
+
+    // START Text style instructions
+
+    // Set the font family of the text
+    //
+    // sId: ID of the item
+    // sFontFamily: The name of the font family
+    Procedure FontFamily String sId String sFontFamily
+        String[] asParams
+
+        Move sFontFamily to asParams[0]
+
+        Send AddInstr sId "fontFamily" asParams
+    End_Procedure
+
+    // Set the size of the font
+    //
+    // sId: ID of the item
+    // fSize: The size of the font
+    Procedure FontSize String sId Float fSize
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, fSize)) to asParams[0]
+
+        Send AddInstr sId "fontSize" asParams
+    End_Procedure
+
+    // Set the amount of weight of the font
+    //
+    // sId: ID of the item
+    // sFontWeight: The amount of weight
+    Procedure FontWeight String sId String sFontWeight
+        String[] asParams
+
+        Move sFontWeight to asParams[0]
+
+        Send AddInstr sId "fontWeight" asParams
+    End_Procedure
+    
+    Procedure TextDecoration String sId String sTextDecoration
+        String[] asParams
+        
+        Move sTextDecoration to asParams[0]
+        
+        Send AddInstr sId "textDecoration" asParams
+    End_Procedure
+
+    // Set the justification of the font
+    //
+    // sId: ID of the item
+    // eJustification: Set the justification of the font, see wdFontJustification
+    Procedure FontJustification String sId Integer eJustification
+        String[] asParams
+
+        Move eJustification to asParams[0]
+
+        Send AddInstr sId "fontJustification" asParams
+    End_Procedure
+    
+    // Set the content of the text
+    //
+    // sId: ID of the item
+    // sContent: The content of the text
+    Procedure TextContent String sId String sContent
+        String[] asParams
+
+        Move sContent to asParams[0]
+
+        Send AddInstr sId "textContent" asParams
+    End_Procedure
+
+    // END Text style instructions
+
+    // START Positioning
+
+    // Set the position of the item
+    //
+    // sId: ID of the item
+    // position: The position of the item
+    Procedure Position String sId tWebPoint position
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, position.fX)) to asParams[0]
+        Move (ConvertToClient(typeNumber, position.fY)) to asParams[1]
+
+        Send AddInstr sId "position" asParams
+    End_Procedure
+
+    // Set the rotation of the item
+    //
+    // sId: ID of the item
+    // fAngle: The rotation angle in degrees, clockwise. A negative number will make the rotation go counterclockwise
+    // bRotateInPlace: Determines if the item should rotate on its current spot. If this is false it will rotate around the center point of the canvas/group it is in.
+    Procedure Rotation String sId Float fAngle Boolean bRotateInPlace
+        String[] asParams
+        
+        // Restrict angle to 360
+        // If it goes over, return the remainder
+        Move (Mod(fAngle, 360)) to fAngle
+
+        Move fAngle to asParams[0]
+        
+        If (num_arguments > 2) Begin
+            Move bRotateInPlace to asParams[1]
+        End
+
+        Send AddInstr sId "rotation" asParams
+    End_Procedure
+
+    // Set the scale of the item
+    //
+    // sId: ID of the item
+    // fScale: The scale of the item. A scale of 1 is 100%. A scale of 1.5 is 150% of the original size.
+    Procedure Scaling String sId Float fScale
+        String[] asParams
+        
+        Move (ConvertToClient(typeNumber, fScale)) to asParams[0]
+        Move (ConvertToClient(typeNumber, fScale)) to asParams[1]
+
+        Send AddInstr sId "scaling" asParams
+    End_Procedure
+
+    // Set the scale of the item both vertially and horizontally
+    //
+    // sId: ID of the item
+    // scale: The horizontal and vertical scale. A scale of 1 is 100%. A scale of 1.5 is 150% of the original size.
+    Procedure ScalingHV String sId tWebSize scale
+        String[] asParams
+
+        Move (ConvertToClient(typeNumber, scale.fWidth)) to asParams[0]
+        Move (ConvertToClient(typeNumber, scale.fHeight)) to asParams[1]
+
+        Send AddInstr sId "scaling" asParams
+    End_Procedure
+
+    // END Positioning
+
+    // Set the visibility of an item
+    //
+    // sId: ID of the item
+    // bVisible: The visibility
+    Procedure SetVisibility String sId Boolean bVisible
+        String[] asParams
+
+        Move bVisible to asParams[0]
+
+        Send AddInstr sId "set-visibility" asParams
+    End_Procedure
+
+    // Toggle the visiblilty of an item
+    //
+    // sId: ID of the item
+    Procedure ToggleVisibility String sId
+        Send AddInstr sId "toggle-visibility"
+    End_Procedure
+    
+    Procedure EnableInteraction String sId Integer eInteraction
+        String[] asParams
+        
+        Move eInteraction to asParams[0]
+        
+        Send AddInstr sId "enable-interaction" asParams
+    End_Procedure
+    
+    Procedure DisableInteraction String sId Integer eInteraction
+        String[] asParams
+        
+        Move eInteraction to asParams[0]
+        
+        Send AddInstr sId "disable-interaction" asParams
+    End_Procedure
+    
+    // Creates a tooltip to show when hovering over objects
+    //
+    // sId: ID of the item
+    // sTooltip: the information the tooltip should display when hovered
+    Procedure AddTooltip String sId String sTooltip
+        String[] asParams
+        
+        Move sTooltip to asParams[0]
+        
+        Send AddInstr sId "add-tooltip" asParams
+    End_Procedure
+    
+    Procedure AddSvgAttribute String sId String sAttributeName String sAttributeValue
+        String[] asParams
+        
+        Move sAttributeName to asParams[0]
+        Move sAttributeValue to asParams[1]
+        
+        Send AddInstr sId "add-svg-attribute" asParams
+    End_Procedure
+
+    // START Client events
+    
+    { Visibility = Private }
+    Procedure ReceiveEventData String sEventName String sId
+        Handle hoJson
+        tWebDrawingEventData eventData
+
+        Get phoActionJsonData to hoJson
+        Get JsonToDataType of hoJson to eventData
+        
+        Case Begin
+            Case (sEventName = "HandleMouseClick")
+                Send OnMouseClick sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseDoubleClick")
+                Send OnMouseDoubleClick sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseUp")
+                Send OnMouseUp sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseDown")
+                Send OnMouseDown sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseDrag")
+                Send OnMouseDrag sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseEnter")
+                Send OnMouseEnter sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseLeave")
+                Send OnMouseMove sId eventData
+                Case Break
+            Case (sEventName = "HandleMouseMove")
+                Send OnMouseMove sId eventData
+                Case Break
+        Case End
+        
+        Send UpdateDrawing
+    End_Procedure
+
+    { Visibility = Private }
+    Procedure HandleResize
+        Handle hoJson
+        tWebDrawingResizetData resizeEventData
+
+        Get phoActionJsonData to hoJson
+        Get JsonToDataType of hoJson to resizeEventData
+
+        Send OnResize resizeEventData
+    End_Procedure
+
+    // END Client events
+
+    // START Event handlers
+
+    // Receive event when the mouse has been pressed down
+    //
+    // sId: ID of the item clicked
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseDown String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse has been released
+    //
+    // sId: ID of the item released
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseUp String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse has entered the shape
+    //
+    // sId: ID of the item entered
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseEnter String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse has left the shape
+    //
+    // sId: ID of the item left
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseLeave String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse moved over a shape
+    //
+    // sId: ID of the item moved over
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseMove String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse has clicked on a shape
+    //
+    // sId: ID of the item clicked
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseClick String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse has double clicked on a shape
+    //
+    // sId: ID of the item double clicked
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseDoubleClick String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the mouse dragged a shape
+    //
+    // sId: ID of the item dragged
+    // eventData: The event data
+    { MethodType = Event }
+    Procedure OnMouseDrag String sId tWebDrawingEventData eventData
+        //
+    End_Procedure
+
+    // Receive event when the drawing has been resized
+    //
+    // resizeEventData: The Resize event data
+    { MethodType = Event }
+    Procedure OnResize tWebDrawingResizetData resizeEventData
+        //
+    End_Procedure
+    
+    // Receive image data
+    //
+    // sDataBase64: PNG Data in Base64
+    { MethodType = Event }
+    Procedure OnReceiveImage String sDataBase64
+        //
+    End_Procedure
+    
+    // Receive the JSON data of the canvas
+    //
+    // sJsonData: The data as a Json string
+    { MethodType = Event }
+    Procedure OnReceiveJsonExport String sJsonData
+        //
+    End_Procedure
+
+    // END Event handlers
+
+    Procedure UpdateDrawing
+        String[] asParams
+        tWebDrawingInstr[] tInstructions tEmptyInstructions
+        
+        If (piInstructionSlot(Self) >= 0) Begin
+            Send ClientAction "updateInstructions" asParams gtWebDrawing_Instruction[piInstructionSlot(Self)]
+            Move tEmptyInstructions to gtWebDrawing_Instruction[piInstructionSlot(Self)]
+            Set piInstructionSlot to -1
+        End
+    End_Procedure
+    
+    Procedure ExportDrawingPNG
+        Send ClientAction "exportDrawingToImage"
+    End_Procedure
+    
+    Procedure ExportDrawingJsonData
+        Send ClientAction "exportDrawingDataToJSON"
+    End_Procedure
+    
+    Procedure ImportDrawingJsonData String sJsonData
+        String[] asInputData
+        Move sJsonData to asInputData[0]
+        
+        Send ClientAction "importDrawingFromJSON" asInputData
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+        WebPublishProcedure ReceiveEventData
+
+        WebPublishProcedure HandleResize
+        
+        WebPublishProcedure OnReceiveImage
+        WebPublishProcedure OnReceiveJsonExport
+    End_Procedure
+
+End_Class

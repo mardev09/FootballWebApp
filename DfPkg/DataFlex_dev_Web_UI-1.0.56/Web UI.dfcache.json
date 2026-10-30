@@ -1,0 +1,22 @@
+{
+    "install": [
+        {
+            "hash": "RmO4axSg0PlEZNITUKvy+wnBkmHncmsfbjcMfVnQCpU=",
+            "origin": "AppHtml/WebUI/df-min.js.map"
+        },
+        {
+            "hash": "pcEoDOmoN5L5kWgLfTJbDKR+WyYEdP0T9r9FDPvVI5s=",
+            "origin": "AppHtml/WebUI/df-debug.js"
+        },
+        {
+            "hash": "F83ZSHBZq3o8K+e1Cm+2FUmBpxdxVr1YoZOqkliB0no=",
+            "origin": "AppHtml/WebUI/system.css"
+        },
+        {
+            "hash": "1rzVAlPOFJ9MNUrvIDtgaBAag/Ys7BL3jp6eUPecLi0=",
+            "origin": "AppHtml/WebUI/df-min.js"
+        }
+    ],
+    "upstream": "https://packages.dataflex.dev/api/v1/packages/DataFlex-dev/Web%20UI",
+    "version": 1
+}

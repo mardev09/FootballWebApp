@@ -1,0 +1,34 @@
+﻿Use cWebForm.pkg
+
+{ HelpTopic=cWebDateForm }
+{ DesignerJSClass=df.WebDateForm }
+{ Navigable="" }
+Class cWebDateForm is a cWebForm
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowWeekNr True
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbShowToday True
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Integer piStartWeekAt 1 // 1=monday, 0=sunday
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbAutoShow False
+        { WebProperty=Client } 
+        { Category="Appearance" } 
+        Property Boolean pbHtml5NativeOnMobile True // If true the HTML5 input type=date element will be used to make the prompt button show the native date picker instead of the regular desktop version
+        { WebProperty=Client }
+        Property Boolean pbModal False
+        Set peDataType to typeDate
+        Set pbPromptButton to True 
+        
+        Set psJSClass to "df.WebDateForm"
+    End_Procedure
+    
+End_Class

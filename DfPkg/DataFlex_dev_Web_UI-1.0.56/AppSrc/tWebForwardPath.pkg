@@ -1,0 +1,10 @@
+Use UI
+
+Struct tWebForwardPath
+    String sLCKey
+    String sKey
+    Integer eNavMode
+    Handle hoInvokingObject
+    
+    Handle hoForwardView
+End_Struct

@@ -1,0 +1,159 @@
+﻿Use cWebObject.pkg
+
+// Wrapper class for the navigator.geolocation browser API that supports single location requests 
+// and continuous tracking.
+Class cWebGeoLocation is a cWebObject
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        //  Control automatic tracking
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoStart False       //  If true the tracker starts automatically when the view is shown. When used outside of a view it starts on initialization.
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbAutoStop True        //  If true the tracker stops automatically when a view is hidden.
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbTracking False       //  Reflects wether tracking is on or not
+        
+        //  Properties reflacting last captured position
+        { WebProperty=Client DesignTime=False }
+        Property Number pnLatitude 0
+        { WebProperty=Client DesignTime=False }
+        Property Number pnLongitude 0
+        { WebProperty=Client DesignTime=False }
+        Property Number pnAccuracy 0
+        { WebProperty=Client DesignTime=False }
+        Property Number pnSpeed 0
+        { WebProperty=Client DesignTime=False }
+        Property Number pnHeading 0
+        
+        //  Configuration options
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbEnableHighAccuracy False
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer piMaxTimeout 0
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer piMinTimeout 200   //  Minimal number of milliseconds between OnLocationChange events
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Integer piMaxAge 0
+    
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnLocationChange True
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnLocationChange ""
+
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnError True
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnError ""
+        
+        Set psJSClass to "df.WebGeoLocation"
+    End_Procedure
+    
+    // Performs a single location request (asynchronous). The passed callback message should be
+    // published using WebPublishProcedure and is expected to have the following signature:
+    //  Procedure GeoQuery_Callback Integer iErr Number nLatitude Number nLongitude Number nAccuracy Number nSpeed Number nHeading
+    //
+    // Example usage:
+    //  Procedure GeoQuery_Callback Integer iErr Number nLatitude Number nLongitude Number nAccuracy Number nSpeed Number nHeading
+    //      If (not(iErr)) Begin
+    //          Send ShowInfoBox (SFormat("Lat: %1 Long: %2 Acc: %3 Speed: %4 Head: %5", nLatitude, nLongitude, nAccuracy, nSpeed, nHeading))
+    //      End
+    //  End_Procedure
+    //  
+    //  WebPublishProcedure GeoQuery_Callback
+    //  
+    //  Procedure OnClick
+    //      Send QueryLocation of oWebGeoLocation1 (RefProc(GeoQuery_Callback)) Self
+    //  End_Procedure
+    Procedure QueryLocation Handle hmCallbackMsg Handle hoCallbackObject
+        String[] aParams
+        
+        
+        Get WebMethodName of hoCallbackObject hmCallbackMsg to aParams[0]
+        Get WebObjectName of hoCallbackObject to aParams[1]
+        
+        Send ClientAction "queryLocation" aParams 
+    End_Procedure
+    
+    
+    { Visibility=Private }    
+    Procedure QueryLocation_Callback String sCallbackMsg String sCallbackObj Integer iErr String sLatitude String sLongitude String sAccuracy String sSpeed String sHeading
+        Number nLatitude nLongitude nAccuracy nSpeed nHeading
+        Handle hoCallback hmCallback
+        
+        //  Values are passed in fixed format so convert without localization
+        CvtLocalization Off
+        Move sLatitude to nLatitude
+        Move sLongitude to nLongitude
+        Move sAccuracy to nAccuracy
+        Move sSpeed to nSpeed
+        Move sHeading to nHeading
+        CvtLocalization On
+        
+        Get WebObjectByName sCallbackObj to hoCallback
+        If (hoCallback <> C_WebUnresolvedObject) Begin
+            Get WebMethodByName of hoCallback sCallbackMsg to hmCallback
+            
+            If (hmCallback <> C_WebUnresolvedObject) Begin
+                Send hmCallback of hoCallback iErr nLatitude nLongitude nAccuracy nSpeed nHeading
+            End
+        End
+    End_Procedure
+    
+    Procedure Start
+        WebSet pbTracking to True
+    End_Procedure
+    
+    Procedure Stop
+        WebSet pbTracking to False
+    End_Procedure
+
+    
+    { MethodType=Event }
+    Procedure OnLocationChange Number nLatitude Number nLongitude Number nAccuracy Number nSpeed Number nHeading
+    End_Procedure
+    
+    // Server Action
+    //
+    // Wraps the OnLocationChange and performs conversion of numeric values.
+    { Visibility=Private }
+    Procedure TriggerLocationChange String sLatitude String sLongitude String sAccuracy String sSpeed String sHeading
+        Number nLatitude nLongitude nAccuracy nSpeed nHeading
+        
+        CvtLocalization Off
+        Move sLatitude to nLatitude
+        Move sLongitude to nLongitude
+        Move sAccuracy to nAccuracy
+        Move sSpeed to nSpeed
+        Move sHeading to nHeading
+        CvtLocalization On
+        
+        Send OnLocationChange nLatitude nLongitude nAccuracy nSpeed nHeading
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnError Integer iCode String sMessage
+        Error DFERR_OPERATOR sMessage
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure QueryLocation_Callback
+        WebPublishProcedure TriggerLocationChange
+        WebPublishProcedure OnError
+    End_Procedure
+
+End_Class

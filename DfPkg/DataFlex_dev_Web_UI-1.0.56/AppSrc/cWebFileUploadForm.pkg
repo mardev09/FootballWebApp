@@ -1,0 +1,114 @@
+﻿Use cWebBaseFileUpload.pkg
+Use seq_chnl.pkg
+
+Enum_List
+    Define ciUploadStateEmpty
+    Define ciUploadStateDisplay
+    Define ciUploadStateSelected
+    Define ciUploadStateUploading
+    Define ciUploadStateFinished
+End_Enum_List
+
+{ OverrideProperty=pbShowDialog InitialValue=False }
+{ HelpTopic=cWebFileUploadForm }
+{ DesignerJSClass=df.WebFileUploadForm }
+Class cWebFileUploadForm is a cWebBaseFileUpload
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property Boolean pbAutoStart True
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbShowMime False
+        
+        { WebProperty=Client } 
+        { DesignTime="False" }
+        Property Integer peState ciUploadStateEmpty
+        
+        { WebProperty=Client }
+        { DesignTime="False" } 
+        Property String psFileName ""
+        { WebProperty=Client }
+        { DesignTime="False" } 
+        Property BigInt piFileSize 0
+        { WebProperty=Client }
+        { DesignTime="False" } 
+        Property String psFileMime ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnFileClick False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnFileClick ""
+        
+        Set pbShowDialog to False
+        Set psJSClass to "df.WebFileUploadForm"
+    End_Procedure
+    
+    Procedure DisplayExistingFile String sPath
+        Boolean bExists
+        Integer iChnl iSize iPos
+        String sFileName
+        
+        Move 0 to iSize
+        
+        File_Exist sPath bExists
+        
+        Move (RightPos("\", sPath)) to iPos
+        Move (Right(sPath, Length(sPath) - iPos)) to sFileName
+        
+        
+        If (bExists) Begin
+            //  Determine file size
+            Move (Seq_New_Channel()) to iChnl
+            If (iChnl >= 0) Begin
+                Direct_Input channel iChnl sPath
+                Get_Channel_Size iChnl to iSize
+                Close_Input iChnl
+                Send Seq_Release_Channel iChnl
+            End
+            Else If (iChnl = -1) Begin
+                Error DFErr_Program "I/O Channel Error"
+            End
+            Else If (iChnl = -2) Begin
+                Error DFErr_Program "No I/O Channel Available"
+            End
+        End
+        
+        WebSet psFileName to sFileName
+        WebSet piFileSize to iSize
+        WebSet psFileMime to ""
+        WebSet peState to ciUploadStateDisplay
+        
+        Send ClientAction "updateDetails"
+    End_Procedure
+    
+    Procedure StartUpload
+        Send ClientAction "startUpload"
+    End_Procedure
+    
+    Procedure ClearDisplay
+        WebSet psFileName to ""
+        WebSet piFileSize to 0
+        WebSet psFileMime to ""
+        WebSet peState to ciUploadStateEmpty
+        
+        Send ClientAction "updateDetails"
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnFileClick
+        
+    End_Procedure
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnFileClick
+    End_Procedure
+
+End_Class

@@ -1,0 +1,7 @@
+﻿// used to pass data to the breadcrumb client object
+
+Struct tWebBreadcrumbItem
+    String sViewName         // name of the view object
+    String sCrumbCaption     // caption to show in the breadcrumb
+    String sHeadCaption      // caption to show in the header
+End_Struct

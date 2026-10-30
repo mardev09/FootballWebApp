@@ -1,0 +1,18 @@
+﻿Use cWebToolbar.pkg
+
+{ DesignerJSClass=df.WebActionBar }
+Class cWebActionBar is a cWebToolBar
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psSubItemCaption C_$More
+        
+        Set psGroupName to "MainActions"    //  We set the default groupname here so it doesn't need to be set when using the action bar for its main purpose.
+        
+        Set psJSClass to "df.WebActionBar"
+    End_Procedure
+
+End_Class

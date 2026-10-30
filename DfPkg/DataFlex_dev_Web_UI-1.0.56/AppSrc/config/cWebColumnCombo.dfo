@@ -1,0 +1,4 @@
+Object
+    Set psCaption to "combo"
+    Set piWidth to 50
+End_Object

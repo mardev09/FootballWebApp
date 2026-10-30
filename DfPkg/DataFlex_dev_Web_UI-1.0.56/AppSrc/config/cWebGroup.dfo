@@ -1,0 +1,4 @@
+Object
+    Set psCaption to "Caption"
+    Set piColumnCount to 12   
+End_Object

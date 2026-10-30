@@ -1,0 +1,290 @@
+﻿Use VdfBase.pkg
+Use cFilterExpression_mixin.pkg
+
+/*
+Search helpers for hybrid list behavior.
+*/
+
+Struct tWebListFilterState
+    Boolean bDisregardFilter
+End_Struct
+
+Class cWebListFilter_mixin is a Mixin
+    Import_Class_Protocol cFilterExpression_mixin
+
+    { Visibility=Private }
+    Procedure Define_cWebListFilter_mixin
+        { WebProperty=Server }
+        { Category="Behavior" }
+        { Visibility=Private }
+        Property String psSearchTerm ""
+        { WebProperty=Server }
+        { Category="Behavior" }
+        Property Boolean pbSearchHiddenColumns False
+        { Visibility=Private }
+        Property Boolean pbSearchSQLFilterSet False   // Private: true while this list has temporarily changed psSQLFilter for search.
+        { Visibility=Private }
+        Property Handle phoSearchSQLFilterDD 0
+        { Visibility=Private }
+        Property String psSearchSQLOrigFilter ""
+        { Visibility=Private }
+        Property Boolean pbSearchSQLOrigActive False
+    End_Procedure
+
+    { MethodType=Property }
+    Procedure Set psFilter String sFilter
+        Handle hoDD
+        Integer eDbGridType
+        Boolean bDataAware
+        Variant vFilterState
+
+        WebSet psSearchTerm to sFilter
+
+        Get pbDataAware to bDataAware
+        Get peDbGridType to eDbGridType
+
+        If (bDataAware and eDbGridType <> gtManual) Begin
+            Get Server to hoDD
+            Send ApplyFilter hoDD (&vFilterState)
+            Send FindFromTop
+            Send DisregardFilter vFilterState
+        End
+        Else Begin
+            Send GridRefresh
+        End
+    End_Procedure
+
+    { MethodType=Property }
+    Function psFilter Returns String
+        String sSearchTerm
+        WebGet psSearchTerm to sSearchTerm
+        Function_Return sSearchTerm
+    End_Function
+
+    { Visibility=Private }
+    Procedure ClearFilter
+        tWebListFilterState FilterState
+        Variant vFilterState
+
+        WebSet psSearchTerm to ""
+
+        Move True to FilterState.bDisregardFilter
+        Move FilterState to vFilterState
+        Send DisregardFilter vFilterState
+    End_Procedure
+
+    { Visibility=Private }
+    Function OnCheckCustomConstrains Returns Boolean
+        Integer iColumn iField iFile
+        String sValue sFieldValue
+        Boolean bSearchHiddenColumns bHidden
+        Handle[] ahoColumns
+
+        WebGet psSearchTerm to sValue
+        If (sValue = "") Function_Return True
+
+        Get phoColumnObjects to ahoColumns
+        WebGet pbSearchHiddenColumns to bSearchHiddenColumns
+
+        Move (Lowercase(sValue)) to sValue
+        
+        While (iColumn < SizeOfArray(ahoColumns))
+            WebGet pbHidden of ahoColumns[iColumn] to bHidden
+            If (bSearchHiddenColumns or not(bHidden)) Begin
+                Get Data_File of ahoColumns[iColumn] to iFile
+                Get Data_Field of ahoColumns[iColumn] to iField
+
+                If (iField) Begin
+                    Get_Field_Value iFile iField to sFieldValue
+                    If (Lowercase(sFieldValue) contains sValue) Begin
+                        Move (SizeOfArray(ahoColumns)) to iColumn
+                        Function_Return True
+                    End
+                End
+            End
+
+            Increment iColumn
+        Loop
+
+        Function_Return False
+    End_Function
+
+    { Visibility=Private }
+    Function BuildFilter Returns String
+        Integer iColumn iField iFile
+        String sSearchValue sFilter sColumnFilter
+        Boolean bSearchHiddenColumns bHidden
+        Handle hoReadingDD
+        Handle[] ahoColumns
+
+        WebGet psSearchTerm to sSearchValue
+        If (sSearchValue = "") Function_Return ""
+
+        Get ReadingServer to hoReadingDD
+        If (hoReadingDD = 0) Function_Return ""
+
+        Get phoColumnObjects to ahoColumns
+        WebGet pbSearchHiddenColumns to bSearchHiddenColumns
+
+        While (iColumn < SizeOfArray(ahoColumns))
+            WebGet pbHidden of ahoColumns[iColumn] to bHidden
+            If (bSearchHiddenColumns or not(bHidden)) Begin
+                Get Data_File of ahoColumns[iColumn] to iFile
+                Get Data_Field of ahoColumns[iColumn] to iField
+
+                If (iFile <> 0 and iField <> 0) Begin
+                    Get BuildFilterExpressionForField hoReadingDD iFile iField sSearchValue to sColumnFilter
+                    If (sColumnFilter <> "") Begin
+                        If (sFilter <> "") Begin
+                            Move (sFilter + " OR ") to sFilter
+                        End
+                        Move (sFilter + sColumnFilter) to sFilter
+                    End
+                End
+            End
+
+            Increment iColumn
+        Loop
+
+        If (sFilter <> "") Begin
+            Move ("(" + sFilter + ")") to sFilter
+        End
+
+        Function_Return sFilter
+    End_Function
+
+    { Visibility=Private }
+    Procedure DisregardFilter Variant vFilterState
+        tWebListFilterState FilterState
+        Handle hoDD
+        String sOrigFilter
+        Boolean bOrigActive bFilterSet
+
+        Move vFilterState to FilterState
+        If (not(FilterState.bDisregardFilter)) Begin
+            Procedure_Return
+        End
+
+        Get pbSearchSQLFilterSet to bFilterSet
+        If (not(bFilterSet)) Begin
+            Procedure_Return
+        End
+
+        Get phoSearchSQLFilterDD to hoDD
+        If (hoDD <> 0) Begin
+            Get psSearchSQLOrigFilter to sOrigFilter
+            Get pbSearchSQLOrigActive to bOrigActive
+
+            Set psSQLFilter of hoDD to sOrigFilter
+            Set pbUseDDSqlFilters of hoDD to bOrigActive
+        End
+
+        Set psSearchSQLOrigFilter to ""
+        Set pbSearchSQLOrigActive to False
+        Set phoSearchSQLFilterDD to 0
+        Set pbSearchSQLFilterSet to False
+
+        Send Rebuild_Constraints of hoDD
+    End_Procedure
+
+    { Visibility=Private }
+    Procedure ApplyFilter Handle hoDD Variant ByRef vFilterState
+        tWebListFilterState FilterState
+        Integer iColumn iFile iField
+        String sSearchValue sSearchFilter sColumnFilter sFilter sOrigFilter
+        Boolean bSearchHiddenColumns bHidden bOrigActive bFilterSet bSupportsSQL
+        Handle hoFilterDD
+        Handle[] ahoColumns
+
+        Move False to FilterState.bDisregardFilter
+        Move FilterState to vFilterState
+
+        WebGet psSearchTerm to sSearchValue
+        If (sSearchValue = "") Begin
+            Procedure_Return
+        End
+
+        If (hoDD = 0) Begin
+            Procedure_Return
+        End
+
+        Get SupportsSQLFilters of hoDD to bSupportsSQL
+        If (not(bSupportsSQL)) Begin
+            Procedure_Return
+        End
+
+        Get pbSearchSQLFilterSet to bFilterSet
+        If bFilterSet Begin
+            Get phoSearchSQLFilterDD to hoFilterDD
+            If (hoFilterDD = hoDD) Begin
+                Procedure_Return
+            End
+            Else Begin
+                Move True to FilterState.bDisregardFilter
+                Move FilterState to vFilterState
+                Send DisregardFilter vFilterState
+                Move False to FilterState.bDisregardFilter
+                Move FilterState to vFilterState
+            End
+        End
+
+        Get pbUseDDSqlFilters of hoDD to bOrigActive
+        Get psSQLFilter of hoDD to sOrigFilter
+
+        If (not(bOrigActive)) Begin
+            Procedure_Return
+        End
+
+        Get phoColumnObjects to ahoColumns
+        WebGet pbSearchHiddenColumns to bSearchHiddenColumns
+
+        While (iColumn < SizeOfArray(ahoColumns))
+            WebGet pbHidden of ahoColumns[iColumn] to bHidden
+            If (bSearchHiddenColumns or not(bHidden)) Begin
+                Get Data_File of ahoColumns[iColumn] to iFile
+                Get Data_Field of ahoColumns[iColumn] to iField
+
+                If (iFile <> 0 and iField <> 0) Begin
+                    Get BuildFilterExpressionForField hoDD iFile iField sSearchValue to sColumnFilter
+                    If (sColumnFilter <> "") Begin
+                        If (sSearchFilter <> "") Begin
+                            Move (sSearchFilter + " OR ") to sSearchFilter
+                        End
+                        Move (sSearchFilter + sColumnFilter) to sSearchFilter
+                    End
+                End
+            End
+
+            Increment iColumn
+        Loop
+
+        If (sSearchFilter <> "") Begin
+            Move ("(" + sSearchFilter + ")") to sSearchFilter
+        End
+        Else Begin
+            Procedure_Return
+        End
+
+        Move sSearchFilter to sFilter
+        If (sOrigFilter <> "") Begin
+            Get SQLStrAppend of hoDD sOrigFilter sSearchFilter to sFilter
+        End
+
+        If (sFilter = sOrigFilter) Begin
+            Procedure_Return
+        End
+
+        Set psSearchSQLOrigFilter to sOrigFilter
+        Set pbSearchSQLOrigActive to bOrigActive
+        Set phoSearchSQLFilterDD to hoDD
+        Set pbSearchSQLFilterSet to True
+
+        Set psSQLFilter of hoDD to sFilter
+        Set pbUseDDSqlFilters of hoDD to True
+        Move True to FilterState.bDisregardFilter
+        Move FilterState to vFilterState
+
+        Send Rebuild_Constraints of hoDD
+    End_Procedure
+
+End_Class

@@ -1,0 +1,13 @@
+Object
+
+    //  Register drag sources
+    // Send RegisterDragSource oList C_WebDragListRow
+    //  Register drop targets
+    // Send RegisterDropTarget oControl C_WebDropOnControl
+                
+    //  Handle drop event
+    Procedure OnDrop Handle hoDragSource Handle hoDropTarget WebDropPosition eDropPosition
+        // tWebListDragData listDragData
+        // Get DragData of hoDragSource to listDragData
+    End_Procedure
+End_Object

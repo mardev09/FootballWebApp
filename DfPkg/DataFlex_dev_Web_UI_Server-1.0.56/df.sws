@@ -1,0 +1,22 @@
+{
+    "dependencies": [
+        "DataFlex-dev/Web UI#1.0.56"
+    ],
+    "description": "Server Web UI Applications using Web Application Server.",
+    "df": 26.0,
+    "package": {
+        "df-max": 26.0,
+        "df-min": 26.0,
+        "icon": "Web UI Server.svg",
+        "includeFiles": [
+            "CHANGELOG.md"
+        ],
+        "license": "DocumentRef-DataFlex",
+        "licenseFile": "LICENSE",
+        "version": "1.0.56"
+    },
+    "paths": {
+        "fileList": "DummyFilelist.cfg"
+    },
+    "workspaceName": "Web UI Server"
+}

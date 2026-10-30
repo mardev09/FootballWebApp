@@ -1,0 +1,581 @@
+﻿Use tWebAdvSyncProp.pkg
+Use tWebSyncProps.pkg
+
+// Used for storing references to the properties of gaSyncProps that have changed during the
+// Ajax call.
+Struct tWebChangedProps
+    Boolean bContainsChanges    // True if the object represented by this struct references changed properties
+    Integer[] aiIndex           // Index of each changed property in gaSyncProps
+End_Struct
+
+
+Struct tWebAdvProp
+    String sO
+    String sP
+    Variant vV
+End_Struct
+
+// Used for storing non-scalar (advanced) synchronized properties during the AJAX Call. Next
+// to the tWebAdvSyncProp struct known by the client it also keeps track of 
+// changes and caches the deserialized value in a variant for repeative access.
+Struct tWebCacheAdvProp
+    Handle hoObj
+    tWebAdvSyncProp tSyncProp
+    tWebAdvProp tSvrProp    
+    Boolean bChanged
+    Boolean bDeserialized
+End_Struct
+
+
+// Sync Props Arrays
+
+Global_Variable tWebSyncProps[][] gaSyncProps   // This is the main web properties buffer.
+
+// gaSyncChangedProps: Changed properties. There is an array member for each object in 
+// gaSyncProps. If an Object has changed properties then the pbChanged flag is Set to True.
+Global_Variable tWebChangedProps[][] gaSyncChangedProps
+
+// gaSyncObjectHandles: This stores the object handle for each member of gaSyncProps. Used as an index
+// to gaSyncProps (and gaSyncChangedProps). C_WebUnresolvedObject is stored for an unresolved object handle.
+Global_Variable Handle[][] gaSyncObjectHandles
+
+// gaAdvSyncProps: This is the buffer for advanced web properties.
+Global_Variable tWebCacheAdvProp[][] gaAdvSyncProps
+
+
+// The basic web property handler implementation that has logic for storing and maintaining web 
+// properties in set of global variables. The global variables are used as an optimization as 
+// storing structs in web properties is inefficient in memory management. The subclasses 
+// (cWebServerPropHandler and cWebClientPropHandler) will actually store and load the web properties.
+
+{ ClassLibrary=WebApp }
+{ Visibility=Private }
+Class cWebBasePropHandler is a cObject
+    
+    Procedure Construct_Object
+        Integer iIndex
+        
+        Forward Send Construct_Object
+        
+        //  Reserve index in global stores
+        Move (SizeOfArray(gaSyncProps)) to iIndex
+        Move (ResizeArray(gaSyncProps, iIndex + 1)) to gaSyncProps
+        Move (ResizeArray(gaSyncChangedProps, iIndex + 1)) to gaSyncChangedProps
+        Move (ResizeArray(gaSyncObjectHandles, iIndex + 1)) to gaSyncObjectHandles
+        Move (ResizeArray(gaAdvSyncProps, iIndex + 1)) to gaAdvSyncProps
+        Property Integer piStoreIndex iIndex
+        
+        Property Boolean pbErrorObjNotFound True
+        
+        // Sync Props Arrays - Allocation Optimization Properties
+        // In order to optimize web properties we allocate in advance empty array 
+        // slots in gaSyncProps, gaSyncChangedProps and gaSyncObjectHandles.
+        
+        // piSize: This is a pointer to the last object in the gaSyncObjectHandles, gaSyncProps
+        // and gaSyncChangedProps arrays. When this value equals the size of the arrays then more space
+        // is allocated in these arrays.
+        Property Integer piSize 0
+        
+        // piCapacity: This is the actual size of the gaSyncObjectHandles, gaSyncProps and gaSyncChangedProps
+        // arrays. When piObjectCount equals this value, more space is allocated in these arrays.
+        Property Integer piCapacity 0
+        
+        // piGrowthFactor: This is the size of the next jump in size of the gaSyncObjectHandles, gaSyncProps
+        // and gaSyncChangedProps arrays. This value is used to double the size increase each time more space
+        // is allocated in the arrays.
+        Property Integer piGrowthFactor 0
+        
+        // pbActive: When False, all calls to get or set a web property are ignored.
+        // This ensures that web properties are only accessed during an AJAX call.
+        // Otherwise, attempting to access web properties outside an AJAX call can 
+        // corrupt the web properties system.
+        Property Boolean pbActive False
+        
+        Property Handle phoWebControlLocator 0
+        Property Handle phoWebHost C_WebUnresolvedObject
+    End_Procedure
+    
+    
+    //
+    // Adds the passed object to the global web properties arrays. It is assumed that the object is a cWebObject.
+    //
+    // Returns:
+    //      The object's index to the global sync props array.
+    { Visibility=Private }
+    Function AddObjectToSyncProps Handle hoObject Returns Integer
+        String sObjectName
+        Integer iStoreIndex iSize iCapacity iGrowthFactor iObjectIndex
+        
+        Move -1 to iObjectIndex
+        
+        If (hoObject > 0) Begin
+            Get piStoreIndex to iStoreIndex
+            Get piSize to iSize
+            Get piCapacity to iCapacity
+            Get piGrowthFactor to iGrowthFactor
+            Get WebObjectName of hoObject to sObjectName
+            
+            // Determine if we need to increase the array sizes....
+            If (iSize = iCapacity) Begin
+                Move (iGrowthFactor + iGrowthFactor) to iGrowthFactor    // double the growth factor
+                Move (iCapacity + iGrowthFactor) to iCapacity            // increase the capacity
+    
+                Set piCapacity to iCapacity
+                Set piGrowthFactor to iGrowthFactor
+                
+                Move (ResizeArray(gaSyncProps[iStoreIndex], iCapacity)) to gaSyncProps[iStoreIndex]
+                Move (ResizeArray(gaSyncObjectHandles[iStoreIndex], iCapacity)) to gaSyncObjectHandles[iStoreIndex]
+                Move (ResizeArray(gaSyncChangedProps[iStoreIndex], iCapacity)) to gaSyncChangedProps[iStoreIndex]
+            End
+            
+            // Add the passed object to gaSyncObjectHandles....
+            Set piSize       to (iSize + 1)
+            Move iSize       to iObjectIndex
+            Move hoObject    to gaSyncObjectHandles[iStoreIndex][iObjectIndex]
+            Move False       to gaSyncChangedProps[iStoreIndex][iObjectIndex].bContainsChanges    // False so far because we did not find the property yet
+            Move sObjectName to gaSyncProps[iStoreIndex][iObjectIndex].sO
+        End
+        
+        Function_Return iObjectIndex
+    End_Function
+    
+    //
+    // Returns the value for non-scalar (advanced) web properties. These are stored separate from
+    // the scalar web properties. It looks for the 'synchronized' value in the gaAdvSyncProps store.
+    //
+    // Params:
+    //      hoObject  - Is handle to the object which ownes the property.
+    //      hmGetter  - Is a handle to the property's getter message.
+    //      sPropName - Is the (case sensitive) property name.
+    // Returns:
+    //      The property value as a variant.
+    //
+    // Use the WebGet command instead of sending this message directly. hoObject must belong to the
+    // set of 'scoped views' in the CallAction otherwise the web property value is considered
+    // to be "out of scope".
+    { Visibility=Private }
+    Function GetAdvSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns Variant
+        Integer iObjectIndex icProp iProp iSize iStoreIndex
+        String sUC_PropName sReturnValue
+        Variant vReturnValue
+        Boolean bFoundProp bIsAjaxWebObject bIsObjectInScope
+            
+        // Test if we are active....
+        If (not(pbActive(Self))) Begin
+            // If not active then we just return the design time value of the property. This is
+            // safe because we can only get here when the WebApp is being initialized, before any
+            // clients have loaded the webapp....
+            Get pubProp.hmGetter of hoObject to vReturnValue
+            Function_Return vReturnValue
+        End
+        
+        Get piStoreIndex to iStoreIndex
+    
+        Get FindAdvPropCache hoObject pubProp.sName to iProp
+        If (iProp = -1) Begin
+            //  Use the raw property
+            Get pubprop.hmGetter of hoObject to vReturnValue
+        End
+        Else Begin
+            If (not(gaAdvSyncProps[iStoreIndex][iProp].bDeserialized)) Begin
+                //  Initialize our variant with an advanced value of the right type to make valuetreedeserialize work (!IMPORTANT)
+                Get pubProp.hmGetter of hoObject to vReturnValue
+                ValueTreeDeserializeParameter gaAdvSyncProps[iStoreIndex][iProp].tSyncProp.tV to vReturnValue
+                
+                Move vReturnValue to gaAdvSyncProps[iStoreIndex][iProp].tSvrProp.vV
+                Move True to gaAdvSyncProps[iStoreIndex][iProp].bDeserialized
+            End
+            Else Begin
+                Move gaAdvSyncProps[iStoreIndex][iProp].tSvrProp.vV to vReturnValue
+            End
+        End
+        Function_Return vReturnValue
+    End_Function
+    
+    
+    //
+    // Returns the value for scalar web properties. It looks for a synchronized value in the
+    // global gaSycnProps store.
+    //
+    // Params:
+    //      hoObject  - Is handle to the object which ownes the property.
+    //      hmGetter  - Is a handle to the property's getter message.
+    //      sPropName - Is the (case sensitive) property name.
+    // Returns:
+    //      The property value as a variant.
+    //
+    // Use the WebGet command instead of sending this message directly. hoObject must belong to the
+    // set of 'scoped views' in the CallAction otherwise the web property value is considered
+    // to be "out of scope".
+    { Visibility=Private }
+    Function GetScalarSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Returns String
+        Integer iObjectIndex icProp iProp iSize iStoreIndex
+        String sUC_PropName sReturnValue
+        Boolean bFoundProp bIsObjectInScope
+            
+        // Test if we are active....
+        If (not(pbActive(Self))) Begin
+            // If not active then we just return the design time value of the property. This is
+            // safe because we can only get here when the WebApp is being initialized, before any
+            // clients have loaded the webapp....
+            Get pubProp.hmGetter of hoObject to sReturnValue
+            Function_Return sReturnValue
+        End
+        
+        Get piStoreIndex to iStoreIndex
+        
+        // get the sync props index for the passed object handle...
+        Move (Uppercase(pubProp.sName)) to sUC_PropName
+        Get piSize to iSize
+//            Get piSyncObjectIndex of hoObject to iObjectIndex
+        Get FindObjectIndex hoObject to iObjectIndex
+        
+        If (iObjectIndex = -1 or iObjectIndex >= iSize) Begin
+            // If iObjectIndex = -1 it means that this object does not currently have any web properties.
+            // It might also mean that this object is out of scope during this CallAction. An object is only in-scope
+            // if it is a global object cWebApp or its child objects, or the object is part of the stack of views\
+            // dialog that are passed in the cWebObject's paDDOViews property.
+            Get IsObjectInCallActionScope hoObject to bIsObjectInScope
+            
+            If (bIsObjectInScope) Begin
+                //  Use the raw property
+                Get pubprop.hmGetter of hoObject to sReturnValue
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat(C_$WebAppObjectOutOfScope, If(hoObject > 0, Name(hoObject), ""), "WebGet " + pubProp.sName, C_NewLine))
+            End
+        End
+        Else Begin
+            // Search for the property name....
+            Move (SizeOfArray(gaSyncProps[iStoreIndex][iObjectIndex].aP)) to icProp
+            Move False to bFoundProp
+            
+            For iProp from 0 to (icProp - 1)
+                If (Uppercase(gaSyncProps[iStoreIndex][iObjectIndex].aP[iProp].sN) = sUC_PropName) Begin
+                    Move gaSyncProps[iStoreIndex][iObjectIndex].aP[iProp].sV to sReturnValue
+                    
+                    // Send Hook for converting the value from format for transport.
+                    Get ConvertFromTransport of hoObject pubProp.hmGetter sReturnValue pubProp.eType to sReturnValue
+
+                    Move True to bFoundProp
+                End
+                If (bFoundProp) ;
+                    Break
+            Loop
+            
+            If (not(bFoundProp)) Begin
+                //  Use the raw property
+                Get pubprop.hmGetter of hoObject to sReturnValue
+            End
+        End
+        
+        Function_Return sReturnValue
+    End_Function
+    
+    
+    //
+    // Called when a request is finished. Marks the handler as inactive.
+    //
+    { Visibility=Private }
+    Procedure FinishedCall tWebSyncProps[] ByRef aChangedSyncProps tWebAdvSyncProp[] ByRef aChangedAdvSyncProps
+        Set pbActive to False
+    End_Procedure
+    
+    
+    //
+    // Triggered when a new request comes in.
+    //
+    { Visibility=Private }
+    Procedure InitializeCall tWebSyncProps[] aSyncProps tWebAdvSyncProp[] aAdvSyncProps
+        Set pbActive to True
+    End_Procedure
+    
+    //
+    // Triggered to clear the data between requests. Resets al data stored during a request.
+    //
+    { Visibility=Private }
+    Procedure ClearData
+        tWebChangedProps[] aEmptyChanged
+        tWebSyncProps[] aEmptySync
+        tWebCacheAdvProp[] aEmptyAdv
+        Handle[] aEmptyHandle
+        Integer iStoreIndex
+        
+        Get piStoreIndex to iStoreIndex
+        Move aEmptyChanged to gaSyncChangedProps[iStoreIndex]
+        Move aEmptySync to gaSyncProps[iStoreIndex]
+        Move aEmptyAdv to gaAdvSyncProps[iStoreIndex]
+        Move aEmptyHandle to gaSyncObjectHandles[iStoreIndex]
+        
+        Set piSize to 0
+        Set piCapacity to 0
+        
+        Set pbActive to False
+    End_Procedure
+    
+    //
+    // Determines if an object is in scope for WebGet / WebSet.
+    //
+    { Visibility=Private }
+    Function IsObjectInCallActionScope Handle hoObject Returns Boolean
+        Boolean bResult
+        
+        Get IsInCallActionScope of hoObject to bResult
+        
+        Function_Return bResult
+    End_Function
+    
+    //
+    // Stores the passed web properties array and sets up the object to work with
+    // this data.
+    //
+    // Params:
+    //      aSyncProps   - Is the set of web properties from the client
+    //
+    { Visibility=Private }
+    Procedure InitializeSyncProps tWebSyncProps[] aSyncProps
+        Integer iObj iProp iSize iCapacity iGrowthFactor iStoreIndex
+        Handle hoObject hoControlLocator
+        Handle[] aChildObjects
+        
+        Get piStoreIndex to iStoreIndex
+        Get phoWebControlLocator to hoControlLocator
+        
+        // Set up the array size management properties....
+        Move (SizeOfArray(aSyncProps)) to iSize
+        Move 100                       to iGrowthFactor    // This is the initial growth factor of the arrays. It doubles each time the array is resized.
+        Move (iSize max iGrowthFactor) to iCapacity
+        
+        Set piSize to iSize
+        Set piGrowthFactor to iGrowthFactor
+        Set piCapacity to iCapacity
+        
+        // Preallocate space for sync properties (plus some growth)....
+        Move (ResizeArray(aSyncProps, iCapacity)) to aSyncProps
+        Move (ResizeArray(gaSyncObjectHandles[iStoreIndex], iCapacity)) to gaSyncObjectHandles[iStoreIndex]     // We do not clear the array first. That is because we will just overwrite the old values.
+        Move (ResizeArray(gaSyncChangedProps[iStoreIndex], 0)) to gaSyncChangedProps[iStoreIndex]               // This global array must be cleared first! We cannot guarantee that the old values will be fully overwritten.
+        Move (ResizeArray(gaSyncChangedProps[iStoreIndex], iCapacity)) to gaSyncChangedProps[iStoreIndex]       // now size it to the correct value
+        
+        // Iterate each member and find the object reference.....
+        For iObj from 0 to (iSize - 1)
+            Get FindWebObject of hoControlLocator aSyncProps[iObj].sO to hoObject
+            
+            If (hoObject = C_WebUnresolvedObject) Begin
+                If (pbErrorObjNotFound(Self)) Begin
+                    Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound, aSyncProps[iObj].sO))
+                End
+            End
+            Else Begin
+//                Set piSyncObjectIndex of hoObject to iObj    // Cache the object's index in the object itself
+            End
+            
+            // Populate the shadow structs....
+            Move hoObject to gaSyncObjectHandles[iStoreIndex][iObj]
+            Move False to gaSyncChangedProps[iStoreIndex][iObj].bContainsChanges
+        Loop
+
+        // Store the web property data....
+        Move aSyncProps to gaSyncProps[iStoreIndex]
+    End_Procedure
+    
+    
+    //
+    // Sets the addressed web property to the passed value. (see also GetScalarSyncProp)
+    //
+    // Params:
+    //      hoObject   - Is handle to the object which owns the property.
+    //      hmGetter   - Is a handle to the property's getter message.
+    //      sPropName  - Is the (case sensitive) property name.
+    //      sPropValue - Is the property value.
+    //
+    // Use the WebSet command instead of sending this message.
+    //
+    { Visibility=Private }
+    Procedure SetSyncProp Handle hoObject tWebPropMetaData ByRef pubProp Variant vPropValue
+        Integer iObjectIndex icProp iProp iSyncPropIndex iStoreIndex
+        Integer icObject iIndex iCount iSize
+        Boolean bFoundSyncProp bSaveProp bIsAjaxWebObject
+        String sUC_PropName sObject sPropValue
+        tWebValueTree tVT
+        Variant vTest
+        
+        // Test if we are active....
+        Get Object_Label of hoObject to sObject
+
+        If (not(pbActive(Self))) Begin
+            Error DFERR_PROGRAM (SFormat(C_$WebAppSynPropsNotReady, sObject, "WebSet " + pubProp.sName))
+            Procedure_Return
+        End
+
+
+        // Try to find the the sync prop in the published props array...
+        Get piStoreIndex to iStoreIndex
+        
+        //  Determine if advanced (struct / array) property
+        If (pubProp.eType = cArgArray or pubProp.eType = cArgStruct) Begin
+            //  Find advanced sync prop in the cache
+            Get FindAdvPropCache hoObject pubProp.sName to iProp
+            //  If not found then add it to the cache
+            If (iProp = -1) Begin
+                // Add the property....
+                Get AddToAdvPropCache hoObject pubProp.sName to iProp
+            End
+            
+            //  Store the value and mark as changed
+            Move vPropValue to gaAdvSyncProps[iStoreIndex][iProp].tSvrProp.vV
+            Move True       to gaAdvSyncProps[iStoreIndex][iProp].bDeserialized
+            Move True       to gaAdvSyncProps[iStoreIndex][iProp].bChanged
+        End
+        Else Begin
+            // get the sync props index for the passed object handle...
+            Move (Uppercase(pubProp.sName)) to sUC_PropName
+            Move False to bSaveProp
+            Get piSize to iSize
+//            Get piSyncObjectIndex of hoObject to iObjectIndex
+            Get FindObjectIndex hoObject to iObjectIndex
+            
+            If (iObjectIndex = -1 or iObjectIndex >= iSize) Begin
+                Get AddObjectToSyncProps hoObject to iObjectIndex
+            End
+            
+            // Test iObjectIndex again as it might have changed (above)....
+            If (iObjectIndex <> -1) Begin
+                // Send Hook for converting the value to format for transport.
+                Get ConvertToTransport of hoObject pubProp.hmGetter vPropValue pubProp.eType  to sPropValue
+                
+                // Search for the property name....
+                Move (SizeOfArray(gaSyncProps[iStoreIndex][iObjectIndex].aP)) to icProp
+                Move False to bFoundSyncProp
+                
+                For iProp from 0 to (icProp - 1)
+                    If (Uppercase(gaSyncProps[iStoreIndex][iObjectIndex].aP[iProp].sN) = sUC_PropName) Begin
+                        Move iProp to iSyncPropIndex
+                        Move True to bFoundSyncProp
+                    End
+                    If (bFoundSyncProp) ;
+                        Break
+                Loop
+                
+                If (bFoundSyncProp) Begin
+                    // Case 1: Object and Property found in gaSyncProps
+                    // Update the found property....
+                    Move sPropValue to gaSyncProps[iStoreIndex][iObjectIndex].aP[iSyncPropIndex].sV
+                    Move True to bSaveProp
+                End
+                Else Begin
+                    // Case 2: The Property needs to be added to sync props array
+                    // Add the property....
+                    Move pubProp.sName to gaSyncProps[iStoreIndex][iObjectIndex].aP[icProp].sN    // Use the original case of the property name
+                    Move sPropValue to gaSyncProps[iStoreIndex][iObjectIndex].aP[icProp].sV
+                    Move icProp to iSyncPropIndex
+                    Move True to bSaveProp
+                End
+                
+                If (bSaveProp) Begin
+                    // Update the changed props array....
+                    Move True to gaSyncChangedProps[iStoreIndex][iObjectIndex].bContainsChanges     // Mark the object as changed
+                    Move (SearchArray(iSyncPropIndex, gaSyncChangedProps[iStoreIndex][iObjectIndex].aiIndex)) to iIndex
+                    
+                    If (iIndex = -1) Begin
+                        // Add the property name to the changed props array....
+                        Move (SizeOfArray(gaSyncChangedProps[iStoreIndex][iObjectIndex].aiIndex)) to iCount
+                        Move iSyncPropIndex to gaSyncChangedProps[iStoreIndex][iObjectIndex].aiIndex[iCount]
+                    End
+                End
+            End
+            Else Begin
+                Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound, (sObject + " (WebSet " + pubProp.sName+")") ))
+            End
+        End
+        
+    End_Procedure
+    
+    
+    //
+    //  Searches for a web object in the array of object handles.
+    //
+    { Visibility=Private }
+    Function FindObjectIndex Handle hoObj Returns Integer
+        Integer iStoreIndex iIndex
+        
+        Get piStoreIndex to iStoreIndex
+        
+        Move (SearchArray(hoObj, gaSyncObjectHandles[iStoreIndex])) to iIndex
+        
+        Function_Return iIndex
+    End_Function
+    
+    
+    //
+    //  Search for an advanced web property in the advanced web properties array.
+    //
+    { Visibility=Private }
+    Function FindAdvPropCache Handle hoObj String sPropName Returns Integer
+        Integer iTo iCur iStoreIndex
+        
+        Get piStoreIndex to iStoreIndex
+        
+        Move (Uppercase(sPropName)) to sPropName
+        Move (SizeOfArray(gaAdvSyncProps[iStoreIndex]) - 1) to iTo
+        For iCur from 0 to iTo
+            If (gaAdvSyncProps[iStoreIndex][iCur].hoObj = hoObj and Uppercase(gaAdvSyncProps[iStoreIndex][iCur].tSyncProp.sP) = sPropName) Begin
+                Function_Return iCur
+            End
+        Loop
+        
+        Function_Return -1
+    End_Function
+    
+    
+        //
+    //  Search for an advanced web property in the advanced web properties array.
+    //
+    { Visibility=Private }
+    Function FindAdvPropCache Handle hoObj String sPropName Returns Integer
+        Integer iTo iCur iStoreIndex
+        
+        Get piStoreIndex to iStoreIndex
+        
+        Move (Uppercase(sPropName)) to sPropName
+        Move (SizeOfArray(gaAdvSyncProps[iStoreIndex]) - 1) to iTo
+        For iCur from 0 to iTo
+            If (gaAdvSyncProps[iStoreIndex][iCur].hoObj = hoObj and Uppercase(gaAdvSyncProps[iStoreIndex][iCur].tSvrProp.sP) = sPropName) Begin
+                Function_Return iCur
+            End
+        Loop
+        
+        Function_Return -1
+    End_Function
+    
+    
+    //
+    //  Adds a new advanced sync prop to the cache.
+    //
+    { Visibility=Private }
+    Function AddToAdvPropCache Handle hoObj String sPropName Returns Integer
+        Integer iNew iStoreIndex
+        tWebCacheAdvProp tNew
+        
+        Get piStoreIndex to iStoreIndex
+        
+        Move hoObj                  to tNew.hoObj
+        Get WebObjectName of hoObj  to tNew.tSvrProp.sO
+        Move sPropName              to tNew.tSvrProp.sP
+        Move tNew.tSvrProp.sO       to tNew.tSyncProp.sO
+        Move tNew.tSvrProp.sP      to tNew.tSyncProp.sP
+        Move False                  to tNew.bChanged
+        Move False                  to tNew.bDeserialized
+        
+        Move (SizeOfArray(gaAdvSyncProps[iStoreIndex])) to iNew
+        Move tNew to gaAdvSyncProps[iStoreIndex][iNew]
+        
+        Function_Return iNew
+    End_Function
+    
+
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+
+    End_Procedure
+
+End_Class

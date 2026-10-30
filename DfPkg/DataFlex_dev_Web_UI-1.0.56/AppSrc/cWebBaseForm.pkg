@@ -1,0 +1,48 @@
+﻿Use cWebBaseDEO.pkg
+
+// Abstract form class.
+{ ClassType=Abstract }
+{ HelpTopic=cWebBaseForm }
+{ OverrideProperty=peLabelPosition EnumList="lpLeft, lpTop, lpRight, lpFloat" }
+Class cWebBaseForm is a cWebBaseDEO    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property Boolean pbReadOnly False
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnKey False
+        { Category="Client Events" }
+        { WebProperty=Client }
+        Property String psClientOnKey ""
+        
+        { WebProperty=Client }
+        { Category="Server Events" }
+        Property Boolean pbServerOnInput False
+        { WebProperty=Client }
+        { Category="Client Events" }
+        Property String psClientOnInput ""
+        
+        { WebProperty=Client }
+        { Category="Behavior" }
+        Property String psAutoComplete "off"           // Fills the autocomplete html attribute
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnKey Boolean bPrintable String sKey
+    End_Procedure
+    
+    { MethodType=Event }
+    Procedure OnInput Boolean bIsInsert String sInputType
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnKey
+        WebPublishProcedure OnInput
+    End_Procedure
+End_Class

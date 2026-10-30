@@ -1,0 +1,104 @@
+﻿Use cWebMenuItem.pkg
+
+// Specialized version of cWebMenuItem.
+//
+// Adds support for...
+// - Single property to set name of view to be loaded.
+// - Loading named views without requiring a server side OnClick event.
+// - Automatic pbEnable setting tied to AllowViewAccess of referenced view.
+{ OverrideProperty=pbServerOnClick InitialValue=False }
+{ HelpTopic=cWebMenuItemLoadView }
+Class cWebMenuItemLoadView is a cWebMenuItem
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        { Category="Access" }
+        Property Boolean pbHideViewWhenNoAccess False  // If this property is true, when no access is allowed to the view the menu item is pbRender=False. If this property is false, pbEnabled=False.
+        { Category="Access" }
+        Property Boolean pbAutoEnable True             // This property must be true for SetMenuViewAccess to be executed.
+
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Behavior" }
+        Property String psLoadViewOnClick ""     // Name of the cWebView (or cWebDialog) to load when clicked. Note: the object name is case-sensitive!
+        
+        //  Prevent useless call from being sent
+        Set pbServerOnClick to False
+    End_Procedure
+    
+    { Visibility=Private }
+    Procedure PostSerializeObject
+        Handle hoView
+        // Forces check to see if psLoadViewOnClick refers to a valid view
+        Get LoadViewOnClickHandle to hoView
+    End_Procedure
+        
+    { Visibility=Private }
+    Procedure NotifyChangeRights
+        // Tests psLoadViewOnClick. If Set the view is looked up and AllowAccess is queried.
+        // The result of the AllowAccess is used to enable/disable items in SetMenuViewAccess.
+        String sViewName sObjectLabel sCRLF
+        Handle hoView
+        Boolean bAllowAccess
+        Boolean bEnabled bAutoEnable
+
+        Broadcast Send NotifyChangeRights
+        
+        // if a view menu item set pbEnabled based on the views AllowAccess
+        // If you want to do something else, like hide it, use OnChangeRights
+        Get LoadViewOnClickHandle to hoView
+        Get pbAutoEnable to bAutoEnable
+        
+        If (hoView and bAutoEnable) Begin
+            Get AllowAccess of hoView to bAllowAccess   // Test view access
+            Send SetMenuViewAccess bAllowAccess
+        End
+        Send OnChangeRights
+    End_Procedure
+    
+    
+    { Visibility=Private }
+    Procedure SetMenuViewAccess Boolean bAllowAccess
+        // used to handle access view menus. By default it disables items where access is not allowed. Depending
+        // on the value of pbHideViewWhenNoAccess this will either enable or render menu items. If you need to
+        // do other things, augment OnChangeRights
+        Boolean bEnabled bHideViewWhenNoAccess
+
+        Get pbHideViewWhenNoAccess to bHideViewWhenNoAccess
+        // if a view menu item set pbEnabled or pbRendered based on the views AllowAccess
+        // If you want to do something else, like hide it, you can augment this or
+        // augment OnChangeRights
+        If bHideViewWhenNoAccess Begin
+            WebGet pbRender to bEnabled
+            If (bEnabled <> bAllowAccess) Begin
+                WebSet pbRender to bAllowAccess
+            End
+        End
+        Else Begin
+            WebGet pbEnabled to bEnabled
+            If (bEnabled <> bAllowAccess) Begin
+                WebSet pbEnabled to bAllowAccess
+            End
+        End
+    End_Procedure
+    
+
+    Function LoadViewOnClickHandle Returns Handle 
+        // returns handle to object in psLoadViewOnClick, which is set for menu view items
+        // If psLoadViewOnClick is "", it returns 0, else it returns the object handle
+        // If the object cannot be found, an error is raised.
+        // Developers might call this in OnChangeRights
+        String sViewName sObjectLabel sCRLF
+        Handle hoView
+        WebGet psLoadViewOnClick to sViewName
+        If (sViewName <> "") Begin
+            Get FindWebObjectSilent of (Owner(Self)) sViewName to hoView // Get a handle to the view
+            If (hoView=0) Begin
+                Move (Character(13)+Character(10)) to sCRLF
+                Error DFERR_PROGRAM (SFormat(C_$WebAppTargetObjectNotFound + " Set psLoadViewOnClick to '" + sViewName + "'" + sCRLF + sCRLF + "A reference to this object cannot be located. Check that the object name is correct.",sViewName)) 
+            End
+        End
+        Function_Return hoView
+    End_Function
+End_Class

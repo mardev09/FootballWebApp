@@ -1,0 +1,126 @@
+﻿Use VdfBase.pkg
+Use cWebBaseDEOServer.pkg
+
+// Base class for some client-side control (non-panel).
+// 
+// Supports:
+// - Column layout
+// - Label interface
+// - Focus/Blur events
+{ ClassType=Abstract }
+{ DesignerJSClass=df.WebDesignerControl }
+Class cWebBaseControl is a cWebBaseDEOServer
+    
+    Procedure Construct_Object
+        Forward Send Construct_Object
+        
+        // Published Properties
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Boolean pbFillHeight False            // If True, then the control is vertically stretched to fill all available space. In GridLayout, this will cause it to fill the rows this control is occupying (by default, controls have their natural height through CSS styling)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piHeight 0                 // Is the explicit fixed height of the control (for most controls you leave this set to 0 so the control's style settings determine the height). Ignored when pbFillHeight is True.
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piMinHeight 0              // Minimum control height (ignored unless pbFillHeight is True)ent)
+        
+        { WebProperty=Client } 
+        { Category="Label" }
+        Property Boolean pbShowLabel True              // If False, then no space is assigned for the label in the column layout (see psLabel)
+        { WebProperty=Client } 
+        { Category="Label" }
+        {EnumList="C_WebDefault, alignLeft, alignRight, alignCenter" }
+        Property Integer peLabelAlign C_WebDefault     // Label alignment (alLeft, alCenter, alRight aligned)
+        { WebProperty=Client } 
+        { Category="Label" }
+        { EnumList="lpLeft, lpTop, lpRight" }
+        Property Integer peLabelPosition lpLeft         // Label position relative to the control (lpLeft, lpRight, lpTop, lpFloat)
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piColumnIndex C_WebDefault     // Determines the horizontal column position in the parent panel object
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property Integer piColumnSpan 1                // Determines how many columns the width of the control will span (i.e. determines the width of the control, 0 will spann the full available space)
+         { WebProperty=Client }
+         { Category="Appearance" }
+        Property Integer piRowIndex C_WebDefault        // For LayoutType Grid. -1 = auto
+        { WebProperty=Client }
+        { Category="Appearance" }
+        Property Integer piRowSpan 1                    // For LayoutType Grid. Amount of rows this control will occupy.
+        { WebProperty=Client } 
+        { Category="Label" }
+        Property Integer piLabelOffset C_WebDefault    // Label position (in pixels) relative to the control
+        { WebProperty=Client } 
+        { Category="Label" }
+        Property String psLabel ""                     // Is the control's label (see pbShowLabel)
+        { WebProperty=Client } 
+        { Category="Label" }
+        Property String psLabelColor ""                // CSS Inline Style - Color of label's text      
+        
+        { WebProperty=Client } 
+        { Category="Appearance" }
+        Property String psToolTip ""                 // Tooltip that is displayed when the mouse is hovered over the control. Set by data binding from Status_Help.
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnBlur False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnBlur ""
+        
+        { WebProperty=Client } 
+        { Category="Server Events" }
+        Property Boolean pbServerOnFocus False
+        { WebProperty=Client } 
+        { Category="Client Events" }
+        Property String psClientOnFocus ""
+        
+    End_Procedure
+    
+    // Server Action
+    { MethodType=Event }
+    Procedure OnFocus
+    End_Procedure
+    
+    // Server Action
+    { MethodType=Event }
+    Procedure OnBlur
+    End_Procedure
+        
+    //  Shows an info balloon next to the control (below or above) containing HTML.
+    //
+    //  Params:
+    //      sCssClass   CSS Classname applied to the info balloon for custom styling.
+    //      sText       The content of the info balloon (HTML).
+    //
+    Procedure ShowInfoBalloon String sCssClass String sText Boolean bOptShow
+        String[] aParams
+        
+        Move sCssClass      to aParams[0]
+        Move sText          to aParams[1]
+        If (num_arguments >= 3) Begin
+            Move bOptShow   to aParams[2]
+        End
+        Else Begin
+            Move True       to aParams[2]
+        End
+        
+        
+        Send ClientAction "showInfoBalloon" aParams
+    End_Procedure
+    
+    
+    //  Hides the info balloon shown by ShowInfoBalloon.
+    Procedure HideInfoBalloon
+        Send ClientAction "hideInfoBalloon"
+    End_Procedure
+    
+    Procedure End_Construct_Object
+        Forward Send End_Construct_Object
+        
+        WebPublishProcedure OnFocus
+        WebPublishProcedure OnBlur
+    End_Procedure
+    
+End_Class
