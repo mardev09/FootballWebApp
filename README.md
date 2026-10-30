@@ -35,4 +35,4 @@ de cada rama en el historial.
 
 ## Autor
 
-Práctica académica — Sprint 1.
+Práctica académica — Sprint 1 - Omar A..
