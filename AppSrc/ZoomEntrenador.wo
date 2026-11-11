@@ -72,8 +72,10 @@ Object oZoomEntrenador is a cWebView
             Set psLabel to "Equipo"
             Set pbPromptButton to True
 
-// ToDo: Fill in the from-child parent Select view object name for navigate forward
-//            WebRegisterPath ntNavigateForward oSelectView
+            // nfFromChild: el invocador es este campo, cuyo Server es oentrenador_DD (entrenador), y
+            // equipo (Main_File de oSelectEquipo) es un servidor suyo: entrenador es hijo de equipo.
+            // oSelectEquipo actua como lookup y al elegir fila hace NavigateClose devolviendo el equipo.
+            WebRegisterPath ntNavigateForward oSelectEquipo
 
             Procedure OnPrompt
                 Send NavigatePath

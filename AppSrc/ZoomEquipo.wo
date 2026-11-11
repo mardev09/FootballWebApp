@@ -51,8 +51,11 @@ Object oZoomEquipo is a cWebView
             Set psLabel to "Liga"
             Set pbPromptButton to True
 
-// ToDo: Fill in the from-child parent Select view object name for navigate forward
-//            WebRegisterPath ntNavigateForward oSelectView
+            // nfFromChild: el invocador es este campo, cuyo Server es oequipo_DD (equipo), y liga
+            // (Main_File de oSelectLiga) es un servidor suyo: equipo es hijo de liga.
+            // oSelectLiga actua como lookup y al elegir fila hace NavigateClose devolviendo la liga.
+            // OnNavigateForward oculta el prompt si oSelectLiga ya esta en la pila de navegacion.
+            WebRegisterPath ntNavigateForward oSelectLiga
 
             Procedure OnPrompt
                 Send NavigatePath
@@ -140,6 +143,14 @@ Object oZoomEquipo is a cWebView
     End_Procedure
 
     Procedure OnNavigateForward tWebNavigateData NavigateData Integer hoInvokingView Integer hoInvokingObject
+        Integer iLigaIndex
+
+        // A view can only be in the stack once. Via SelectLiga -> ZoomLiga -> "Ver equipos" ->
+        // SelectEquipo -> ZoomEquipo, oSelectLiga is already in the stack and the liga is fixed by
+        // that drilldown, so the liga lookup is hidden there and shown everywhere else.
+        Get GetViewIndex of (ViewStack(Self)) oSelectLiga to iLigaIndex
+        WebSet pbPromptButton of oligaID to (iLigaIndex = -1)
+
         Case Begin
             Case (NavigateData.eNavigateType = nfFromMain)
                 // If from main, this is a propbably a main file Select to Zoom.
