@@ -1,0 +1,13 @@
+[Workspace]
+Home=.\
+AppHTMLPath=AppHtml
+AppSrcPath=AppSrc
+DataPath=Data
+DDSrcPath=DDSrc
+BitmapPath=.
+IdeSrcPath=IdeSrc
+HelpPath=.
+ProgramPath=.
+FileList=Data\Filelist.cfg
+ConnectionIni=Data\DfConnId.ini
+Description=FootballApp
