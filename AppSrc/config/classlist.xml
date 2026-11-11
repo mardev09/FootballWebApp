@@ -4,14 +4,14 @@
 	<DFLibraryVersion>2</DFLibraryVersion>
 	<libraries>
 		<library>
-			<libraryPath>DfPkg\DataFlex_dev_Web_UI_Server-1.0.56\df.sws</libraryPath>
-			<libraryTimeStamp>2026-05-06T09:31:05</libraryTimeStamp>
-			<libraryID>DataFlex-dev/Web UI Server</libraryID>
-		</library>
-		<library>
 			<libraryPath>DfPkg\DataFlex_dev_Web_UI-1.0.56\df.sws</libraryPath>
 			<libraryTimeStamp>2026-09-24T10:38:32</libraryTimeStamp>
 			<libraryID>DataFlex-dev/Web UI</libraryID>
+		</library>
+		<library>
+			<libraryPath>DfPkg\DataFlex_dev_Web_UI_Server-1.0.56\df.sws</libraryPath>
+			<libraryTimeStamp>2026-05-06T09:31:05</libraryTimeStamp>
+			<libraryID>DataFlex-dev/Web UI Server</libraryID>
 		</library>
 	</libraries>
 	<classes>
