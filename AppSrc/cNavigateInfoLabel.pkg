@@ -1,0 +1,54 @@
+﻿// C:\DataFlex Projects\FootballApp\AppSrc\cNavigateInfoLabel.pkg
+// Sprint 2 - Navegacion: etiqueta de diagnostico para comparar los tipos de navegacion drilldown.
+// Se rellena desde OnNavigateForward de la vista con el tipo (eNavigateType), la vista invocadora
+// y el objeto invocador que el framework pasa a la vista destino.
+//
+
+Use cWebLabel.pkg
+Use tWebNavigateData.pkg
+
+Class cNavigateInfoLabel is a cWebLabel
+
+    Procedure Construct_Object
+        Forward Send Construct_Object
+
+        Set piColumnSpan to 0
+        Set peWordBreak to wbWrap
+    End_Procedure
+
+    Function NavigateTypeName Integer eNavigateType Returns String
+        Case Begin
+            Case (eNavigateType = nfFromMain)
+                Function_Return "nfFromMain"
+            Case (eNavigateType = nfFromParent)
+                Function_Return "nfFromParent"
+            Case (eNavigateType = nfFromChild)
+                Function_Return "nfFromChild"
+        Case End
+
+        Function_Return "nfUndefined"
+    End_Function
+
+    Function InvokingName Handle hoObject Returns String
+        String sName
+
+        If (hoObject = 0) Begin
+            Function_Return "ninguno (0)"
+        End
+
+        Get Object_Label of hoObject to sName
+        Function_Return sName
+    End_Function
+
+    // Send this from OnNavigateForward of the view, passing its parameters unchanged.
+    Procedure ShowNavigateInfo tWebNavigateData NavigateData Handle hoInvokingView Handle hoInvokingObject
+        String sText
+
+        Move ("Navegacion: " + NavigateTypeName(Self, NavigateData.eNavigateType)) to sText
+        Move (sText + " | Vista invocadora: " + InvokingName(Self, hoInvokingView)) to sText
+        Move (sText + " | Objeto invocador: " + InvokingName(Self, hoInvokingObject)) to sText
+
+        WebSet psCaption to sText
+    End_Procedure
+
+End_Class

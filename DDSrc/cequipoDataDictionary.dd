@@ -23,4 +23,23 @@ Class cequipoDataDictionary is a DataDictionary
 
     End_Procedure
 
+    // An equipo must belong to a liga. Without one, Attach leaves equipo.LigaID = 0 and the
+    // equipo -> liga foreign key rejects the row (error 1452). The DD_FINDREQ foreign option only
+    // validates visited fields, so an untouched Liga field slips through.
+    // Validate_Save runs before Attach_Main_File, so equipo.LigaID is not set yet here: check the
+    // parent buffer, which the save has already re-found (liga.ID = 0 means no liga selected).
+    Function Validate_Save Returns Integer
+        Integer iRetVal
+
+        Forward Get Validate_Save to iRetVal
+
+        If iRetVal;
+            Function_Return iRetVal
+
+        If (liga.ID = 0) Begin
+            Send UserError "Selecciona la liga del equipo antes de guardar." ""
+            Function_Return 1
+        End
+    End_Function
+
 End_Class

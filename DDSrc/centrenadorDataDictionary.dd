@@ -18,4 +18,23 @@ Class centrenadorDataDictionary is a DataDictionary
 
     End_Procedure
 
+    // An entrenador must belong to an equipo. Without one, Attach leaves entrenador.EquipoID = 0 and
+    // the entrenador -> equipo foreign key rejects the row (error 1452). The DD_FINDREQ foreign
+    // option only validates visited fields, so an untouched Equipo field slips through.
+    // Validate_Save runs before Attach_Main_File, so entrenador.EquipoID is not set yet here: check the
+    // parent buffer, which the save has already re-found (equipo.ID = 0 means no equipo selected).
+    Function Validate_Save Returns Integer
+        Integer iRetVal
+
+        Forward Get Validate_Save to iRetVal
+
+        If iRetVal;
+            Function_Return iRetVal
+
+        If (equipo.ID = 0) Begin
+            Send UserError "Selecciona el equipo del entrenador antes de guardar." ""
+            Function_Return 1
+        End
+    End_Function
+
 End_Class

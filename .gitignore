@@ -2,4 +2,15 @@ Programs/
 *.cch
 *.obj
 *.exe
-*.sws.lock
+
+# Salida del compilador (se regenera al compilar)
+*.dbg
+*.prn
+*.dep
+
+# Ficheros locales del Studio
+IdeSrc/*.dsk
+IdeSrc/*.mtd
+
+# Logs
+*.log
