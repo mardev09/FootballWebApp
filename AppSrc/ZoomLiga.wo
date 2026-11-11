@@ -7,8 +7,12 @@ Use cWebPanel.pkg
 Use cWebMenuGroup.pkg
 Use cWebMenuItem.pkg
 Use cWebForm.pkg
+Use cWebButton.pkg
+Use cWebList.pkg
+Use cWebColumn.pkg
 
 Use cligaDataDictionary.dd
+Use cequipoDataDictionary.dd
 
 Object oZoomLiga is a cWebView
     Set piColumnCount to 12
@@ -21,6 +25,13 @@ Object oZoomLiga is a cWebView
 
     Object oliga_DD is a cligaDataDictionary
     End_Object 
+
+    // From parent (variante b): DDO hijo solo para la lista de equipos de esta liga. Main_DD y
+    // Server de la vista siguen siendo oliga_DD.
+    Object oequipo_DD is a cequipoDataDictionary
+        Set DDO_Server To oliga_DD
+        Set Constrain_File To liga.File_Number
+    End_Object
 
     Set Main_DD To oliga_DD
     Set Server  To oliga_DD
@@ -61,6 +72,43 @@ Object oZoomLiga is a cWebView
             Set peLabelPosition to lpTop
             Set psLabel to "EquiposMax"
         End_Object 
+
+        // From parent (variante a), nfFromParent: el boton no tiene Server propio y hereda oliga_DD
+        // (liga); liga es servidor del Main_DD de oSelectEquipo (equipo), asi que liga es padre del
+        // fichero destino. El framework constriñe el listado a esta liga por equipo.LigaID -> liga.ID.
+        Object oVerEquiposBtn is a cWebButton
+            Set psCaption to "Ver equipos"
+            Set piColumnSpan to 3
+            Set piColumnIndex to 0
+
+            WebRegisterPath ntNavigateForward oSelectEquipo
+
+            Procedure OnClick
+                Boolean bHasRecord
+
+                // Without a saved liga there is no parent record to constrain by.
+                Get HasRecord of oliga_DD to bHasRecord
+                If (bHasRecord) Begin
+                    Send NavigatePath
+                End
+            End_Procedure
+        End_Object
+
+        // From parent (variante b): la relacion padre-hijo se resuelve dentro de la vista con
+        // oequipo_DD (DDO_Server oliga_DD + Constrain_File), sin navegar. Es de solo lectura:
+        // no tiene pbServerOnRowClick ni rutas registradas, asi que no apila ninguna vista.
+        Object oEquiposList is a cWebList
+            Set Server to oequipo_DD
+            Set piColumnSpan to 12
+            Set piColumnIndex to 0
+            Set piHeight to 200
+
+            Object oequipoNombre is a cWebColumn
+                Entry_Item equipo.Nombre
+                Set psCaption to "Equipos de la liga"
+                Set piWidth to 1000
+            End_Object
+        End_Object
     End_Object 
 
     Object oActionGroup is a cWebMenuGroup
