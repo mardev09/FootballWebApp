@@ -7,6 +7,8 @@ Use cWebPanel.pkg
 Use cWebMenuGroup.pkg
 Use cWebMenuItem.pkg
 Use cWebForm.pkg
+Use cWebButton.pkg
+Use cNavigateInfoLabel.pkg
 
 Use cligaDataDictionary.dd
 Use cequipoDataDictionary.dd
@@ -72,13 +74,35 @@ Object oZoomJugador is a cWebView
             Set psLabel to "Equipo"
             Set pbPromptButton to True
 
-// ToDo: Fill in the from-child parent Select view object name for navigate forward
-//            WebRegisterPath ntNavigateForward oSelectView
+            // nfFromChild: el invocador es este campo, cuyo Server es ojugador_DD (jugador), y
+            // equipo (Main_File de oSelectEquipo) es un servidor suyo: jugador es hijo de equipo.
+            // oSelectEquipo actua como lookup y al elegir fila hace NavigateClose devolviendo el equipo.
+            WebRegisterPath ntNavigateForward oSelectEquipo
 
             Procedure OnPrompt
                 Send NavigatePath
             End_Procedure
         End_Object 
+
+        // nfUndefined: jugador y posicion solo se relacionan N:M a traves de jugadorposicion, asi que
+        // posicion no es ni el fichero principal, ni un padre ni un hijo de jugador en esta vista.
+        // El framework no puede deducir ninguna relacion y el listado de posiciones sale sin constreñir.
+        Object oVerPosicionesBtn is a cWebButton
+            Set psCaption to "Ver posiciones"
+            Set piColumnSpan to 3
+            Set piColumnIndex to 0
+
+            WebRegisterPath ntNavigateForward oSelectPosicion
+
+            Procedure OnClick
+                Send NavigatePath
+            End_Procedure
+        End_Object
+
+        // Diagnostico: abriendo esta vista desde oSelectJugador se ve nfFromMain (lista y zoom
+        // comparten el fichero principal jugador).
+        Object oNavigateInfo is a cNavigateInfoLabel
+        End_Object
     End_Object 
 
     Object oActionGroup is a cWebMenuGroup
@@ -161,6 +185,8 @@ Object oZoomJugador is a cWebView
     End_Procedure
 
     Procedure OnNavigateForward tWebNavigateData NavigateData Integer hoInvokingView Integer hoInvokingObject
+        Send ShowNavigateInfo of oNavigateInfo NavigateData hoInvokingView hoInvokingObject
+
         Case Begin
             Case (NavigateData.eNavigateType = nfFromMain)
                 // If from main, this is a propbably a main file Select to Zoom.
