@@ -29,7 +29,7 @@ Object oDashboard is a cWebView
 
     Set piMaxWidth to 1024
 
-    Set psCaption to "Dashboard"
+    Set psCaption to "Panel de control"
     Set peViewType to vtUndefined
     Set pbShowCaption to False
     Set psCSSClass to "Dashboard"
@@ -44,7 +44,9 @@ Object oDashboard is a cWebView
         WebSetResponsive piColumnCount rmTabletPortrait to 16
 
         Object oTiles_grp is a cWebGroup
-            Set piColumnSpan to 8
+            // 0 = hasta la ultima columna del panel. Con 8 de 24 cada tile quedaba en unos 110 px
+            // de ancho y los titulos largos (Entrenadores) no cabian y salia scroll.
+            Set piColumnSpan to 0
             Set pbShowBorder to False
             Set pbShowCaption to False
             Set piColumnCount to 12
@@ -60,11 +62,12 @@ Object oDashboard is a cWebView
 
             Object oWelcomeTile is a cWebHtmlBox
                 Set piColumnSpan to 4
-                Set psCSSClass to "Tile Light"
-                Set psHtml to '<div Class="WebCon_Sizer"><div class="Tile_Title">Bienvenido</div><div Class="Tile_Subtitle">--</div></div>'
+                Set psCSSClass to "Tile Dark"
+                Set psHtml to '<div class="WebCon_Sizer"><div class="Tile_Icon TileIcon_Bienvenida"></div><div class="Tile_Title">Bienvenido</div><div class="Tile_Subtitle">--</div></div>'
 
                 Procedure OnLoad
                     Send UpdateHTML ('<div class="WebCon_Sizer">' + ;
+                                     '<div class="Tile_Icon TileIcon_Bienvenida"></div>' + ;
                                      '<div class="Tile_Title">Bienvenido</div>' +;
                                      '<div class="Tile_Subtitle">' - htmlEncode(psUserName(SessionManager(Self))) - '</div>' +;
                                      '</div>')
@@ -76,8 +79,8 @@ Object oDashboard is a cWebView
                 Set pbServerOnClick to True
                 Set piColumnSpan to 4
                 Set piColumnIndex to 4
-                Set psCSSClass to "Tile LightAlternate"
-                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div Class="Tile_Title">Ligas</div><div class="Tile_Subtitle">Competiciones</div></div>'
+                Set psCSSClass to "Tile Light"
+                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div class="Tile_Icon TileIcon_Ligas"></div><div class="Tile_Title">Ligas</div><div class="Tile_Subtitle">Competiciones</div></div>'
 
                 WebRegisterPath ntNavigateForwardCustom oSelectLiga
 
@@ -91,8 +94,8 @@ Object oDashboard is a cWebView
                 Set pbServerOnClick to True
                 Set piColumnSpan to 4
                 Set piColumnIndex to 8
-                Set psCSSClass to "Tile Dark"
-                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div Class="Tile_Title">Equipos</div><div class="Tile_Subtitle">Clubes</div></div>'
+                Set psCSSClass to "Tile Light"
+                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div class="Tile_Icon TileIcon_Equipos"></div><div class="Tile_Title">Equipos</div><div class="Tile_Subtitle">Clubes</div></div>'
 
                 WebRegisterPath ntNavigateForwardCustom oSelectEquipo
 
@@ -109,8 +112,8 @@ Object oDashboard is a cWebView
             Object oTileEntrenadores is a cWebHtmlBox
                 Set pbServerOnClick to True
                 Set piColumnSpan to 4
-                Set psCSSClass to "Tile DarkAlternate"
-                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div Class="Tile_Title">Entrenadores</div><div class="Tile_Subtitle">Uno por equipo</div></div>'
+                Set psCSSClass to "Tile Light"
+                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div class="Tile_Icon TileIcon_Entrenadores"></div><div class="Tile_Title">Entrenadores</div><div class="Tile_Subtitle">Uno por equipo</div></div>'
 
                 WebRegisterPath ntNavigateForwardCustom oSelectEntrenador
 
@@ -125,7 +128,7 @@ Object oDashboard is a cWebView
                 Set piColumnSpan to 4
                 Set piColumnIndex to 4
                 Set psCSSClass to "Tile Light"
-                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div Class="Tile_Title">Jugadores</div><div class="Tile_Subtitle">60 en plantilla</div></div>'
+                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div class="Tile_Icon TileIcon_Jugadores"></div><div class="Tile_Title">Jugadores</div><div class="Tile_Subtitle">Futbolistas</div></div>'
 
                 WebRegisterPath ntNavigateForwardCustom oSelectJugador
 
@@ -139,8 +142,8 @@ Object oDashboard is a cWebView
                 Set pbServerOnClick to True
                 Set piColumnSpan to 4
                 Set piColumnIndex to 8
-                Set psCSSClass to "Tile LightAlternate"
-                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div Class="Tile_Title">Posiciones</div><div class="Tile_Subtitle">Demarcaciones</div></div>'
+                Set psCSSClass to "Tile Light"
+                Set psHtml to '<div class="WebCon_Sizer" data-ServerOnClick="openview"><div class="Tile_Icon TileIcon_Posiciones"></div><div class="Tile_Title">Posiciones</div><div class="Tile_Subtitle">Demarcaciones</div></div>'
 
                 WebRegisterPath ntNavigateForwardCustom oSelectPosicion
 

@@ -14,7 +14,7 @@ Use ZoomPosicion.wo
 Use cposicionDataDictionary.dd
 
 Object oSelectPosicion is a cWebView
-    Set psCaption to "Posicion"
+    Set psCaption to "Posiciones"
     Set peWebViewStyle to wvsDrilldown
     Set peViewType to vtSelect
     Set piColumnCount to 12
@@ -38,12 +38,12 @@ Object oSelectPosicion is a cWebView
 
         Object oposicionNombre is a cWebColumn
             Entry_Item posicion.Nombre
-            Set psCaption to "posicion.Nombre"
+            Set psCaption to "Posición"
             Set piWidth to 500
         End_Object 
 
         Object oDetailButton is a cWebColumnButton
-            Set psCaption to "btn"
+            Set psCaption to "Detalle"
             Set piWidth to 45
             Set pbFixedWidth to True
             Set pbResizable to False
@@ -106,7 +106,7 @@ Object oSelectPosicion is a cWebView
 
         Object oSearch is a cWebMenuItem
             Set psCSSClass to "WebPromptMenuItem"
-            Set psCaption to "Search"
+            Set psCaption to "Buscar"
 
             Procedure OnClick
                 Send Search of oList
@@ -116,7 +116,7 @@ Object oSelectPosicion is a cWebView
 
         Object oNewButton is a cWebMenuItem
             Set psCSSClass to "WebClearMenuItem"
-            Set psCaption to "New"
+            Set psCaption to "Nuevo"
 
             WebRegisterPath ntNavigateForward oZoomPosicion
 
