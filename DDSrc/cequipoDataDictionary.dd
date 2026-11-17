@@ -10,6 +10,7 @@ Class cequipoDataDictionary is a DataDictionary
     Procedure Construct_Object
         Forward Send Construct_Object
         Set Main_File to equipo.File_Number
+        Set Cascade_Delete_State to False
 
         Set Add_Server_File to liga.File_Number
 
@@ -21,6 +22,20 @@ Class cequipoDataDictionary is a DataDictionary
         Set Foreign_Field_Option DD_INDEXFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_DEFAULT DD_DISPLAYONLY to True
 
+        Set Field_Label_Long Field equipo.ID to "Código de equipo"
+        Set Field_Label_Short Field equipo.ID to "Código"
+        Set Field_Option Field equipo.ID DD_AUTOFIND to True
+        Set Status_Help Field equipo.ID to "Código del equipo. Lo asigna la base de datos."
+
+        Set Field_Label_Long Field equipo.Nombre to "Nombre del equipo"
+        Set Field_Label_Short Field equipo.Nombre to "Equipo"
+        Set Field_Option Field equipo.Nombre DD_REQUIRED to True
+        Set Status_Help Field equipo.Nombre to "Nombre del club."
+
+        Set Field_Label_Long Field equipo.LigaID to "Liga"
+        Set Field_Label_Short Field equipo.LigaID to "Liga"
+        Set Status_Help Field equipo.LigaID to "Liga en la que juega el equipo (obligatoria)."
+
     End_Procedure
 
     // An equipo must belong to a liga. Without one, Attach leaves equipo.LigaID = 0 and the
@@ -28,8 +43,12 @@ Class cequipoDataDictionary is a DataDictionary
     // validates visited fields, so an untouched Liga field slips through.
     // Validate_Save runs before Attach_Main_File, so equipo.LigaID is not set yet here: check the
     // parent buffer, which the save has already re-found (liga.ID = 0 means no liga selected).
+    // For the same reason equipo.LigaID still holds the old liga (0 on a new equipo), so a liga that
+    // is full (Equipos >= EquiposMax) is rejected when an equipo is added to it or moved into it.
+    // The database enforces this too; this only gives a friendly message.
     Function Validate_Save Returns Integer
         Integer iRetVal
+        Boolean bHasRecord
 
         Forward Get Validate_Save to iRetVal
 
@@ -40,6 +59,24 @@ Class cequipoDataDictionary is a DataDictionary
             Send UserError "Selecciona la liga del equipo antes de guardar." ""
             Function_Return 1
         End
+
+        Get HasRecord to bHasRecord
+        If ((not(bHasRecord) or equipo.LigaID <> liga.ID) and liga.Equipos >= liga.EquiposMax) Begin
+            Send UserError ("La liga " + Trim(liga.Nombre) + " ya está completa (" + String(liga.Equipos) + " de " + String(liga.EquiposMax) + " equipos). Elige otra liga o amplía su máximo de equipos.") ""
+            Function_Return 1
+        End
     End_Function
+
+    // Cascade_Delete_State is False, so Validate_Delete refuses to delete an equipo that still has
+    // an entrenador or jugadores (client files) and reports it through Operation_Not_Allowed.
+    // Replace that generic error with a clear message.
+    Procedure Operation_Not_Allowed Integer iError
+        If (iError = DFERR_NO_DELETE_RELATED_RECORDS_EXIST) Begin
+            Send UserError "No se puede borrar el equipo porque tiene jugadores o entrenador asignados. Quítales antes el equipo." ""
+        End
+        Else Begin
+            Forward Send Operation_Not_Allowed iError
+        End
+    End_Procedure
 
 End_Class

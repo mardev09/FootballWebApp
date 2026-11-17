@@ -29,7 +29,7 @@ Object oLogin is a cWebView
     
     Object oWarning is a cWebLabel
         Set pbVisible to False
-        Set psCaption to "Invalid User ID or password. \n\rHint: 'admin' & 'admin'."
+        Set psCaption to "Usuario o contraseña incorrectos. \n\rPista: 'admin' y 'admin'."
         Set peAlign to alignCenter
         Set piColumnSpan to 12
         Set psCSSClass to "LoginWarning"
@@ -46,24 +46,24 @@ Object oLogin is a cWebView
     End_Object
     
     Object oLoginName is a cWebForm
-        Set psLabel to "User ID:"
+        Set psLabel to "Usuario:"
         Set peLabelPosition to lpTop
         Set piMaxLength to 20
         Set piColumnIndex to 1
         Set pbShowLabel to False
-        Set psPlaceHolder to "loginname"
+        Set psPlaceHolder to "usuario"
         Set piColumnSpan to 10
         Set psAutoComplete to "username"
     End_Object
     
     Object oPassword is a cWebForm
-        Set psLabel to "Password:"
+        Set psLabel to "Contraseña:"
         Set pbPassword to True
         Set peLabelAlign to alignLeft
         Set piMaxLength to 20
         Set peLabelPosition to lpTop
         Set pbShowLabel to False
-        Set psPlaceHolder to "password"
+        Set psPlaceHolder to "contraseña"
         Set piColumnSpan to 10
         Set piColumnIndex to 1
         Set psAutoComplete to "current-password"
@@ -76,7 +76,7 @@ Object oLogin is a cWebView
     
     Object oLoginButton is a cWebButton
         Set pbShowLabel to False
-        Set psCaption to "sign in"
+        Set psCaption to "Entrar"
         Set pbServerOnClick to True
         Set piColumnSpan to 10
         Set piColumnIndex to 1

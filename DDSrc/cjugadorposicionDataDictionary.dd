@@ -18,6 +18,18 @@ Class cjugadorposicionDataDictionary is a DataDictionary
         Set Foreign_Field_Option DD_INDEXFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_DEFAULT DD_DISPLAYONLY to True
 
+        Set Field_Label_Long Field jugadorposicion.ID to "Código de asignación"
+        Set Field_Label_Short Field jugadorposicion.ID to "Código"
+        Set Status_Help Field jugadorposicion.ID to "Código de la asignación. Lo asigna la base de datos."
+
+        Set Field_Label_Long Field jugadorposicion.JugadorID to "Jugador"
+        Set Field_Label_Short Field jugadorposicion.JugadorID to "Jugador"
+        Set Status_Help Field jugadorposicion.JugadorID to "Jugador al que se asigna la posición."
+
+        Set Field_Label_Long Field jugadorposicion.PosicionID to "Posición"
+        Set Field_Label_Short Field jugadorposicion.PosicionID to "Posición"
+        Set Status_Help Field jugadorposicion.PosicionID to "Posición que ocupa el jugador."
+
     End_Procedure
 
 End_Class

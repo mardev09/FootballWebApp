@@ -1,7 +1,10 @@
 ﻿Use DataDict.pkg
+Use cli.pkg
 
 Open entrenador
 Open equipo
+
+Register_Function ValidarEquipoSinEntrenador Integer iField Integer iEquipoID Returns Boolean
 
 Class centrenadorDataDictionary is a DataDictionary
     
@@ -11,30 +14,105 @@ Class centrenadorDataDictionary is a DataDictionary
 
         Set Add_Server_File to equipo.File_Number
 
+        Set ParentNullAllowed equipo.File_Number to True
+
         Set Foreign_Field_Option DD_KEYFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_KEYFIELD DD_FINDREQ to True
         Set Foreign_Field_Option DD_INDEXFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_DEFAULT DD_DISPLAYONLY to True
 
+        Set Field_Label_Long Field entrenador.ID to "Código de entrenador"
+        Set Field_Label_Short Field entrenador.ID to "Código"
+        Set Status_Help Field entrenador.ID to "Código del entrenador. Lo asigna la base de datos."
+
+        Set Field_Label_Long Field entrenador.Nombre to "Nombre"
+        Set Field_Label_Short Field entrenador.Nombre to "Nombre"
+        Set Field_Option Field entrenador.Nombre DD_REQUIRED to True
+        Set Status_Help Field entrenador.Nombre to "Nombre del entrenador."
+
+        Set Field_Label_Long Field entrenador.Apellido to "Apellido"
+        Set Field_Label_Short Field entrenador.Apellido to "Apellido"
+        Set Field_Option Field entrenador.Apellido DD_REQUIRED to True
+        Set Status_Help Field entrenador.Apellido to "Apellido del entrenador."
+
+        Set Field_Label_Long Field entrenador.Nacionalidad to "Nacionalidad"
+        Set Field_Label_Short Field entrenador.Nacionalidad to "Nacionalidad"
+        Set Status_Help Field entrenador.Nacionalidad to "Nacionalidad del entrenador."
+
+        Set Field_Label_Long Field entrenador.EquipoID to "Equipo"
+        Set Field_Label_Short Field entrenador.EquipoID to "Equipo"
+        Set Field_Validate_msg Field entrenador.EquipoID to (RefFunc(ValidarEquipoSinEntrenador))
+        Set Status_Help Field entrenador.EquipoID to "Equipo que dirige. Es opcional y cada equipo tiene un solo entrenador."
+
     End_Procedure
 
-    // An entrenador must belong to an equipo. Without one, Attach leaves entrenador.EquipoID = 0 and
-    // the entrenador -> equipo foreign key rejects the row (error 1452). The DD_FINDREQ foreign
-    // option only validates visited fields, so an untouched Equipo field slips through.
-    // Validate_Save runs before Attach_Main_File, so entrenador.EquipoID is not set yet here: check the
-    // parent buffer, which the save has already re-found (equipo.ID = 0 means no equipo selected).
-    Function Validate_Save Returns Integer
-        Integer iRetVal
+    // An equipo has at most one entrenador (unique index on entrenador.EquipoID in the database).
+    // This is a column validation, not Validate_Save, because it has to find other entrenador rows
+    // and Validate_Save must not find or clear any table buffer. Column validations run before the
+    // save locks and updates the buffers.
+    // entrenador.EquipoID only gets the new equipo during the save (Attach_Main_File), so the chosen
+    // equipo is read from the equipo DDO. The search uses the global entrenador buffer, which is
+    // synchronized with this DDO again before returning.
+    Function ValidarEquipoSinEntrenador Integer iField Integer iEquipoID Returns Boolean
+        Handle hoEquipoDD
+        Integer iEntrenadorID iEquipoElegido
+        Boolean bHasRecord bOcupado
+        String sEquipo sOtroEntrenador
 
-        Forward Get Validate_Save to iRetVal
-
-        If iRetVal;
-            Function_Return iRetVal
-
-        If (equipo.ID = 0) Begin
-            Send UserError "Selecciona el equipo del entrenador antes de guardar." ""
-            Function_Return 1
+        Get Data_Set equipo.File_Number to hoEquipoDD
+        If (hoEquipoDD = 0) Begin
+            Function_Return False
         End
+
+        // No equipo selected: the equipo parent is optional.
+        Get HasRecord of hoEquipoDD to bHasRecord
+        If (not(bHasRecord)) Begin
+            Function_Return False
+        End
+
+        Get Field_Current_Value of hoEquipoDD Field equipo.ID to iEquipoElegido
+        Get Field_Current_Value of hoEquipoDD Field equipo.Nombre to sEquipo
+        Get Field_Current_Value Field entrenador.ID to iEntrenadorID
+
+        Clear entrenador
+        Move iEquipoElegido to entrenador.EquipoID
+        Find GE entrenador by Index.3
+        Move ((Found) and entrenador.EquipoID = iEquipoElegido and entrenador.ID <> iEntrenadorID) to bOcupado
+        If bOcupado Begin
+            Move (Trim(entrenador.Nombre) * Trim(entrenador.Apellido)) to sOtroEntrenador
+        End
+
+        Get HasRecord to bHasRecord
+        If bHasRecord Begin
+            Send Refind_Records
+        End
+        Else Begin
+            Clear entrenador
+        End
+
+        If bOcupado Begin
+            Send Data_Set_Error iField DFERR_OPERATOR ("El equipo " + Trim(sEquipo) + " ya tiene entrenador (" + sOtroEntrenador + "). Quítale antes el equipo a ese entrenador o elige otro equipo.")
+        End
+        Function_Return bOcupado
     End_Function
+
+    // The equipo parent is optional (ParentNullAllowed). With no equipo selected the attach leaves
+    // entrenador.EquipoID = 0, which is not a valid equipo for the foreign key, so the column is
+    // saved as SQL NULL instead.
+    Procedure Save_Main_File
+        Handle hoEquipoDD
+        Boolean bHasEquipo
+
+        Get Data_Set equipo.File_Number to hoEquipoDD
+        If (hoEquipoDD <> 0) Begin
+            Get HasRecord of hoEquipoDD to bHasEquipo
+            If (not(bHasEquipo)) Begin
+                Move 0 to entrenador.EquipoID
+                Set_Attribute DF_FIELD_IS_NULL of entrenador.File_Number (RefTable(entrenador.EquipoID)) to True
+            End
+        End
+
+        Forward Send Save_Main_File
+    End_Procedure
 
 End_Class

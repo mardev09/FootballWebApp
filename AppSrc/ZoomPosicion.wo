@@ -12,7 +12,7 @@ Use cposicionDataDictionary.dd
 
 Object oZoomPosicion is a cWebView
     Set piColumnCount to 12
-    Set psCaption to "Posicion"
+    Set psCaption to "Posición"
     Set peWebViewStyle to wvsDrilldown
     Set peViewType to vtZoom
     Set pbShowCaption to False
@@ -43,7 +43,7 @@ Object oZoomPosicion is a cWebView
 
         Object oSaveBtn is a cWebMenuItem
             Set psCSSClass to "WebSaveMenuItem"
-            Set psCaption to "Save"
+            Set psCaption to "Guardar"
 
             Procedure OnClick
                 Send Request_Save
@@ -53,7 +53,7 @@ Object oZoomPosicion is a cWebView
 
         Object oEditBtn is a cWebMenuItem
             Set psCSSClass to "WebEditMenuItem"
-            Set psCaption to "Edit"
+            Set psCaption to "Editar"
             Procedure OnClick
                 Send ChangeEditMode True
                 Send SetActionButtons
@@ -63,7 +63,7 @@ Object oZoomPosicion is a cWebView
 
         Object oDeleteBtn is a cWebMenuItem
             Set psCSSClass to "WebDeleteMenuItem"
-            Set psCaption to "Delete"
+            Set psCaption to "Borrar"
             Set peActionDisplay to adMenu
 
             Procedure OnClick
@@ -74,7 +74,7 @@ Object oZoomPosicion is a cWebView
 
         Object oCancelChangesBtn is a cWebMenuItem
             Set psCSSClass to "WebIcon_Refresh"
-            Set psCaption to "Clear Changes"
+            Set psCaption to "Descartar cambios"
             Set peActionDisplay to adMenu
             Procedure OnClick
                 Send RefreshRecord

@@ -13,7 +13,7 @@ Use ZoomLiga.wo
 Use cligaDataDictionary.dd
 
 Object oSelectLiga is a cWebView
-    Set psCaption to "Liga"
+    Set psCaption to "Ligas"
     Set peWebViewStyle to wvsDrilldown
     Set peViewType to vtSelect
     Set piColumnCount to 12
@@ -37,12 +37,12 @@ Object oSelectLiga is a cWebView
 
         Object oligaNombre is a cWebColumn
             Entry_Item liga.Nombre
-            Set psCaption to "liga.Nombre"
+            Set psCaption to "Liga"
             Set piWidth to 1000
         End_Object 
 
         Object oDetailButton is a cWebColumnButton
-            Set psCaption to "btn"
+            Set psCaption to "Detalle"
             Set piWidth to 45
             Set pbFixedWidth to True
             Set pbResizable to False
@@ -64,7 +64,7 @@ Object oSelectLiga is a cWebView
 
         Object oligaPais is a cWebColumn
             Entry_Item liga.Pais
-            Set psCaption to "liga.Pais"
+            Set psCaption to "País"
             Set piWidth to 500
             Set pbNewLine to True
         End_Object 
@@ -107,7 +107,7 @@ Object oSelectLiga is a cWebView
 
         Object oSearch is a cWebMenuItem
             Set psCSSClass to "WebPromptMenuItem"
-            Set psCaption to "Search"
+            Set psCaption to "Buscar"
 
             Procedure OnClick
                 Send Search of oList
@@ -117,7 +117,7 @@ Object oSelectLiga is a cWebView
 
         Object oNewButton is a cWebMenuItem
             Set psCSSClass to "WebClearMenuItem"
-            Set psCaption to "New"
+            Set psCaption to "Nuevo"
 
             WebRegisterPath ntNavigateForward oZoomLiga
 

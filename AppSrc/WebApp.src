@@ -56,19 +56,8 @@ Object oWebApp is a cWebApp
                         End_Procedure
                     End_Object
 
-                    Object oLigaItem1 is a cWebMenuItem
-                        Set psCaption to "Liga"
-
-                        WebRegisterPath ntNavigateBegin oSelectLiga
-
-                        Procedure OnClick
-                            Forward Send OnClick
-                                Send NavigatePath
-                        End_Procedure
-                    End_Object
-
                     Object oEquipoItem1 is a cWebMenuItem
-                        Set psCaption to "Equipo"
+                        Set psCaption to "Equipos"
 
                         WebRegisterPath ntNavigateBegin oSelectEquipo
 
@@ -79,7 +68,7 @@ Object oWebApp is a cWebApp
                     End_Object
 
                     Object oEntrenadorItem1 is a cWebMenuItem
-                        Set psCaption to "Entrenador"
+                        Set psCaption to "Entrenadores"
 
                         WebRegisterPath ntNavigateBegin oSelectEntrenador
 
@@ -90,7 +79,7 @@ Object oWebApp is a cWebApp
                     End_Object
 
                     Object oPosicionItem1 is a cWebMenuItem
-                        Set psCaption to "Posicion"
+                        Set psCaption to "Posiciones"
 
                         WebRegisterPath ntNavigateBegin oSelectPosicion
 
@@ -101,7 +90,7 @@ Object oWebApp is a cWebApp
                     End_Object
 
                     Object oJugadorItem1 is a cWebMenuItem
-                        Set psCaption to "Jugador"
+                        Set psCaption to "Jugadores"
 
                         WebRegisterPath ntNavigateBegin oSelectJugador
 
