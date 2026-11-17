@@ -1,0 +1,131 @@
+/* FootballApp - estilos propios de la aplicacion.
+   Se carga despues de CssThemes/Df_Material/theme.css (ver Index.html), asi que solo ajusta las
+   clases del tema (Tile, Light, Dark, Tile_Icon, Tile_Title, Tile_Subtitle) y usa sus variables
+   de color (--df-*). Todo va acotado a la vista con psCSSClass "Dashboard". */
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* Dashboard: tiles con icono, titulo y subtitulo                      */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+/* El tema coloca titulo, subtitulo e icono con top fijo pensando en tiles de solo texto o de
+   solo icono. Con los tres a la vez se apilan centrados con flexbox. */
+.Dashboard .Tile .WebCon_Sizer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 156px;
+    padding: 20px 10px;
+    container-type: inline-size;
+    margin: 8px;
+    transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.Dashboard .Tile .Tile_Icon,
+.Dashboard .Tile .Tile_Title,
+.Dashboard .Tile .Tile_Subtitle {
+    position: static;
+    top: auto;
+}
+
+.Dashboard .Tile .Tile_Icon {
+    font-size: 40px;
+    line-height: 1;
+    margin-bottom: 12px;
+}
+
+/* La fuente de iconos se declara aqui tambien, para no depender de que la lista de selectores del
+   tema (.Tile .Tile_Icon:before) alcance al icono. */
+.Dashboard .Tile .Tile_Icon:before {
+    font-family: "material-icons" !important;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Las palabras nunca se cortan: el titulo escala con el ancho del tile (unidades cqi del
+   container-type de arriba) entre 11 y 20 px, y el subtitulo puede pasar a dos lineas. */
+.Dashboard .Tile .Tile_Title {
+    font-size: clamp(11px, 14cqi, 20px);
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: visible;
+}
+
+.Dashboard .Tile .Tile_Subtitle {
+    margin-top: 4px;
+    max-width: 100%;
+    font-size: clamp(11px, 10cqi, 13px);
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+}
+
+/* El framework pone overflow:auto en linea en el envoltorio del WebHtmlBox; si el contenido roza
+   el alto calculado aparece una barra de scroll dentro del tile. El tile tiene alto fijo, asi que
+   no hace falta scroll. */
+.Dashboard .Tile .WebHtml_Wrp {
+    overflow: visible !important;
+}
+
+/* Tiles de entidad (Light): fondo blanco, acento en el color principal del tema. */
+.Dashboard .Tile.Light .WebCon_Sizer {
+    background: var(--df-Grayscale8);
+    color: var(--df-Grayscale1);
+    border-top: 3px solid var(--df-MainRegular);
+}
+
+.Dashboard .Tile.Light .Tile_Icon {
+    color: var(--df-MainRegular);
+}
+
+.Dashboard .Tile.Light .Tile_Subtitle {
+    color: var(--df-Grayscale2);
+}
+
+.Dashboard .Tile.Light .WebCon_Sizer:hover {
+    background: var(--df-MainLight4);
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* Tile de bienvenida (Dark): color principal del tema; no navega, asi que sin cursor de enlace. */
+.Dashboard .Tile.Dark .WebCon_Sizer {
+    background: var(--df-MainRegular);
+    color: var(--df-Grayscale8);
+    border-top: 3px solid var(--df-MainDark);
+    cursor: default;
+}
+
+.Dashboard .Tile.Dark .Tile_Icon,
+.Dashboard .Tile.Dark .Tile_Subtitle {
+    color: var(--df-MainLight3);
+}
+
+/* Iconos: glifos de la fuente material-icons que declara el tema para .Tile .Tile_Icon:before
+   (codigos de CssThemes/Df_Material/Fonts/material-icons.css). */
+.Dashboard .Tile .Tile_Icon.TileIcon_Bienvenida:before {
+    content: "\6df"; /* account-circle */
+}
+
+.Dashboard .Tile .Tile_Icon.TileIcon_Ligas:before {
+    content: "\80"; /* language */
+}
+
+.Dashboard .Tile .Tile_Icon.TileIcon_Equipos:before {
+    content: "\26"; /* people */
+}
+
+.Dashboard .Tile .Tile_Icon.TileIcon_Entrenadores:before {
+    content: "\79"; /* assignment */
+}
+
+.Dashboard .Tile .Tile_Icon.TileIcon_Jugadores:before {
+    content: "\29"; /* person */
+}
+
+.Dashboard .Tile .Tile_Icon.TileIcon_Posiciones:before {
+    content: "\24"; /* location-on */
+}
