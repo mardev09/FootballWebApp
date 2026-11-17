@@ -118,6 +118,14 @@ Cada sprint se etiqueta en `main`: `v1.0` (Sprint 1), `v2.0` (Sprint 2: navegaci
 La salida del compilador (`*.exe`, `*.dbg`, `*.prn`, `*.dep`), las cachés, los ficheros
 locales del Studio y los logs no se versionan (ver `.gitignore`).
 
+## Uso de inteligencia artificial
+
+Durante el desarrollo se ha utilizado un asistente de inteligencia artificial para agilizar
+tareas del proyecto: consultar la documentación de DataFlex, redactar parte del código de los
+Data Dictionaries, las vistas y el CSS, y preparar la documentación. Todos los cambios se han
+revisado y comprendido, igual que cada proceso del proyecto (reglas de negocio, navegación entre
+vistas, flujo de trabajo con gitflow), y las decisiones finales son del autor.
+
 ## Autor
 
 Práctica académica — Sprint 3 - Omar A..
