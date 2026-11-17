@@ -8,6 +8,7 @@ Class cligaDataDictionary is a DataDictionary
     Procedure Construct_Object
         Forward Send Construct_Object
         Set Main_File to liga.File_Number
+        Set Cascade_Delete_State to False
 
         Set Add_Client_File to equipo.File_Number
 
@@ -16,6 +17,64 @@ Class cligaDataDictionary is a DataDictionary
         Set Foreign_Field_Option DD_INDEXFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_DEFAULT DD_DISPLAYONLY to True
 
+        Set Field_Label_Long Field liga.ID to "Código de liga"
+        Set Field_Label_Short Field liga.ID to "Código"
+        Set Status_Help Field liga.ID to "Código de la liga. Lo asigna la base de datos."
+
+        Set Field_Label_Long Field liga.Nombre to "Nombre de la liga"
+        Set Field_Label_Short Field liga.Nombre to "Liga"
+        Set Field_Option Field liga.Nombre DD_REQUIRED to True
+        Set Status_Help Field liga.Nombre to "Nombre de la competición."
+
+        Set Field_Label_Long Field liga.Pais to "País"
+        Set Field_Label_Short Field liga.Pais to "País"
+        Set Field_Option Field liga.Pais DD_REQUIRED to True
+        Set Status_Help Field liga.Pais to "País en el que se disputa la liga."
+
+        Set Field_Label_Long Field liga.Equipos to "Nº de equipos"
+        Set Field_Label_Short Field liga.Equipos to "Equipos"
+        Set Field_Option Field liga.Equipos DD_DISPLAYONLY to True
+        Set Status_Help Field liga.Equipos to "Equipos inscritos en la liga. Lo mantiene la base de datos."
+
+        Set Field_Error Field liga.EquiposMax to 0 "El máximo de equipos debe estar entre %1 y %2."
+        Set Field_Label_Long Field liga.EquiposMax to "Máximo de equipos"
+        Set Field_Label_Short Field liga.EquiposMax to "Máx. equipos"
+        Set Field_Value_Range Field liga.EquiposMax to 2 40
+        Set Status_Help Field liga.EquiposMax to "Número máximo de equipos que admite la liga (de 2 a 40)."
+
+    End_Procedure
+
+    Procedure Field_Defaults
+        Forward Send Field_Defaults
+        Set Field_Changed_Value Field liga.EquiposMax to 20
+    End_Procedure
+
+    // EquiposMax can never drop below the number of equipos already registered. liga.Equipos is
+    // display-only (NoPut), so the buffer holds the value maintained by the database.
+    Function Validate_Save Returns Integer
+        Integer iRetVal
+
+        Forward Get Validate_Save to iRetVal
+
+        If iRetVal;
+            Function_Return iRetVal
+
+        If (liga.EquiposMax < liga.Equipos) Begin
+            Send UserError ("El máximo de equipos (" + String(liga.EquiposMax) + ") no puede ser menor que el número de equipos inscritos (" + String(liga.Equipos) + ").") ""
+            Function_Return 1
+        End
+    End_Function
+
+    // Cascade_Delete_State is False, so Validate_Delete refuses to delete a liga that still has
+    // equipos (client file) and reports it through Operation_Not_Allowed. Replace that generic error
+    // with a clear message.
+    Procedure Operation_Not_Allowed Integer iError
+        If (iError = DFERR_NO_DELETE_RELATED_RECORDS_EXIST) Begin
+            Send UserError "No se puede borrar la liga porque tiene equipos. Borra o cambia de liga sus equipos antes de borrarla." ""
+        End
+        Else Begin
+            Forward Send Operation_Not_Allowed iError
+        End
     End_Procedure
 
 End_Class

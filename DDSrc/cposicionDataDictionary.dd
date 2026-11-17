@@ -3,11 +3,14 @@
 Open posicion
 Open jugadorposicion
 
+Register_Function ValidarNombreUnico Integer iField String sNombre Returns Boolean
+
 Class cposicionDataDictionary is a DataDictionary
     
     Procedure Construct_Object
         Forward Send Construct_Object
         Set Main_File to posicion.File_Number
+        Set Cascade_Delete_State to False
 
         Set Add_Client_File to jugadorposicion.File_Number
 
@@ -16,6 +19,62 @@ Class cposicionDataDictionary is a DataDictionary
         Set Foreign_Field_Option DD_INDEXFIELD DD_NOPUT to True
         Set Foreign_Field_Option DD_DEFAULT DD_DISPLAYONLY to True
 
+        Set Field_Label_Long Field posicion.ID to "Código de posición"
+        Set Field_Label_Short Field posicion.ID to "Código"
+        Set Status_Help Field posicion.ID to "Código de la posición. Lo asigna la base de datos."
+
+        Set Field_Label_Long Field posicion.Nombre to "Nombre de la posición"
+        Set Field_Label_Short Field posicion.Nombre to "Posición"
+        Set Field_Option Field posicion.Nombre DD_REQUIRED to True
+        Set Field_Validate_msg Field posicion.Nombre to (RefFunc(ValidarNombreUnico))
+        Set Status_Help Field posicion.Nombre to "Nombre de la demarcación. No se puede repetir."
+
+    End_Procedure
+
+    // posicion.Nombre is unique (uqPosicionNombre). Checking it here gives a clear message instead
+    // of the MariaDB duplicate-key error. It is a column validation, not Validate_Save, because it
+    // has to find in posicion and Validate_Save must not find or clear any table buffer. The search
+    // uses the global posicion buffer, which is synchronized with this DDO again before returning.
+    Function ValidarNombreUnico Integer iField String sNombre Returns Boolean
+        Integer iPosicionID
+        Boolean bHasRecord bDuplicado
+
+        // An empty name is already reported by DD_REQUIRED.
+        If (Trim(sNombre) = "") Begin
+            Function_Return False
+        End
+
+        Get Field_Current_Value Field posicion.ID to iPosicionID
+
+        Clear posicion
+        Move (Trim(sNombre)) to posicion.Nombre
+        Find EQ posicion by Index.2
+        Move ((Found) and posicion.ID <> iPosicionID) to bDuplicado
+
+        Get HasRecord to bHasRecord
+        If bHasRecord Begin
+            Send Refind_Records
+        End
+        Else Begin
+            Clear posicion
+        End
+
+        If bDuplicado Begin
+            Send Data_Set_Error iField DFERR_OPERATOR ("Ya existe una posición llamada " + Trim(sNombre) + ". Elige otro nombre.")
+        End
+        Function_Return bDuplicado
+    End_Function
+
+    // Cascade_Delete_State is False, so Validate_Delete refuses to delete a posicion that is still
+    // assigned to jugadores (client file jugadorposicion) and reports it through
+    // Operation_Not_Allowed. Replace that generic error with a clear message.
+    Procedure Operation_Not_Allowed Integer iError
+        If (iError = DFERR_NO_DELETE_RELATED_RECORDS_EXIST) Begin
+            Send UserError "No se puede borrar la posición porque está asignada a jugadores." ""
+        End
+        Else Begin
+            Forward Send Operation_Not_Allowed iError
+        End
     End_Procedure
 
 End_Class
