@@ -19,12 +19,14 @@ Class cligaDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field liga.ID to "Código de liga"
         Set Field_Label_Short Field liga.ID to "Código"
+        Set Key_Field_State Field liga.ID to True
         Set Status_Help Field liga.ID to "Código de la liga. Lo asigna la base de datos."
 
         Set Field_Label_Long Field liga.Nombre to "Nombre de la liga"
         Set Field_Label_Short Field liga.Nombre to "Liga"
         Set Field_Option Field liga.Nombre DD_REQUIRED to True
-        Set Status_Help Field liga.Nombre to "Nombre de la competición."
+        Set Field_Option Field liga.Nombre DD_COMMIT to True
+        Set Status_Help Field liga.Nombre to "Nombre de la competición. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field liga.Pais to "País"
         Set Field_Label_Short Field liga.Pais to "País"
@@ -48,6 +50,13 @@ Class cligaDataDictionary is a DataDictionary
         Forward Send Field_Defaults
         Set Field_Changed_Value Field liga.EquiposMax to 20
     End_Procedure
+
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field only becomes DD_NOPUT, so the user could still type in it and the change would
+    // be silently ignored. Returning True makes indexed fields DD_DISPLAYONLY too (NoPut + NoEnter).
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
 
     // EquiposMax can never drop below the number of equipos already registered. liga.Equipos is
     // display-only (NoPut), so the buffer holds the value maintained by the database.

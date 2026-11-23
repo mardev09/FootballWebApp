@@ -23,17 +23,20 @@ Class centrenadorDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field entrenador.ID to "Código de entrenador"
         Set Field_Label_Short Field entrenador.ID to "Código"
+        Set Key_Field_State Field entrenador.ID to True
         Set Status_Help Field entrenador.ID to "Código del entrenador. Lo asigna la base de datos."
 
         Set Field_Label_Long Field entrenador.Nombre to "Nombre"
         Set Field_Label_Short Field entrenador.Nombre to "Nombre"
         Set Field_Option Field entrenador.Nombre DD_REQUIRED to True
-        Set Status_Help Field entrenador.Nombre to "Nombre del entrenador."
+        Set Field_Option Field entrenador.Nombre DD_COMMIT to True
+        Set Status_Help Field entrenador.Nombre to "Nombre del entrenador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field entrenador.Apellido to "Apellido"
         Set Field_Label_Short Field entrenador.Apellido to "Apellido"
         Set Field_Option Field entrenador.Apellido DD_REQUIRED to True
-        Set Status_Help Field entrenador.Apellido to "Apellido del entrenador."
+        Set Field_Option Field entrenador.Apellido DD_COMMIT to True
+        Set Status_Help Field entrenador.Apellido to "Apellido del entrenador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field entrenador.Nacionalidad to "Nacionalidad"
         Set Field_Label_Short Field entrenador.Nacionalidad to "Nacionalidad"
@@ -45,6 +48,13 @@ Class centrenadorDataDictionary is a DataDictionary
         Set Status_Help Field entrenador.EquipoID to "Equipo que dirige. Es opcional y cada equipo tiene un solo entrenador."
 
     End_Procedure
+
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field (Apellido) only becomes DD_NOPUT, so the user could still type in it and the
+    // change would be silently ignored. Returning True makes it DD_DISPLAYONLY too.
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
 
     // An equipo has at most one entrenador (unique index on entrenador.EquipoID in the database).
     // This is a column validation, not Validate_Save, because it has to find other entrenador rows

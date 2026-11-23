@@ -20,6 +20,7 @@ Class cjugadorposicionDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field jugadorposicion.ID to "Código de asignación"
         Set Field_Label_Short Field jugadorposicion.ID to "Código"
+        Set Key_Field_State Field jugadorposicion.ID to True
         Set Status_Help Field jugadorposicion.ID to "Código de la asignación. Lo asigna la base de datos."
 
         Set Field_Label_Long Field jugadorposicion.JugadorID to "Jugador"
