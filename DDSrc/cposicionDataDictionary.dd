@@ -21,15 +21,24 @@ Class cposicionDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field posicion.ID to "Código de posición"
         Set Field_Label_Short Field posicion.ID to "Código"
+        Set Key_Field_State Field posicion.ID to True
         Set Status_Help Field posicion.ID to "Código de la posición. Lo asigna la base de datos."
 
         Set Field_Label_Long Field posicion.Nombre to "Nombre de la posición"
         Set Field_Label_Short Field posicion.Nombre to "Posición"
         Set Field_Option Field posicion.Nombre DD_REQUIRED to True
+        Set Field_Option Field posicion.Nombre DD_COMMIT to True
         Set Field_Validate_msg Field posicion.Nombre to (RefFunc(ValidarNombreUnico))
-        Set Status_Help Field posicion.Nombre to "Nombre de la demarcación. No se puede repetir."
+        Set Status_Help Field posicion.Nombre to "Nombre de la demarcación. No se puede repetir ni cambiar una vez guardado."
 
     End_Procedure
+
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field (Nombre) only becomes DD_NOPUT, so the user could still type in it and the
+    // change would be silently ignored. Returning True makes it DD_DISPLAYONLY too.
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
 
     // posicion.Nombre is unique (uqPosicionNombre). Checking it here gives a clear message instead
     // of the MariaDB duplicate-key error. It is a column validation, not Validate_Save, because it

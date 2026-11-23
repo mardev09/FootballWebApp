@@ -24,17 +24,20 @@ Class cjugadorDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field jugador.ID to "Código de jugador"
         Set Field_Label_Short Field jugador.ID to "Código"
+        Set Key_Field_State Field jugador.ID to True
         Set Status_Help Field jugador.ID to "Código del jugador. Lo asigna la base de datos."
 
         Set Field_Label_Long Field jugador.Nombre to "Nombre"
         Set Field_Label_Short Field jugador.Nombre to "Nombre"
         Set Field_Option Field jugador.Nombre DD_REQUIRED to True
-        Set Status_Help Field jugador.Nombre to "Nombre del jugador."
+        Set Field_Option Field jugador.Nombre DD_COMMIT to True
+        Set Status_Help Field jugador.Nombre to "Nombre del jugador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field jugador.Apellido to "Apellido"
         Set Field_Label_Short Field jugador.Apellido to "Apellido"
         Set Field_Option Field jugador.Apellido DD_REQUIRED to True
-        Set Status_Help Field jugador.Apellido to "Apellido del jugador."
+        Set Field_Option Field jugador.Apellido DD_COMMIT to True
+        Set Status_Help Field jugador.Apellido to "Apellido del jugador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field jugador.Nacionalidad to "Nacionalidad"
         Set Field_Label_Short Field jugador.Nacionalidad to "Nacionalidad"
@@ -45,6 +48,13 @@ Class cjugadorDataDictionary is a DataDictionary
         Set Status_Help Field jugador.EquipoID to "Equipo en el que juega. Es opcional (jugador sin equipo)."
 
     End_Procedure
+
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field (Apellido) only becomes DD_NOPUT, so the user could still type in it and the
+    // change would be silently ignored. Returning True makes it DD_DISPLAYONLY too.
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
 
     // The equipo parent is optional (ParentNullAllowed). With no equipo selected the attach leaves
     // jugador.EquipoID = 0, which is not a valid equipo for the fkJugadorEquipo foreign key, so the
