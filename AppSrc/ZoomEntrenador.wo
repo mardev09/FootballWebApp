@@ -7,6 +7,7 @@ Use cWebPanel.pkg
 Use cWebMenuGroup.pkg
 Use cWebMenuItem.pkg
 Use cWebForm.pkg
+Use cWebCombo.pkg
 Use cWebButton.pkg
 
 Use cligaDataDictionary.dd
@@ -97,7 +98,9 @@ Object oZoomEntrenador is a cWebView
             Set psLabel to "Apellido"
         End_Object 
 
-        Object oentrenadorNacionalidad is a cWebForm
+        // Combo instead of a form: entrenador.Nacionalidad has a CodeValidationTable in the DD
+        // (CodeMast, type NACIONAL), and cWebCombo fills its list from it automatically.
+        Object oentrenadorNacionalidad is a cWebCombo
             Entry_Item entrenador.Nacionalidad
             Set piColumnSpan to 8
             Set piColumnIndex to 0
