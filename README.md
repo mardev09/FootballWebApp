@@ -189,4 +189,4 @@ vistas, flujo de trabajo con gitflow), y las decisiones finales son del autor.
 
 ## Autor
 
-Práctica académica — Sprint 3 - Omar A..
+Práctica académica — Omar A.
