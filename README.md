@@ -172,8 +172,9 @@ Flujo **gitflow**: `main` estable y etiquetada, `develop` de integración y una 
 `docs/*` para documentación).
 Las fusiones se hacen con `--no-ff` para conservar la traza de cada rama en el historial.
 
-Cada sprint se etiqueta en `main`: `v1.0` (Sprint 1), `v2.0` (Sprint 2: navegación) y `v3.0`
-(Sprint 3: Data Dictionaries y mejoras visuales).
+Cada sprint se etiqueta en `main`: `v1.0` (Sprint 1), `v2.0` (Sprint 2: navegación), `v3.0`
+(Sprint 3: Data Dictionaries y mejoras visuales) y `v4.0` (Sprint 4: construcción de la clase y
+validación).
 
 La salida del compilador (`*.exe`, `*.dbg`, `*.prn`, `*.dep`), las cachés, los ficheros
 locales del Studio y los logs no se versionan (ver `.gitignore`).
