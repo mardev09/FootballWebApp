@@ -36,7 +36,7 @@ Class cligaDataDictionary is a DataDictionary
         Set Field_Label_Long Field liga.Equipos to "Nº de equipos"
         Set Field_Label_Short Field liga.Equipos to "Equipos"
         Set Field_Option Field liga.Equipos DD_DISPLAYONLY to True
-        Set Status_Help Field liga.Equipos to "Equipos inscritos en la liga. Lo mantiene la base de datos."
+        Set Status_Help Field liga.Equipos to "Equipos inscritos en la liga. Se actualiza solo al dar de alta, cambiar de liga o borrar un equipo."
 
         Set Field_Error Field liga.EquiposMax to 0 "El máximo de equipos debe estar entre %1 y %2."
         Set Field_Label_Long Field liga.EquiposMax to "Máximo de equipos"
@@ -59,16 +59,22 @@ Class cligaDataDictionary is a DataDictionary
     End_Function
 
     // EquiposMax can never drop below the number of equipos already registered. liga.Equipos is
-    // display-only (NoPut), so the buffer holds the value maintained by the database.
+    // display-only (NoPut), so the buffer holds the value maintained by the equipo DD
+    // (Update / Backout).
+    // This DD also gets Validate_Save when it takes part in an equipo save as its parent. Then
+    // liga.Equipos may already count the new equipo; that case (full liga) is reported by the
+    // equipo DD. Here it is only checked when the user has changed EquiposMax.
     Function Validate_Save Returns Integer
         Integer iRetVal
+        Boolean bMaxCambiado
 
         Forward Get Validate_Save to iRetVal
 
         If iRetVal;
             Function_Return iRetVal
 
-        If (liga.EquiposMax < liga.Equipos) Begin
+        Get Field_Changed_State Field liga.EquiposMax to bMaxCambiado
+        If (bMaxCambiado and liga.EquiposMax < liga.Equipos) Begin
             Send UserError ("El máximo de equipos (" + String(liga.EquiposMax) + ") no puede ser menor que el número de equipos inscritos (" + String(liga.Equipos) + ").") ""
             Function_Return 1
         End
