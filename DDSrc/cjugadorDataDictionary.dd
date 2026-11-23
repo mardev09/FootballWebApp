@@ -4,6 +4,14 @@ Use cli.pkg
 Open jugador
 Open jugadorposicion
 Open equipo
+Open CodeMast
+
+// Valid nationalities, loaded from CodeMast (type NACIONAL, described in CodeType). The code is
+// the nationality name itself, which is what jugador.Nacionalidad stores.
+Object jugador_Nacionalidad_VT is a CodeValidationTable
+    Set Type_Value to "NACIONAL"
+    Set Allow_Blank_State to True
+End_Object
 
 Class cjugadorDataDictionary is a DataDictionary
     
@@ -24,27 +32,39 @@ Class cjugadorDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field jugador.ID to "Código de jugador"
         Set Field_Label_Short Field jugador.ID to "Código"
+        Set Key_Field_State Field jugador.ID to True
         Set Status_Help Field jugador.ID to "Código del jugador. Lo asigna la base de datos."
 
         Set Field_Label_Long Field jugador.Nombre to "Nombre"
         Set Field_Label_Short Field jugador.Nombre to "Nombre"
         Set Field_Option Field jugador.Nombre DD_REQUIRED to True
-        Set Status_Help Field jugador.Nombre to "Nombre del jugador."
+        Set Field_Option Field jugador.Nombre DD_COMMIT to True
+        Set Status_Help Field jugador.Nombre to "Nombre del jugador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field jugador.Apellido to "Apellido"
         Set Field_Label_Short Field jugador.Apellido to "Apellido"
         Set Field_Option Field jugador.Apellido DD_REQUIRED to True
-        Set Status_Help Field jugador.Apellido to "Apellido del jugador."
+        Set Field_Option Field jugador.Apellido DD_COMMIT to True
+        Set Status_Help Field jugador.Apellido to "Apellido del jugador. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field jugador.Nacionalidad to "Nacionalidad"
         Set Field_Label_Short Field jugador.Nacionalidad to "Nacionalidad"
-        Set Status_Help Field jugador.Nacionalidad to "Nacionalidad del jugador."
+        Set Field_Class_Name Field jugador.Nacionalidad to "Combo"
+        Set Field_Value_Table Field jugador.Nacionalidad to jugador_Nacionalidad_VT
+        Set Status_Help Field jugador.Nacionalidad to "Nacionalidad del jugador. Se elige de la lista."
 
         Set Field_Label_Long Field jugador.EquipoID to "Equipo"
         Set Field_Label_Short Field jugador.EquipoID to "Equipo"
         Set Status_Help Field jugador.EquipoID to "Equipo en el que juega. Es opcional (jugador sin equipo)."
 
     End_Procedure
+
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field (Apellido) only becomes DD_NOPUT, so the user could still type in it and the
+    // change would be silently ignored. Returning True makes it DD_DISPLAYONLY too.
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
 
     // The equipo parent is optional (ParentNullAllowed). With no equipo selected the attach leaves
     // jugador.EquipoID = 0, which is not a valid equipo for the fkJugadorEquipo foreign key, so the

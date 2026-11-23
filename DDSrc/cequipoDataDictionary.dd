@@ -25,12 +25,14 @@ Class cequipoDataDictionary is a DataDictionary
         Set Field_Label_Long Field equipo.ID to "Código de equipo"
         Set Field_Label_Short Field equipo.ID to "Código"
         Set Field_Option Field equipo.ID DD_AUTOFIND to True
+        Set Key_Field_State Field equipo.ID to True
         Set Status_Help Field equipo.ID to "Código del equipo. Lo asigna la base de datos."
 
         Set Field_Label_Long Field equipo.Nombre to "Nombre del equipo"
         Set Field_Label_Short Field equipo.Nombre to "Equipo"
         Set Field_Option Field equipo.Nombre DD_REQUIRED to True
-        Set Status_Help Field equipo.Nombre to "Nombre del club."
+        Set Field_Option Field equipo.Nombre DD_COMMIT to True
+        Set Status_Help Field equipo.Nombre to "Nombre del club. No se puede cambiar una vez guardado."
 
         Set Field_Label_Long Field equipo.LigaID to "Liga"
         Set Field_Label_Short Field equipo.LigaID to "Liga"
@@ -38,17 +40,40 @@ Class cequipoDataDictionary is a DataDictionary
 
     End_Procedure
 
+    // Committed fields (DD_COMMIT) become DD_DISPLAYONLY once the record is saved. By default an
+    // indexed field only becomes DD_NOPUT, so the user could still type in it and the change would
+    // be silently ignored. Returning True makes indexed fields DD_DISPLAYONLY too (NoPut + NoEnter).
+    Function Field_CommitNoEnterOnIndex Integer iField Returns Boolean
+        Function_Return True
+    End_Function
+
+    // liga.Equipos (number of equipos in the liga) is maintained here with the standard DataFlex
+    // pair Update / Backout. The save sends Backout with the old liga in the buffer and Update with
+    // the new one, so:
+    //   - new equipo:             Update            -> new liga +1
+    //   - equipo moved of liga:   Backout + Update  -> old liga -1, new liga +1
+    //   - edit without moving:    Backout + Update  -> same liga -1 +1 (no change)
+    //   - deleted equipo:         Backout           -> liga -1
+    // The DD saves the changed liga records in the same transaction as the equipo.
+    Procedure Update
+        Forward Send Update
+        Add 1 to liga.Equipos
+    End_Procedure
+
+    Procedure Backout
+        Forward Send Backout
+        Subtract 1 from liga.Equipos
+    End_Procedure
+
     // An equipo must belong to a liga. Without one, Attach leaves equipo.LigaID = 0 and the
     // equipo -> liga foreign key rejects the row (error 1452). The DD_FINDREQ foreign option only
-    // validates visited fields, so an untouched Liga field slips through.
-    // Validate_Save runs before Attach_Main_File, so equipo.LigaID is not set yet here: check the
-    // parent buffer, which the save has already re-found (liga.ID = 0 means no liga selected).
-    // For the same reason equipo.LigaID still holds the old liga (0 on a new equipo), so a liga that
-    // is full (Equipos >= EquiposMax) is rejected when an equipo is added to it or moved into it.
-    // The database enforces this too; this only gives a friendly message.
+    // validates visited fields, so an untouched Liga field slips through. Validate_Save runs before
+    // Attach_Main_File, so check the parent buffer (liga.ID = 0 means no liga selected).
+    // Validate_Save runs after Update, so liga.Equipos already counts this equipo when it is new or
+    // has been moved into the liga. If the liga now has more equipos than its maximum, it was full.
+    // An edit that keeps the liga leaves the count unchanged, so it is never rejected.
     Function Validate_Save Returns Integer
         Integer iRetVal
-        Boolean bHasRecord
 
         Forward Get Validate_Save to iRetVal
 
@@ -60,9 +85,8 @@ Class cequipoDataDictionary is a DataDictionary
             Function_Return 1
         End
 
-        Get HasRecord to bHasRecord
-        If ((not(bHasRecord) or equipo.LigaID <> liga.ID) and liga.Equipos >= liga.EquiposMax) Begin
-            Send UserError ("La liga " + Trim(liga.Nombre) + " ya está completa (" + String(liga.Equipos) + " de " + String(liga.EquiposMax) + " equipos). Elige otra liga o amplía su máximo de equipos.") ""
+        If (liga.Equipos > liga.EquiposMax) Begin
+            Send UserError ("La liga " + Trim(liga.Nombre) + " ya está completa (" + String(liga.Equipos - 1) + " de " + String(liga.EquiposMax) + " equipos). Elige otra liga o amplía su máximo de equipos.") ""
             Function_Return 1
         End
     End_Function

@@ -7,6 +7,8 @@ Use cWebPanel.pkg
 Use cWebMenuGroup.pkg
 Use cWebMenuItem.pkg
 Use cWebForm.pkg
+Use cWebCombo.pkg
+Use cWebButton.pkg
 
 Use cligaDataDictionary.dd
 Use cequipoDataDictionary.dd
@@ -35,6 +37,46 @@ Object oZoomEntrenador is a cWebView
     Set Main_DD To oentrenador_DD
     Set Server  To oentrenador_DD
 
+    // Deja al entrenador sin equipo. Se descartan antes los cambios sin guardar de la ficha
+    // (RefreshRecord vuelve a leer el registro), para grabar solo el despido. Despues se vacia el
+    // DDO de equipo, como cuando el usuario borra el campo Equipo, y se graba el entrenador: con
+    // ParentNullAllowed el DD admite el padre vacio y Save_Main_File graba EquipoID como NULL.
+    Procedure DespedirEntrenador
+        Integer iRetVal
+        Boolean bTieneEquipo
+        String sNombre sApellido sEquipo
+
+        Send RefreshRecord
+
+        Get HasRecord of oequipo_DD to bTieneEquipo
+        If (not(bTieneEquipo)) Begin
+            Procedure_Return
+        End
+
+        Get Field_Current_Value of oentrenador_DD Field entrenador.Nombre to sNombre
+        Get Field_Current_Value of oentrenador_DD Field entrenador.Apellido to sApellido
+        Get Field_Current_Value of oequipo_DD Field equipo.Nombre to sEquipo
+
+        Send Clear of oequipo_DD
+
+        Get Request_Validate of oentrenador_DD to iRetVal
+        If (iRetVal <> 0) Begin
+            Send RefreshRecord
+            Procedure_Return
+        End
+
+        Move False to Err
+        Send Request_Save of oentrenador_DD
+        If (Err) Begin
+            Send RefreshRecord
+            Procedure_Return
+        End
+
+        Send ShowInfoBox ((Trim(sNombre) * Trim(sApellido)) + " ya no es el entrenador de " + Trim(sEquipo) + ".") "Entrenador despedido"
+        // Same as after Guardar: back to the view that opened this one.
+        Send NavigateClose Self
+    End_Procedure
+
 
     Object oWebMainPanel is a cWebPanel
         Set piColumnCount to 12
@@ -56,7 +98,9 @@ Object oZoomEntrenador is a cWebView
             Set psLabel to "Apellido"
         End_Object 
 
-        Object oentrenadorNacionalidad is a cWebForm
+        // Combo instead of a form: entrenador.Nacionalidad has a CodeValidationTable in the DD
+        // (CodeMast, type NACIONAL), and cWebCombo fills its list from it automatically.
+        Object oentrenadorNacionalidad is a cWebCombo
             Entry_Item entrenador.Nacionalidad
             Set piColumnSpan to 8
             Set piColumnIndex to 0
@@ -80,8 +124,36 @@ Object oZoomEntrenador is a cWebView
             Procedure OnPrompt
                 Send NavigatePath
             End_Procedure
-        End_Object 
-    End_Object 
+        End_Object
+
+        // Despedir: deja al entrenador sin equipo. Solo se muestra si el entrenador tiene equipo
+        // (ver SetActionButtons). Pide confirmacion y despues graba el entrenador con el DDO de
+        // equipo vacio; el DD (ParentNullAllowed + Save_Main_File) guarda EquipoID como NULL.
+        Object oDespedirBtn is a cWebButton
+            Set psCaption to "Despedir"
+            Set piColumnSpan to 3
+            Set piColumnIndex to 0
+
+            // Callback of the confirmation box (it has to be published to be called from the client).
+            Procedure ConfirmarDespedir Integer eRespuesta
+                If (eRespuesta = cmYes) Begin
+                    Send DespedirEntrenador
+                End
+            End_Procedure
+
+            WebPublishProcedure ConfirmarDespedir
+
+            Procedure OnClick
+                String sNombre sApellido sEquipo
+
+                Get Field_Current_Value of oentrenador_DD Field entrenador.Nombre to sNombre
+                Get Field_Current_Value of oentrenador_DD Field entrenador.Apellido to sApellido
+                Get Field_Current_Value of oequipo_DD Field equipo.Nombre to sEquipo
+
+                Send ShowYesNo Self (RefProc(ConfirmarDespedir)) ("¿Despedir a " + (Trim(sNombre) * Trim(sApellido)) + " de " + Trim(sEquipo) + "? El entrenador quedará sin equipo.") "Despedir entrenador"
+            End_Procedure
+        End_Object
+    End_Object
 
     Object oActionGroup is a cWebMenuGroup
 
@@ -129,12 +201,13 @@ Object oZoomEntrenador is a cWebView
 
     Procedure SetActionButtons
         tWebNavigateData NavigateData
-        Boolean bHasRecord
+        Boolean bHasRecord bTieneEquipo
         Handle hoDD
 
         Get Server to hoDD
         Get GetNavigateData to NavigateData
         Get HasRecord of hoDD to bHasRecord
+        Get HasRecord of oequipo_DD to bTieneEquipo
 
         // let's hide all buttons and then Show the ones we want
         WebSet pbRender of oEditBtn to False
@@ -150,6 +223,10 @@ Object oZoomEntrenador is a cWebView
             WebSet pbRender of oCancelChangesBtn to True
             WebSet pbRender of oDeleteBtn to bHasRecord
         End
+
+        // Despedir is an action of its own (with confirmation), so it is offered both when viewing
+        // and when editing, but only for a saved entrenador that has an equipo.
+        WebSet pbRender of oDespedirBtn to (bHasRecord and bTieneEquipo)
     End_Procedure
 
     Procedure OnViewSaved Handle hoServer Boolean bChanged
