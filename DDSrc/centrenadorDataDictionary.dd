@@ -3,6 +3,14 @@ Use cli.pkg
 
 Open entrenador
 Open equipo
+Open CodeMast
+
+// Valid nationalities, loaded from CodeMast (type NACIONAL, described in CodeType). The code is
+// the nationality name itself, which is what entrenador.Nacionalidad stores.
+Object entrenador_Nacionalidad_VT is a CodeValidationTable
+    Set Type_Value to "NACIONAL"
+    Set Allow_Blank_State to True
+End_Object
 
 Register_Function ValidarEquipoSinEntrenador Integer iField Integer iEquipoID Returns Boolean
 
@@ -40,7 +48,9 @@ Class centrenadorDataDictionary is a DataDictionary
 
         Set Field_Label_Long Field entrenador.Nacionalidad to "Nacionalidad"
         Set Field_Label_Short Field entrenador.Nacionalidad to "Nacionalidad"
-        Set Status_Help Field entrenador.Nacionalidad to "Nacionalidad del entrenador."
+        Set Field_Class_Name Field entrenador.Nacionalidad to "Combo"
+        Set Field_Value_Table Field entrenador.Nacionalidad to entrenador_Nacionalidad_VT
+        Set Status_Help Field entrenador.Nacionalidad to "Nacionalidad del entrenador. Se elige de la lista."
 
         Set Field_Label_Long Field entrenador.EquipoID to "Equipo"
         Set Field_Label_Short Field entrenador.EquipoID to "Equipo"
