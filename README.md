@@ -15,7 +15,14 @@ Relaciones: `equipo.LigaID -> liga.ID`, `jugador.EquipoID -> equipo.ID`,
 
 ## Puesta en marcha
 
-1. Ejecutar `football_mariadb.sql` contra MariaDB.
+1. Ejecutar `football_mariadb.sql` contra MariaDB y después
+   [`sql/sprint4.sql`](sql/sprint4.sql) (nacionalidades en CodeType/CodeMast y número de
+   equipos de la liga gestionado por la aplicación):
+
+   ```
+   mariadb --default-character-set=utf8mb4 -u dataflex -p football < sql/sprint4.sql
+   ```
+
 2. Crear el usuario de la aplicación:
 
    ```sql
@@ -60,7 +67,13 @@ porque el listado de ligas ya está en la pila de navegación y la liga viene fi
 Las reglas viven en los Data Dictionaries (`DDSrc`) y están explicadas tabla por tabla, junto con
 los cambios visuales, en [docs/DataDictionaries.md](docs/DataDictionaries.md). En resumen:
 
-- Un equipo debe tener liga, y no se puede dar de alta en una liga llena (`Equipos >= EquiposMax`).
+- Un equipo debe tener liga, y no se puede dar de alta ni mover a una liga llena
+  (`Equipos >= EquiposMax`). El número de equipos de la liga se actualiza solo al dar de alta,
+  cambiar de liga o borrar un equipo.
+- Los PK no se pueden modificar, y los nombres y apellidos se escriben al dar de alta y quedan
+  bloqueados una vez guardados.
+- La nacionalidad de jugadores y entrenadores se elige de una lista (tabla de validación).
+- Un entrenador se puede despedir desde su ficha: queda sin equipo.
 - Jugador y entrenador pueden quedar sin equipo (padre opcional; `EquipoID` se guarda como `NULL`).
   Un equipo tiene como mucho un entrenador.
 - No se puede borrar una liga con equipos, un equipo con jugadores o entrenador, ni una posición
@@ -104,6 +117,53 @@ Dictionary Modeler, para que los ficheros se sigan abriendo en él:
 
 El detalle de cada regla y su motivo, tabla por tabla, está en
 [docs/DataDictionaries.md](docs/DataDictionaries.md).
+
+## Sprint 4: construcción de la clase y validación
+
+**Construcción de la clase** (`DDSrc`):
+
+- **PK protegidas**: el `ID` de las seis tablas tiene `Key_Field_State`. En un registro ya
+  guardado el DD rechaza cualquier cambio del `ID`.
+- **Nombres y apellidos no modificables**: se compararon las tres opciones del enunciado:
+
+  | Opción | Qué hace | Problema |
+  |---|---|---|
+  | `DD_NOPUT` | Se puede escribir, pero el valor no pasa al buffer | El usuario cree que cambia el nombre y al guardar se pierde sin aviso |
+  | `DD_NOENTER` | El campo sale deshabilitado | Si el valor llega por código, se graba |
+  | `DD_DISPLAYONLY` | `NOENTER` + `NOPUT`: ni se escribe ni se graba | Ninguno, es la más segura |
+
+  Las tres son fijas, así que también impiden escribir el nombre al **crear** un registro. Como
+  además el nombre es requerido, el botón Nuevo dejaría de funcionar. Por eso se usa
+  `DD_COMMIT`: con él el campo es editable en un alta y pasa a ser `DD_DISPLAYONLY` en cuanto el
+  registro está guardado. Se aplica a `Nombre` en las cinco tablas que lo tienen y también a
+  `Apellido` en jugador y entrenador. En los campos que forman parte de un índice, DataFlex solo
+  aplica `NOPUT` por defecto; cada DD devuelve `True` en `Field_CommitNoEnterOnIndex` para que
+  también ahí sea `DD_DISPLAYONLY`.
+- **Requeridos**: las columnas de texto `NOT NULL` (`Nombre`, `Apellido`, `Pais`) ya eran
+  `DD_REQUIRED`. Las numéricas `NOT NULL` se cubren de otra forma, porque en un número
+  `DD_REQUIRED` solo comprueba que no sea 0:
+  - los `ID` los asigna la BD;
+  - `liga.Equipos` lo calcula la aplicación;
+  - `liga.EquiposMax` tiene rango de 2 a 40;
+  - las claves de padre obligatorio (`equipo.LigaID` y las de `jugadorposicion`) las exige el
+    `Validate_Save` y la relación.
+- **Número de equipos de la liga** (`liga.Equipos`): lo mantiene el DD de equipo con
+  `Update` (+1 a la liga) y `Backout` (−1). Así se cubren el alta, el cambio de liga (−1 en la
+  antigua, +1 en la nueva) y el borrado, dentro de la misma transacción que el equipo. Los
+  triggers de MariaDB que hacían lo mismo se eliminan en `sql/sprint4.sql`, porque si no se
+  contaría dos veces.
+- **Botón Despedir** en la ficha del entrenador: solo aparece si el entrenador tiene equipo. Pide
+  confirmación, deja el entrenador sin equipo (`EquipoID` a `NULL`) y vuelve al listado.
+
+**Validación**:
+
+- La nacionalidad de jugador y entrenador es un desplegable (`cWebCombo`) en lugar de un campo
+  de texto.
+- Las opciones salen de las tablas de validación de DataFlex: el tipo `NACIONAL` en `CodeType` y
+  sus valores en `CodeMast`. Son las 20 nacionalidades que tienen hoy los jugadores y
+  entrenadores, sin el valor de prueba "Test".
+- En el DD, cada campo `Nacionalidad` tiene un `CodeValidationTable` (`Field_Value_Table`), y el
+  combo se rellena solo a partir de él. El DD también rechaza un valor que no esté en la lista.
 
 ## Git
 
